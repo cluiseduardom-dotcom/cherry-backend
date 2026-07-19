@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `LICENSE` (proprietary, all rights reserved).
 - `README.md` with setup instructions and route overview.
 - Branch protection on `master` requiring the CI check to pass.
+- Link to `CODE_OF_CONDUCT.md` in the README.
+- `CONTRIBUTORS.md`.
+
+### Changed
+
+- Bumped `actions/checkout` and `actions/setup-node` to v5 in the CI workflow.
 
 ## [2.0.0] - 2026-07-14
 
