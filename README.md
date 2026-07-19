@@ -32,3 +32,7 @@ The server listens on port 3000 by default.
 - `/produtos` — products (requires auth)
 - `/vendas` — sales (requires auth)
 - `/clientes` — customers (requires auth)
+
+## Code of Conduct
+
+This project follows a [Code of Conduct](CODE_OF_CONDUCT.md).
