@@ -4,10 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.0.0] - 2026-07-19
 
 ### Added
 
+- Initial Cherry ERP backend: Express API with auth, produtos, vendas, and clientes routes, PostgreSQL integration, and JWT-based authentication.
 - `SECURITY.md` with vulnerability reporting instructions.
 - `CODE_OF_CONDUCT.md`.
 - `CODEOWNERS`.
@@ -22,9 +23,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Bumped `actions/checkout` and `actions/setup-node` to v5 in the CI workflow.
-
-## [2.0.0] - 2026-07-14
-
-### Added
-
-- Initial Cherry ERP backend: Express API with auth, produtos, vendas, and clientes routes, PostgreSQL integration, and JWT-based authentication.
