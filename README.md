@@ -1,6 +1,7 @@
 # Cherry Backend
 
 [![CI](https://github.com/cluiseduardom-dotcom/cherry-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/cluiseduardom-dotcom/cherry-backend/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/cluiseduardom-dotcom/cherry-backend)](https://github.com/cluiseduardom-dotcom/cherry-backend/releases/latest)
 
 Cherry ERP Backend — a REST API built with Express and PostgreSQL.
 
