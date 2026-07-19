@@ -1,5 +1,7 @@
 # Cherry Backend
 
+[![CI](https://github.com/cluiseduardom-dotcom/cherry-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/cluiseduardom-dotcom/cherry-backend/actions/workflows/ci.yml)
+
 Cherry ERP Backend — a REST API built with Express and PostgreSQL.
 
 ## Requirements
