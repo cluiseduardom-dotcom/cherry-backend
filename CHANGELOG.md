@@ -1,0 +1,24 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [Unreleased]
+
+### Added
+
+- `SECURITY.md` with vulnerability reporting instructions.
+- `CODE_OF_CONDUCT.md`.
+- `CODEOWNERS`.
+- `CONTRIBUTING.md`.
+- CI workflow (`.github/workflows/ci.yml`) running `npm ci` and a syntax check on push/PR to `master`.
+- `LICENSE` (proprietary, all rights reserved).
+- `README.md` with setup instructions and route overview.
+- Branch protection on `master` requiring the CI check to pass.
+
+## [2.0.0] - 2026-07-14
+
+### Added
+
+- Initial Cherry ERP backend: Express API with auth, produtos, vendas, and clientes routes, PostgreSQL integration, and JWT-based authentication.
