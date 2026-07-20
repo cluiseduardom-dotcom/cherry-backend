@@ -36,6 +36,22 @@ async function login(email, senha) {
     };
 }
 
+async function register(nome, email, senha, papel) {
+
+    const usuarioExistente = await usuarioRepository.buscarPorEmail(email);
+
+    if (usuarioExistente) {
+        throw new AppError('Email já cadastrado', 409);
+    }
+
+    const senhaHash = await bcrypt.hash(senha, 10);
+
+    const usuario = await usuarioRepository.criar({ nome, email, senha: senhaHash, papel });
+
+    return { usuario };
+}
+
 module.exports = {
-    login
+    login,
+    register
 };
