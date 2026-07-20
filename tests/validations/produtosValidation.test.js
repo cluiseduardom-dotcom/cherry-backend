@@ -1,33 +1,77 @@
-const { criarProdutoSchema, ajustarPrecoSchema } = require('../../src/validations/produtosValidation');
+const { criarProdutoSchema, atualizarProdutoSchema, ajustarPrecoSchema } = require('../../src/validations/produtosValidation');
 
 describe('criarProdutoSchema', () => {
+  const valid = { sku: 'CAM-001', nome: 'Camiseta', preco_venda: 49.9, custo: 20 };
+
   test('accepts a valid produto payload', () => {
-    const result = criarProdutoSchema.safeParse({ nome: 'Camiseta', preco_venda: 49.9, custo: 20 });
+    expect(criarProdutoSchema.safeParse(valid).success).toBe(true);
+  });
+
+  test('accepts optional fields (descricao, categoria, estoque, ativo)', () => {
+    const result = criarProdutoSchema.safeParse({
+      ...valid,
+      descricao: 'Camiseta básica',
+      categoria: 'Vestuário',
+      estoque_atual: 10,
+      estoque_minimo: 2,
+      ativo: false
+    });
     expect(result.success).toBe(true);
   });
 
+  test('rejects a missing sku', () => {
+    const { sku, ...rest } = valid;
+    const result = criarProdutoSchema.safeParse(rest);
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('SKU é obrigatório');
+  });
+
   test('rejects a missing nome', () => {
-    const result = criarProdutoSchema.safeParse({ preco_venda: 10, custo: 5 });
+    const { nome, ...rest } = valid;
+    const result = criarProdutoSchema.safeParse(rest);
     expect(result.success).toBe(false);
     expect(result.error.issues[0].message).toBe('Nome é obrigatório');
   });
 
   test.each([undefined, -10, 0, 'abc'])('rejects preco_venda = %p', (preco_venda) => {
-    const result = criarProdutoSchema.safeParse({ nome: 'X', preco_venda, custo: 5 });
+    const result = criarProdutoSchema.safeParse({ ...valid, preco_venda });
     expect(result.success).toBe(false);
     expect(result.error.issues[0].message).toBe('Preço de venda é obrigatório');
   });
 
   test.each([undefined, -5, 0])('rejects custo = %p', (custo) => {
-    const result = criarProdutoSchema.safeParse({ nome: 'X', preco_venda: 10, custo });
+    const result = criarProdutoSchema.safeParse({ ...valid, custo });
     expect(result.success).toBe(false);
     expect(result.error.issues[0].message).toBe('Custo é obrigatório');
   });
 
+  test('rejects a negative estoque_atual', () => {
+    const result = criarProdutoSchema.safeParse({ ...valid, estoque_atual: -1 });
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('Estoque atual inválido');
+  });
+
   test('coerces numeric strings', () => {
-    const result = criarProdutoSchema.safeParse({ nome: 'X', preco_venda: '10.5', custo: '5' });
+    const result = criarProdutoSchema.safeParse({ ...valid, preco_venda: '10.5', custo: '5' });
     expect(result.success).toBe(true);
     expect(result.data.preco_venda).toBe(10.5);
+  });
+});
+
+describe('atualizarProdutoSchema', () => {
+  test('accepts a partial update with a single field', () => {
+    expect(atualizarProdutoSchema.safeParse({ preco_venda: 60 }).success).toBe(true);
+  });
+
+  test('rejects an empty body', () => {
+    const result = atualizarProdutoSchema.safeParse({});
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('Informe ao menos um campo para atualizar');
+  });
+
+  test('rejects an invalid preco_venda when provided', () => {
+    const result = atualizarProdutoSchema.safeParse({ preco_venda: -1 });
+    expect(result.success).toBe(false);
   });
 });
 

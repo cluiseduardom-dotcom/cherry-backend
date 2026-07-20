@@ -5,15 +5,75 @@ async function listar() {
     return rows;
 }
 
-async function criar({ nome, preco_venda, custo }) {
+async function listarPaginado({ limit, offset }) {
     const { rows } = await db.query(
-        `INSERT INTO produtos (nome, preco_venda, custo)
-         VALUES ($1, $2, $3)
-         RETURNING id, nome, preco_venda, custo`,
-        [nome, preco_venda, custo]
+        'SELECT * FROM produtos ORDER BY id LIMIT $1 OFFSET $2',
+        [limit, offset]
+    );
+
+    const { rows: countRows } = await db.query('SELECT COUNT(*) FROM produtos');
+
+    return { items: rows, total: Number(countRows[0].count) };
+}
+
+async function buscarPorSku(sku) {
+    const { rows } = await db.query('SELECT * FROM produtos WHERE sku = $1', [sku]);
+    return rows.length ? rows[0] : null;
+}
+
+async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo }) {
+    const { rows } = await db.query(
+        `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+            sku,
+            nome,
+            descricao ?? null,
+            categoria ?? null,
+            preco_venda,
+            custo,
+            estoque_atual ?? 0,
+            estoque_minimo ?? 0,
+            ativo ?? true
+        ]
     );
 
     return rows[0];
+}
+
+async function atualizar(id, dados) {
+    const campos = ['sku', 'nome', 'descricao', 'categoria', 'preco_venda', 'custo', 'estoque_atual', 'estoque_minimo', 'ativo'];
+
+    const sets = [];
+    const valores = [];
+    let i = 1;
+
+    for (const campo of campos) {
+        if (dados[campo] !== undefined) {
+            sets.push(`${campo} = $${i}`);
+            valores.push(dados[campo]);
+            i++;
+        }
+    }
+
+    valores.push(id);
+
+    const { rows } = await db.query(
+        `UPDATE produtos SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+        valores
+    );
+
+    return rows.length ? rows[0] : null;
+}
+
+async function desativar(id) {
+    const { rows } = await db.query(
+        `UPDATE produtos SET ativo = false WHERE id = $1 RETURNING *`,
+        [id]
+    );
+
+    return rows.length ? rows[0] : null;
 }
 
 async function buscarPorId(id) {
@@ -244,7 +304,11 @@ async function getDashboard() {
 
 module.exports = {
     listar,
+    listarPaginado,
+    buscarPorSku,
     criar,
+    atualizar,
+    desativar,
     buscarPorId,
     ajustarPreco,
     getGiro,

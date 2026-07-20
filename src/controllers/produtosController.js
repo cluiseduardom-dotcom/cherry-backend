@@ -1,12 +1,55 @@
 const produtosService = require('../services/produtosService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
-const { criarProdutoSchema, ajustarPrecoSchema } = require('../validations/produtosValidation');
+const { criarProdutoSchema, atualizarProdutoSchema, ajustarPrecoSchema } = require('../validations/produtosValidation');
+
+function parseId(value) {
+    const id = Number(value);
+
+    if (!Number.isInteger(id) || id <= 0) {
+        throw new AppError('ID inválido', 400);
+    }
+
+    return id;
+}
+
+function parsePaginacao(query) {
+    let page = parseInt(query.page, 10);
+    let pageSize = parseInt(query.pageSize, 10);
+
+    if (!Number.isInteger(page) || page < 1) page = 1;
+    if (!Number.isInteger(pageSize) || pageSize < 1) pageSize = 20;
+    if (pageSize > 100) pageSize = 100;
+
+    return { page, pageSize };
+}
+
+function filtrarParaRole(produto, role) {
+    if (role !== 'vendedor') return produto;
+
+    const { custo, margem_percentual, ...resto } = produto;
+    return resto;
+}
 
 async function listar(req, res, next) {
     try {
-        const produtos = await produtosService.listar();
-        return response.success(res, produtos);
+        const paginacao = parsePaginacao(req.query);
+        const resultado = await produtosService.listar(paginacao);
+
+        const items = resultado.items.map((produto) => filtrarParaRole(produto, req.usuario.role));
+
+        return response.success(res, { ...resultado, items });
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function buscarPorId(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+        const produto = await produtosService.buscarPorId(id);
+
+        return response.success(res, filtrarParaRole(produto, req.usuario.role));
     } catch (error) {
         next(error);
     }
@@ -23,6 +66,35 @@ async function criar(req, res, next) {
         const produto = await produtosService.criar(parsed.data);
 
         return response.success(res, produto, 201);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function atualizar(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+
+        const parsed = atualizarProdutoSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        const produto = await produtosService.atualizar(id, parsed.data);
+
+        return response.success(res, produto);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function remover(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+        const produto = await produtosService.remover(id);
+
+        return response.success(res, produto);
     } catch (error) {
         next(error);
     }
@@ -156,7 +228,10 @@ async function dashboard(req, res, next) {
 
 module.exports = {
     listar,
+    buscarPorId,
     criar,
+    atualizar,
+    remover,
     giro,
     parados,
     pricingProfissional,

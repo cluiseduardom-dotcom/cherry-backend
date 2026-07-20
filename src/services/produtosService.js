@@ -1,12 +1,81 @@
 const produtosRepository = require('../repositories/produtosRepository');
 const AppError = require('../errors/AppError');
 
-async function listar() {
-    return produtosRepository.listar();
+function comMargem(produto) {
+    const precoVenda = Number(produto.preco_venda);
+    const custo = Number(produto.custo);
+    const margem_percentual = precoVenda > 0 ? Number((((precoVenda - custo) / precoVenda) * 100).toFixed(2)) : null;
+
+    return { ...produto, margem_percentual };
+}
+
+async function listar({ page, pageSize }) {
+    const limit = pageSize;
+    const offset = (page - 1) * pageSize;
+
+    const { items, total } = await produtosRepository.listarPaginado({ limit, offset });
+
+    return {
+        items: items.map(comMargem),
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize))
+    };
+}
+
+async function buscarPorId(id) {
+    const produto = await produtosRepository.buscarPorId(id);
+
+    if (!produto) {
+        throw new AppError('Produto não encontrado', 404);
+    }
+
+    return comMargem(produto);
 }
 
 async function criar(dados) {
-    return produtosRepository.criar(dados);
+    const existente = await produtosRepository.buscarPorSku(dados.sku);
+
+    if (existente) {
+        throw new AppError('SKU já cadastrado', 409);
+    }
+
+    const produto = await produtosRepository.criar(dados);
+
+    return comMargem(produto);
+}
+
+async function atualizar(id, dados) {
+    const produto = await produtosRepository.buscarPorId(id);
+
+    if (!produto) {
+        throw new AppError('Produto não encontrado', 404);
+    }
+
+    if (dados.sku && dados.sku !== produto.sku) {
+        const existente = await produtosRepository.buscarPorSku(dados.sku);
+
+        if (existente) {
+            throw new AppError('SKU já cadastrado', 409);
+        }
+    }
+
+    const atualizado = await produtosRepository.atualizar(id, dados);
+
+    return comMargem(atualizado);
+}
+
+async function remover(id) {
+    const produto = await produtosRepository.buscarPorId(id);
+
+    if (!produto) {
+        throw new AppError('Produto não encontrado', 404);
+    }
+
+    const desativado = await produtosRepository.desativar(id);
+
+    return comMargem(desativado);
 }
 
 async function ajustarPreco(id, percentual) {
@@ -69,7 +138,10 @@ async function dashboard() {
 
 module.exports = {
     listar,
+    buscarPorId,
     criar,
+    atualizar,
+    remover,
     ajustarPreco,
     giro,
     parados,

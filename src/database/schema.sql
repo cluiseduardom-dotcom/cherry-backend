@@ -16,9 +16,15 @@ CREATE TABLE clientes (
 
 CREATE TABLE produtos (
     id SERIAL PRIMARY KEY,
+    sku VARCHAR(50) UNIQUE,
     nome VARCHAR(255) NOT NULL,
+    descricao TEXT,
+    categoria VARCHAR(100),
     preco_venda NUMERIC(10, 2) NOT NULL,
-    custo NUMERIC(10, 2) NOT NULL
+    custo NUMERIC(10, 2) NOT NULL,
+    estoque_atual INTEGER NOT NULL DEFAULT 0,
+    estoque_minimo INTEGER NOT NULL DEFAULT 0,
+    ativo BOOLEAN NOT NULL DEFAULT true
 );
 
 CREATE TABLE vendas (
