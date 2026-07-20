@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Admin-only `POST /auth/register` endpoint for creating new users, with bcrypt password hashing, duplicate email rejection, and role validation.
+
 ## [2.1.0] - 2026-07-19
 
 ### Fixed
