@@ -21,8 +21,4 @@ app.use('/vendas', authMiddleware, vendasRoutes);
 app.use('/clientes', authMiddleware, clientesRoutes);
 app.use(errorHandler);
 
-// START SERVER (sempre por último)
-app.listen(3000, () => {
-  console.log('🚀 Servidor rodando na porta 3000');
-
-});
+module.exports = app;

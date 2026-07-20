@@ -31,6 +31,15 @@ Cherry ERP Backend — a REST API built with Express and PostgreSQL.
 
 The server listens on port 3000 by default.
 
+## Testing
+
+```bash
+npm test            # run the test suite
+npm run test:coverage
+```
+
+Tests use Jest and Supertest with the database layer mocked at the repository boundary — no live database or `.env` is required to run them.
+
 ## Routes
 
 - `/auth` — authentication

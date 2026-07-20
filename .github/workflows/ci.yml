@@ -22,3 +22,6 @@ jobs:
 
       - name: Syntax check
         run: find src -name "*.js" -exec node --check {} +
+
+      - name: Run tests
+        run: npm test
