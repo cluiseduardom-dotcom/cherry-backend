@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Admin-only `POST /auth/register` endpoint for creating new users, with bcrypt password hashing, duplicate email rejection, and role validation.
 
+### Changed
+
+- **Breaking:** Standardized `produtos`, `vendas`, and `clientes` routes on the same `controller -> service -> repository` pattern as `auth`, with Zod validation and the `{ success, data }` / `{ success, message }` response shape. Previously these routes returned raw arrays/objects or ad-hoc `{ error }` / `{ message }` payloads.
+- `POST /vendas` now wraps the venda + itens insert in a DB transaction, so a failed item insert no longer leaves an orphaned venda row.
+
+### Removed
+
+- Unused dead code: `getRankingClientes` (clientesService) and `getInteligenciaSQL` (produtosService).
+
 ## [2.1.0] - 2026-07-19
 
 ### Fixed
