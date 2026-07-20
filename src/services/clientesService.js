@@ -1,19 +1,42 @@
-exports.getRankingClientes = () => {
-  return `
-    SELECT 
-      c.id,
-      c.nome,
+const clientesRepository = require('../repositories/clientesRepository');
+const AppError = require('../errors/AppError');
 
-      COUNT(v.id) AS total_compras,
+async function listar() {
+    return clientesRepository.listar();
+}
 
-      COALESCE(SUM(v.total), 0) AS total_gasto,
+async function criar(dados) {
+    return clientesRepository.criar(dados);
+}
 
-      ROUND(AVG(v.total), 2) AS ticket_medio
+async function historico(id) {
+    const registros = await clientesRepository.getHistorico(id);
 
-    FROM clientes c
-    LEFT JOIN vendas v ON v.cliente_id = c.id
+    if (registros.length === 0) {
+        throw new AppError('Nenhum histórico encontrado', 404);
+    }
 
-    GROUP BY c.id, c.nome
-    ORDER BY total_gasto DESC
-  `;
+    return registros;
+}
+
+async function ranking() {
+    return clientesRepository.getRanking();
+}
+
+async function totalGasto(id) {
+    const dados = await clientesRepository.getTotalGasto(id);
+
+    if (!dados) {
+        throw new AppError('Cliente não encontrado', 404);
+    }
+
+    return dados;
+}
+
+module.exports = {
+    listar,
+    criar,
+    historico,
+    ranking,
+    totalGasto
 };

@@ -1,139 +1,80 @@
-const db = require('../config/db');
+const clientesService = require('../services/clientesService');
+const response = require('../utils/response');
+const AppError = require('../errors/AppError');
+const { criarClienteSchema } = require('../validations/clientesValidation');
 
+function parseId(value) {
+    const id = Number(value);
 
-// =========================
-// LISTAR
-// =========================
-
-exports.listar = (req, res) => {
-  db.query('SELECT * FROM clientes', (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json(result.rows);
-  });
-};
-
-
-// =========================
-// CRIAR
-// =========================
-
-exports.criar = (req, res) => {
-  const { nome, telefone, email } = req.body;
-
-  if (!nome) {
-    return res.status(400).json({ error: 'Nome é obrigatório' });
-  }
-
-  const sql = `
-    INSERT INTO clientes (nome, telefone, email)
-    VALUES ($1, $2, $3)
-  `;
-
-  db.query(sql, [nome, telefone, email], (err) => {
-    if (err) return res.status(500).json(err);
-    res.json({ message: 'Cliente criado' });
-  });
-};
-
-
-// =========================
-// HISTÓRICO
-// =========================
-
-exports.historico = (req, res) => {
-  const { id } = req.params;
-
-  const sql = `
-    SELECT 
-      v.id AS venda_id,
-      v.data,
-      p.nome AS produto,
-      iv.quantidade,
-      iv.preco_unitario,
-      (iv.quantidade * iv.preco_unitario) AS total_item
-    FROM vendas v
-    JOIN itens_venda iv ON iv.venda_id = v.id
-    JOIN produtos p ON p.id = iv.produto_id
-    WHERE v.cliente_id = $1
-    ORDER BY v.data DESC
-  `;
-
-  db.query(sql, [id], (err, result) => {
-    if (err) return res.status(500).json(err);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Nenhum histórico encontrado' });
+    if (!Number.isInteger(id) || id <= 0) {
+        throw new AppError('ID inválido', 400);
     }
 
-    res.json(result.rows);
-  });
-};
+    return id;
+}
 
-
-// =========================
-// RANKING (CORRIGIDO)
-// =========================
-
-exports.ranking = (req, res) => {
-  const sql = `
-    SELECT 
-      c.id,
-      c.nome,
-
-      COUNT(DISTINCT v.id) AS total_compras,
-
-      COALESCE(SUM(v.total), 0) AS total_gasto,
-
-      ROUND(COALESCE(AVG(v.total), 0), 2) AS ticket_medio
-
-    FROM clientes c
-    LEFT JOIN vendas v ON v.cliente_id = c.id
-
-    GROUP BY c.id, c.nome
-
-    ORDER BY total_gasto DESC
-  `;
-
-  db.query(sql, (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json(result.rows);
-  });
-};
-
-
-// =========================
-// TOTAL POR CLIENTE
-// =========================
-
-exports.totalGasto = (req, res) => {
-  const { id } = req.params;
-
-  const sql = `
-    SELECT 
-      c.id,
-      c.nome,
-
-      COUNT(DISTINCT v.id) AS total_compras,
-
-      COALESCE(SUM(v.total), 0) AS total_gasto,
-
-      ROUND(COALESCE(AVG(v.total), 0), 2) AS ticket_medio
-
-    FROM clientes c
-    LEFT JOIN vendas v ON v.cliente_id = c.id
-
-    WHERE c.id = $1
-
-    GROUP BY c.id, c.nome
-  `;
-
-  db.query(sql, [id], (err, result) => {
-    if (err) return res.status(500).json(err);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Cliente não encontrado' });
+async function listar(req, res, next) {
+    try {
+        const clientes = await clientesService.listar();
+        return response.success(res, clientes);
+    } catch (error) {
+        next(error);
     }
+}
 
-    res.json(result.rows[0]);
-  });
+async function criar(req, res, next) {
+    try {
+        const parsed = criarClienteSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        const cliente = await clientesService.criar(parsed.data);
+
+        return response.success(res, cliente, 201);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function historico(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+
+        const registros = await clientesService.historico(id);
+
+        return response.success(res, registros);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function ranking(req, res, next) {
+    try {
+        const dados = await clientesService.ranking();
+        return response.success(res, dados);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function totalGasto(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+
+        const dados = await clientesService.totalGasto(id);
+
+        return response.success(res, dados);
+    } catch (error) {
+        next(error);
+    }
+}
+
+module.exports = {
+    listar,
+    criar,
+    historico,
+    ranking,
+    totalGasto
 };
