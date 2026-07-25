@@ -42,6 +42,18 @@ CREATE TABLE itens_venda (
     preco_unitario NUMERIC(10, 2) NOT NULL
 );
 
+CREATE TABLE movimentacoes_estoque (
+    id SERIAL PRIMARY KEY,
+    produto_id INTEGER NOT NULL REFERENCES produtos(id),
+    tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('entrada', 'saida', 'ajuste')),
+    quantidade INTEGER NOT NULL CHECK (quantidade >= 0),
+    estoque_resultante INTEGER NOT NULL,
+    motivo VARCHAR(255),
+    usuario_id INTEGER REFERENCES usuarios(id),
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX idx_vendas_cliente_id ON vendas(cliente_id);
 CREATE INDEX idx_itens_venda_venda_id ON itens_venda(venda_id);
 CREATE INDEX idx_itens_venda_produto_id ON itens_venda(produto_id);
+CREATE INDEX idx_movimentacoes_estoque_produto_id ON movimentacoes_estoque(produto_id);

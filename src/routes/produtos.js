@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/produtosController');
+const estoqueController = require('../controllers/estoqueController');
 const requireAdmin = require('../middlewares/requireAdmin');
+const requireEstoquista = require('../middlewares/requireEstoquista');
 
 router.get('/', controller.listar);
 router.post('/', requireAdmin, controller.criar);
@@ -17,9 +19,13 @@ router.get('/lucro', controller.lucroPorProduto);
 router.get('/alerta-prejuizo', controller.alertaPrejuizo);
 router.get('/inteligencia', controller.inteligencia);
 router.get('/dashboard', controller.dashboard);
+router.get('/estoque-baixo', estoqueController.alertas);
 
 router.get('/:id', controller.buscarPorId);
 router.put('/:id', requireAdmin, controller.atualizar);
 router.delete('/:id', requireAdmin, controller.remover);
+
+router.get('/:id/movimentacoes', estoqueController.historico);
+router.post('/:id/movimentacoes', requireEstoquista, estoqueController.registrarMovimentacao);
 
 module.exports = router;

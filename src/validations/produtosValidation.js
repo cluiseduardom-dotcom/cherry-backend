@@ -12,6 +12,8 @@ const criarProdutoSchema = z.object({
     ativo: z.boolean().optional()
 });
 
+// estoque_atual is intentionally not editable here: once movimentacoes_estoque
+// exists, all stock changes must go through it so there's an audit trail.
 const atualizarProdutoSchema = z.object({
     sku: z.string().min(1, 'SKU é obrigatório').optional(),
     nome: z.string().min(1, 'Nome é obrigatório').optional(),
@@ -19,7 +21,6 @@ const atualizarProdutoSchema = z.object({
     categoria: z.string().optional(),
     preco_venda: z.coerce.number().positive('Preço de venda deve ser maior que zero').optional(),
     custo: z.coerce.number().positive('Custo deve ser maior que zero').optional(),
-    estoque_atual: z.coerce.number().int('Estoque atual inválido').nonnegative('Estoque atual inválido').optional(),
     estoque_minimo: z.coerce.number().int('Estoque mínimo inválido').nonnegative('Estoque mínimo inválido').optional(),
     ativo: z.boolean().optional()
 }).refine((data) => Object.keys(data).length > 0, { message: 'Informe ao menos um campo para atualizar' });
