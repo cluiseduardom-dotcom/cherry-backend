@@ -1,6 +1,8 @@
 jest.mock('../../src/repositories/vendasRepository');
+jest.mock('../../src/repositories/precosRepository');
 
 const vendasRepository = require('../../src/repositories/vendasRepository');
+const precosRepository = require('../../src/repositories/precosRepository');
 const vendasService = require('../../src/services/vendasService');
 
 beforeEach(() => {
@@ -14,28 +16,135 @@ test('resumo delegates to the repository', async () => {
 });
 
 describe('criar', () => {
-  test('computes the total from itens and passes it to the repository', async () => {
-    const itens = [
-      { produto_id: 1, quantidade: 2, preco_unitario: 10 },
-      { produto_id: 2, quantidade: 1, preco_unitario: 5.5 }
-    ];
-    vendasRepository.criar.mockResolvedValue({ id: 1, cliente_id: 7, total: 25.5 });
+  test('resolves the canal and delegates to the repository, defaulting cliente_id to null', async () => {
+    precosRepository.buscarCanalPorNome.mockResolvedValue({ id: 1, nome: 'loja_fisica' });
+    vendasRepository.criar.mockResolvedValue({ id: 1, total: '30.00' });
 
-    const result = await vendasService.criar(7, itens);
+    const result = await vendasService.criar({ itens: [{ produto_id: 1, quantidade: 3 }] }, 7);
 
+    expect(precosRepository.buscarCanalPorNome).toHaveBeenCalledWith('loja_fisica');
     expect(vendasRepository.criar).toHaveBeenCalledWith({
-      cliente_id: 7,
-      itens,
-      total: 25.5
+      cliente_id: null,
+      canal_id: 1,
+      usuario_id: 7,
+      itens: [{ produto_id: 1, quantidade: 3 }]
     });
-    expect(result).toEqual({ id: 1, cliente_id: 7, total: 25.5 });
+    expect(result).toEqual({ id: 1, total: '30.00' });
   });
 
-  test('propagates errors from the repository (e.g. a failed transaction)', async () => {
+  test('passes an explicit canal and cliente_id through', async () => {
+    precosRepository.buscarCanalPorNome.mockResolvedValue({ id: 2, nome: 'online' });
+    vendasRepository.criar.mockResolvedValue({ id: 1 });
+
+    await vendasService.criar({ cliente_id: 5, canal: 'online', itens: [{ produto_id: 1, quantidade: 1 }] }, 7);
+
+    expect(precosRepository.buscarCanalPorNome).toHaveBeenCalledWith('online');
+    expect(vendasRepository.criar).toHaveBeenCalledWith({
+      cliente_id: 5,
+      canal_id: 2,
+      usuario_id: 7,
+      itens: [{ produto_id: 1, quantidade: 1 }]
+    });
+  });
+
+  test('throws 400 for an invalid canal', async () => {
+    precosRepository.buscarCanalPorNome.mockResolvedValue(null);
+
+    await expect(
+      vendasService.criar({ canal: 'inexistente', itens: [{ produto_id: 1, quantidade: 1 }] }, 7)
+    ).rejects.toMatchObject({ statusCode: 400, message: 'Canal inválido' });
+
+    expect(vendasRepository.criar).not.toHaveBeenCalled();
+  });
+
+  test('propagates errors from the repository (e.g. a rolled-back transaction)', async () => {
+    precosRepository.buscarCanalPorNome.mockResolvedValue({ id: 1, nome: 'loja_fisica' });
     vendasRepository.criar.mockRejectedValue(new Error('db failure'));
 
     await expect(
-      vendasService.criar(1, [{ produto_id: 1, quantidade: 1, preco_unitario: 10 }])
+      vendasService.criar({ itens: [{ produto_id: 1, quantidade: 1 }] }, 1)
     ).rejects.toThrow('db failure');
+  });
+});
+
+describe('listar', () => {
+  test('does not filter by usuario_id for an admin', async () => {
+    vendasRepository.listarPaginado.mockResolvedValue({ items: [{ id: 1 }, { id: 2 }], total: 2 });
+
+    const result = await vendasService.listar({ page: 1, pageSize: 20 }, { id: 1, role: 'admin' });
+
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: undefined });
+    expect(result).toEqual({ items: [{ id: 1 }, { id: 2 }], page: 1, pageSize: 20, total: 2, totalPages: 1 });
+  });
+
+  test('filters by usuario_id for a vendedor (sees only their own vendas)', async () => {
+    vendasRepository.listarPaginado.mockResolvedValue({ items: [{ id: 1 }], total: 1 });
+
+    await vendasService.listar({ page: 1, pageSize: 20 }, { id: 42, role: 'vendedor' });
+
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: 42 });
+  });
+
+  test('computes the correct offset for page > 1', async () => {
+    vendasRepository.listarPaginado.mockResolvedValue({ items: [], total: 0 });
+
+    await vendasService.listar({ page: 3, pageSize: 10 }, { id: 1, role: 'admin' });
+
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 10, offset: 20, usuario_id: undefined });
+  });
+});
+
+describe('buscarPorId', () => {
+  test('throws 404 when the venda does not exist', async () => {
+    vendasRepository.buscarPorId.mockResolvedValue(null);
+
+    await expect(vendasService.buscarPorId(999, { id: 1, role: 'admin' })).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Venda não encontrada'
+    });
+  });
+
+  test('returns the venda for an admin regardless of ownership', async () => {
+    vendasRepository.buscarPorId.mockResolvedValue({ id: 1, usuario_id: 99, itens: [] });
+
+    const result = await vendasService.buscarPorId(1, { id: 1, role: 'admin' });
+
+    expect(result).toEqual({ id: 1, usuario_id: 99, itens: [] });
+  });
+
+  test('returns the venda for a vendedor who owns it', async () => {
+    vendasRepository.buscarPorId.mockResolvedValue({ id: 1, usuario_id: 42, itens: [] });
+
+    const result = await vendasService.buscarPorId(1, { id: 42, role: 'vendedor' });
+
+    expect(result.id).toBe(1);
+  });
+
+  test('throws 404 (not 403) for a vendedor viewing someone else\'s venda', async () => {
+    vendasRepository.buscarPorId.mockResolvedValue({ id: 1, usuario_id: 99, itens: [] });
+
+    await expect(vendasService.buscarPorId(1, { id: 42, role: 'vendedor' })).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Venda não encontrada'
+    });
+  });
+});
+
+describe('cancelar', () => {
+  test('delegates to the repository', async () => {
+    vendasRepository.cancelar.mockResolvedValue({ id: 1, status: 'cancelada' });
+
+    const result = await vendasService.cancelar(1, 7);
+
+    expect(vendasRepository.cancelar).toHaveBeenCalledWith(1, 7);
+    expect(result).toEqual({ id: 1, status: 'cancelada' });
+  });
+
+  test('propagates a 409 when the venda is not finalizada', async () => {
+    vendasRepository.cancelar.mockRejectedValue(
+      Object.assign(new Error('Somente vendas finalizadas podem ser canceladas'), { statusCode: 409 })
+    );
+
+    await expect(vendasService.cancelar(1, 7)).rejects.toMatchObject({ statusCode: 409 });
   });
 });

@@ -1,10 +1,15 @@
 const db = require('../config/db');
 
-async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario_id }) {
-    const client = await db.connect();
+// clienteExterno permite participar de uma transação já aberta por outro módulo
+// (ex: criação de venda, que precisa que a baixa de estoque de todos os itens e o
+// registro da venda sejam a mesma transação). Quando informado, esta função não
+// abre/fecha transação nem libera a conexão — quem chamou é responsável por isso.
+async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario_id }, clienteExterno) {
+    const client = clienteExterno || await db.connect();
+    const gerenciaTransacao = !clienteExterno;
 
     try {
-        await client.query('BEGIN');
+        if (gerenciaTransacao) await client.query('BEGIN');
 
         const { rows: produtoRows } = await client.query(
             'SELECT id, estoque_atual FROM produtos WHERE id = $1 FOR UPDATE',
@@ -12,7 +17,7 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
         );
 
         if (!produtoRows.length) {
-            await client.query('ROLLBACK');
+            if (gerenciaTransacao) await client.query('ROLLBACK');
             return { erro: 'PRODUTO_NAO_ENCONTRADO' };
         }
 
@@ -28,7 +33,7 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
         }
 
         if (novoEstoque < 0) {
-            await client.query('ROLLBACK');
+            if (gerenciaTransacao) await client.query('ROLLBACK');
             return { erro: 'ESTOQUE_INSUFICIENTE' };
         }
 
@@ -41,15 +46,15 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
             [produto_id, tipo, quantidade, novoEstoque, motivo ?? null, usuario_id]
         );
 
-        await client.query('COMMIT');
+        if (gerenciaTransacao) await client.query('COMMIT');
 
         return { movimentacao: rows[0] };
 
     } catch (error) {
-        await client.query('ROLLBACK');
+        if (gerenciaTransacao) await client.query('ROLLBACK');
         throw error;
     } finally {
-        client.release();
+        if (gerenciaTransacao) client.release();
     }
 }
 

@@ -1,4 +1,6 @@
 const vendasRepository = require('../repositories/vendasRepository');
+const precosRepository = require('../repositories/precosRepository');
+const AppError = require('../errors/AppError');
 
 async function resumo() {
     return vendasRepository.getResumo();
@@ -16,10 +18,56 @@ async function maisVendidos() {
     return vendasRepository.getMaisVendidosPeriodo();
 }
 
-async function criar(cliente_id, itens) {
-    const total = itens.reduce((soma, item) => soma + item.quantidade * item.preco_unitario, 0);
+async function criar({ cliente_id, canal, itens }, usuario_id) {
+    const canalRow = await precosRepository.buscarCanalPorNome(canal || 'loja_fisica');
 
-    return vendasRepository.criar({ cliente_id, itens, total });
+    if (!canalRow) {
+        throw new AppError('Canal inválido', 400);
+    }
+
+    return vendasRepository.criar({
+        cliente_id: cliente_id ?? null,
+        canal_id: canalRow.id,
+        usuario_id,
+        itens
+    });
+}
+
+async function listar({ page, pageSize }, usuario) {
+    const limit = pageSize;
+    const offset = (page - 1) * pageSize;
+
+    const usuario_id = usuario.role === 'vendedor' ? usuario.id : undefined;
+
+    const { items, total } = await vendasRepository.listarPaginado({ limit, offset, usuario_id });
+
+    return {
+        items,
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize))
+    };
+}
+
+async function buscarPorId(id, usuario) {
+    const venda = await vendasRepository.buscarPorId(id);
+
+    if (!venda) {
+        throw new AppError('Venda não encontrada', 404);
+    }
+
+    // Vendedor não pode ver vendas de outros usuários — tratamos como se não
+    // existisse (404) em vez de 403, para não confirmar a existência do id.
+    if (usuario.role === 'vendedor' && venda.usuario_id !== usuario.id) {
+        throw new AppError('Venda não encontrada', 404);
+    }
+
+    return venda;
+}
+
+async function cancelar(id, usuario_id) {
+    return vendasRepository.cancelar(id, usuario_id);
 }
 
 module.exports = {
@@ -27,5 +75,8 @@ module.exports = {
     porDia,
     porMes,
     maisVendidos,
-    criar
+    criar,
+    listar,
+    buscarPorId,
+    cancelar
 };
