@@ -67,6 +67,26 @@ async function listarPrecosVigentesPorCanal(produtoIds, canal_id) {
     return rows;
 }
 
+async function listarMargemPorProdutoECanal() {
+    const { rows } = await db.query(
+        `SELECT p.id AS produto_id, p.nome, p.custo, c.id AS canal_id, c.nome AS canal,
+                latest.preco_venda, latest.margem_percentual, latest.vigente_desde
+         FROM produtos p
+         CROSS JOIN canais_venda c
+         LEFT JOIN LATERAL (
+             SELECT preco_venda, margem_percentual, vigente_desde
+             FROM precos_produto
+             WHERE produto_id = p.id AND canal_id = c.id
+             ORDER BY criado_em DESC, id DESC
+             LIMIT 1
+         ) latest ON true
+         WHERE p.ativo = true AND c.ativo = true
+         ORDER BY p.id, c.id`
+    );
+
+    return rows;
+}
+
 async function inserirPreco({ produto_id, canal_id, preco_venda, markup_percentual, margem_percentual, usuario_id }) {
     const { rows } = await db.query(
         `INSERT INTO precos_produto (produto_id, canal_id, preco_venda, markup_percentual, margem_percentual, usuario_id)
@@ -113,6 +133,7 @@ module.exports = {
     buscarPrecoVigente,
     listarPrecosVigentesPorProduto,
     listarPrecosVigentesPorCanal,
+    listarMargemPorProdutoECanal,
     inserirPreco,
     listarHistoricoPorProduto
 };
