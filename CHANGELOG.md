@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Jest + Supertest test suite (validations, middlewares, services, and routes), with the database mocked at the repository boundary so tests run without a live DB or secrets. `npm test` / `npm run test:coverage`, wired into CI.
+- Produtos/SKU module: `sku`, `descricao`, `categoria`, `estoque_atual`, `estoque_minimo`, `ativo` fields on `produtos`; `GET /produtos` now paginates; new `GET /produtos/:id`; `PUT /produtos/:id` and `DELETE /produtos/:id` (soft delete via `ativo`), both admin-only.
+- Stock movements module: `movimentacoes_estoque` ledger table; `POST /produtos/:id/movimentacoes` (`entrada`/`saida`/`ajuste`, admin or estoquista only); `GET /produtos/:id/movimentacoes` history; `GET /produtos/estoque-baixo` low-stock alert. Stock changes are transactional with row locking, and `saida` is rejected with 409 if it would go negative.
+
+### Changed
+
+- `margem_percentual` is now computed at read time for each produto (not stored).
+- `custo` and `margem_percentual` are stripped from all produto responses when the authenticated user has role `vendedor`.
+- `estoque_atual` was removed from `PUT /produtos/:id`'s editable fields — it can now only change through an audited stock movement, not a direct catalog edit.
+- Split `src/app.js` (Express app) from a new `src/server.js` (`app.listen` bootstrap) so the app can be imported by tests without binding to a port.
+
 ## [2.3.0] - 2026-07-20
 
 ### Fixed
