@@ -1,4 +1,5 @@
 const produtosRepository = require('../repositories/produtosRepository');
+const precosRepository = require('../repositories/precosRepository');
 const AppError = require('../errors/AppError');
 
 function comMargem(produto) {
@@ -9,14 +10,41 @@ function comMargem(produto) {
     return { ...produto, margem_percentual };
 }
 
-async function listar({ page, pageSize }) {
+async function resolverCanal(nome) {
+    const canal = await precosRepository.buscarCanalPorNome(nome);
+
+    if (!canal) {
+        throw new AppError('Canal inválido', 400);
+    }
+
+    return canal;
+}
+
+function comPrecoCanal(produto, canalNome, precoRow) {
+    return {
+        ...produto,
+        preco_canal: {
+            canal: canalNome,
+            preco_venda: precoRow ? Number(precoRow.preco_venda) : null,
+            markup_percentual: precoRow ? Number(precoRow.markup_percentual) : null,
+            margem_percentual: precoRow ? Number(precoRow.margem_percentual) : null,
+            vigente_desde: precoRow ? precoRow.vigente_desde : null
+        }
+    };
+}
+
+async function listar({ page, pageSize, canal }) {
     const limit = pageSize;
     const offset = (page - 1) * pageSize;
 
+    const canalRow = await resolverCanal(canal);
     const { items, total } = await produtosRepository.listarPaginado({ limit, offset });
 
+    const precos = await precosRepository.listarPrecosVigentesPorCanal(items.map((produto) => produto.id), canalRow.id);
+    const precosPorProduto = new Map(precos.map((preco) => [preco.produto_id, preco]));
+
     return {
-        items: items.map(comMargem),
+        items: items.map((produto) => comPrecoCanal(comMargem(produto), canalRow.nome, precosPorProduto.get(produto.id))),
         page,
         pageSize,
         total,
@@ -24,14 +52,17 @@ async function listar({ page, pageSize }) {
     };
 }
 
-async function buscarPorId(id) {
+async function buscarPorId(id, canal) {
     const produto = await produtosRepository.buscarPorId(id);
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
     }
 
-    return comMargem(produto);
+    const canalRow = await resolverCanal(canal);
+    const precoRow = await precosRepository.buscarPrecoVigente(id, canalRow.id);
+
+    return comPrecoCanal(comMargem(produto), canalRow.nome, precoRow);
 }
 
 async function criar(dados) {

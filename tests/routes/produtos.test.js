@@ -20,25 +20,33 @@ test('GET /produtos returns 401 without a token', async () => {
 
 describe('GET /produtos (list + pagination)', () => {
   const paginatedResult = {
-    items: [{ id: 1, sku: 'CAM-001', nome: 'Camiseta', preco_venda: '49.90', custo: '20.00', margem_percentual: 59.92 }],
+    items: [{
+      id: 1, sku: 'CAM-001', nome: 'Camiseta', preco_venda: '49.90', custo: '20.00', margem_percentual: 59.92,
+      preco_canal: { canal: 'loja_fisica', preco_venda: 55.5, markup_percentual: 50, margem_percentual: 33.33, vigente_desde: '2026-01-01T00:00:00.000Z' }
+    }],
     page: 1,
     pageSize: 20,
     total: 1,
     totalPages: 1
   };
 
-  test('strips custo and margem_percentual for a vendedor', async () => {
+  test('strips custo, margem_percentual, and preco_canal markup/margem for a vendedor', async () => {
     produtosService.listar.mockResolvedValue(paginatedResult);
 
     const res = await request(app).get('/produtos').set('Authorization', `Bearer ${vendedorToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.items[0]).toEqual({ id: 1, sku: 'CAM-001', nome: 'Camiseta', preco_venda: '49.90' });
+    expect(res.body.data.items[0]).toEqual({
+      id: 1, sku: 'CAM-001', nome: 'Camiseta', preco_venda: '49.90',
+      preco_canal: { canal: 'loja_fisica', preco_venda: 55.5 }
+    });
     expect(res.body.data.items[0]).not.toHaveProperty('custo');
     expect(res.body.data.items[0]).not.toHaveProperty('margem_percentual');
+    expect(res.body.data.items[0].preco_canal).not.toHaveProperty('markup_percentual');
+    expect(res.body.data.items[0].preco_canal).not.toHaveProperty('margem_percentual');
   });
 
-  test('includes custo and margem_percentual for an admin', async () => {
+  test('includes custo, margem_percentual, and full preco_canal for an admin', async () => {
     produtosService.listar.mockResolvedValue(paginatedResult);
 
     const res = await request(app).get('/produtos').set('Authorization', `Bearer ${adminToken}`);
@@ -47,14 +55,14 @@ describe('GET /produtos (list + pagination)', () => {
     expect(res.body.data.items[0]).toEqual(paginatedResult.items[0]);
   });
 
-  test('parses page/pageSize query params', async () => {
+  test('parses page/pageSize query params and defaults canal to loja_fisica', async () => {
     produtosService.listar.mockResolvedValue(paginatedResult);
 
     await request(app)
       .get('/produtos?page=2&pageSize=5')
       .set('Authorization', `Bearer ${adminToken}`);
 
-    expect(produtosService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5 });
+    expect(produtosService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5, canal: 'loja_fisica' });
   });
 
   test('falls back to defaults for invalid pagination params', async () => {
@@ -64,12 +72,35 @@ describe('GET /produtos (list + pagination)', () => {
       .get('/produtos?page=abc&pageSize=-1')
       .set('Authorization', `Bearer ${adminToken}`);
 
-    expect(produtosService.listar).toHaveBeenCalledWith({ page: 1, pageSize: 20 });
+    expect(produtosService.listar).toHaveBeenCalledWith({ page: 1, pageSize: 20, canal: 'loja_fisica' });
+  });
+
+  test('passes an explicit canal query param through', async () => {
+    produtosService.listar.mockResolvedValue(paginatedResult);
+
+    await request(app)
+      .get('/produtos?canal=online')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(produtosService.listar).toHaveBeenCalledWith({ page: 1, pageSize: 20, canal: 'online' });
+  });
+
+  test('returns 400 when the service rejects an invalid canal', async () => {
+    produtosService.listar.mockRejectedValue(new AppError('Canal inválido', 400));
+
+    const res = await request(app)
+      .get('/produtos?canal=inexistente')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
   });
 });
 
 describe('GET /produtos/:id', () => {
-  const produto = { id: 1, sku: 'CAM-001', nome: 'Camiseta', preco_venda: '49.90', custo: '20.00', margem_percentual: 59.92 };
+  const produto = {
+    id: 1, sku: 'CAM-001', nome: 'Camiseta', preco_venda: '49.90', custo: '20.00', margem_percentual: 59.92,
+    preco_canal: { canal: 'loja_fisica', preco_venda: 55.5, markup_percentual: 50, margem_percentual: 33.33, vigente_desde: '2026-01-01T00:00:00.000Z' }
+  };
 
   test('returns 400 for a non-numeric id', async () => {
     const res = await request(app).get('/produtos/abc').set('Authorization', `Bearer ${adminToken}`);
@@ -84,7 +115,7 @@ describe('GET /produtos/:id', () => {
     expect(res.status).toBe(404);
   });
 
-  test('strips custo/margem_percentual for a vendedor', async () => {
+  test('strips custo/margem_percentual and preco_canal markup/margem for a vendedor', async () => {
     produtosService.buscarPorId.mockResolvedValue(produto);
 
     const res = await request(app).get('/produtos/1').set('Authorization', `Bearer ${vendedorToken}`);
@@ -92,6 +123,7 @@ describe('GET /produtos/:id', () => {
     expect(res.status).toBe(200);
     expect(res.body.data).not.toHaveProperty('custo');
     expect(res.body.data).not.toHaveProperty('margem_percentual');
+    expect(res.body.data.preco_canal).toEqual({ canal: 'loja_fisica', preco_venda: 55.5 });
   });
 
   test('returns full data for an admin', async () => {
@@ -100,6 +132,16 @@ describe('GET /produtos/:id', () => {
     const res = await request(app).get('/produtos/1').set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.body.data).toEqual(produto);
+  });
+
+  test('defaults canal to loja_fisica and passes an explicit canal through', async () => {
+    produtosService.buscarPorId.mockResolvedValue(produto);
+
+    await request(app).get('/produtos/1').set('Authorization', `Bearer ${adminToken}`);
+    expect(produtosService.buscarPorId).toHaveBeenCalledWith(1, 'loja_fisica');
+
+    await request(app).get('/produtos/1?canal=online').set('Authorization', `Bearer ${adminToken}`);
+    expect(produtosService.buscarPorId).toHaveBeenCalledWith(1, 'online');
   });
 });
 

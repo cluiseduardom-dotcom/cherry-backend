@@ -24,17 +24,26 @@ function parsePaginacao(query) {
     return { page, pageSize };
 }
 
+function parseCanal(query) {
+    return typeof query.canal === 'string' && query.canal.trim() !== '' ? query.canal : 'loja_fisica';
+}
+
 function filtrarParaRole(produto, role) {
     if (role !== 'vendedor') return produto;
 
-    const { custo, margem_percentual, ...resto } = produto;
-    return resto;
+    const { custo, margem_percentual, preco_canal, ...resto } = produto;
+
+    return {
+        ...resto,
+        ...(preco_canal && { preco_canal: { canal: preco_canal.canal, preco_venda: preco_canal.preco_venda } })
+    };
 }
 
 async function listar(req, res, next) {
     try {
         const paginacao = parsePaginacao(req.query);
-        const resultado = await produtosService.listar(paginacao);
+        const canal = parseCanal(req.query);
+        const resultado = await produtosService.listar({ ...paginacao, canal });
 
         const items = resultado.items.map((produto) => filtrarParaRole(produto, req.usuario.role));
 
@@ -47,7 +56,8 @@ async function listar(req, res, next) {
 async function buscarPorId(req, res, next) {
     try {
         const id = parseId(req.params.id);
-        const produto = await produtosService.buscarPorId(id);
+        const canal = parseCanal(req.query);
+        const produto = await produtosService.buscarPorId(id, canal);
 
         return response.success(res, filtrarParaRole(produto, req.usuario.role));
     } catch (error) {

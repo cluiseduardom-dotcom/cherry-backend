@@ -53,7 +53,26 @@ CREATE TABLE movimentacoes_estoque (
     criado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE canais_venda (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(50) NOT NULL UNIQUE,
+    ativo BOOLEAN NOT NULL DEFAULT true
+);
+
+CREATE TABLE precos_produto (
+    id SERIAL PRIMARY KEY,
+    produto_id INTEGER NOT NULL REFERENCES produtos(id),
+    canal_id INTEGER NOT NULL REFERENCES canais_venda(id),
+    preco_venda NUMERIC(10, 2) NOT NULL,
+    markup_percentual NUMERIC(10, 2) NOT NULL,
+    margem_percentual NUMERIC(10, 2) NOT NULL,
+    vigente_desde TIMESTAMP NOT NULL DEFAULT NOW(),
+    usuario_id INTEGER REFERENCES usuarios(id),
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX idx_vendas_cliente_id ON vendas(cliente_id);
 CREATE INDEX idx_itens_venda_venda_id ON itens_venda(venda_id);
 CREATE INDEX idx_itens_venda_produto_id ON itens_venda(produto_id);
 CREATE INDEX idx_movimentacoes_estoque_produto_id ON movimentacoes_estoque(produto_id);
+CREATE INDEX idx_precos_produto_produto_canal ON precos_produto(produto_id, canal_id, criado_em DESC);

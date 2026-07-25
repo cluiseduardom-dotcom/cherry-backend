@@ -11,6 +11,7 @@ app.use(express.json());
 const produtosRoutes = require('./routes/produtos');
 const vendasRoutes = require('./routes/vendas');
 const clientesRoutes = require('./routes/clientes');
+const canaisVendaRoutes = require('./routes/canaisVenda');
 const authRoutes = require('./routes/authRoutes');
 const authMiddleware = require('./middlewares/authMiddleware');
 const errorHandler = require('./middlewares/errorHandler');
@@ -19,6 +20,7 @@ app.use('/auth', authRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);
 app.use('/vendas', authMiddleware, vendasRoutes);
 app.use('/clientes', authMiddleware, clientesRoutes);
+app.use('/canais-venda', authMiddleware, canaisVendaRoutes);
 app.use(errorHandler);
 
 module.exports = app;
