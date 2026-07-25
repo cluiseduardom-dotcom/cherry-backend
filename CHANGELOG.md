@@ -11,12 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Jest + Supertest test suite (validations, middlewares, services, and routes), with the database mocked at the repository boundary so tests run without a live DB or secrets. `npm test` / `npm run test:coverage`, wired into CI.
 - Produtos/SKU module: `sku`, `descricao`, `categoria`, `estoque_atual`, `estoque_minimo`, `ativo` fields on `produtos`; `GET /produtos` now paginates; new `GET /produtos/:id`; `PUT /produtos/:id` and `DELETE /produtos/:id` (soft delete via `ativo`), both admin-only.
 - Stock movements module: `movimentacoes_estoque` ledger table; `POST /produtos/:id/movimentacoes` (`entrada`/`saida`/`ajuste`, admin or estoquista only); `GET /produtos/:id/movimentacoes` history; `GET /produtos/estoque-baixo` low-stock alert. Stock changes are transactional with row locking, and `saida` is rejected with 409 if it would go negative.
+- Precificação module: `canais_venda` reference table (seeded with `loja_fisica` and `online`) and `precos_produto`, an append-only ledger — changing a price inserts a new row, never an `UPDATE`. `PUT /produtos/:id/precos/:canalId` (admin only) sets the price from either `markup_percentual` or `preco_venda`; the other value, plus `margem_percentual`, is always derived server-side from `custo` (a client-supplied `margem_percentual` is rejected). Blocked with 409 if the resulting price would fall below `custo`. `GET /produtos/:id/precos` returns the current price per canal (vendedor sees only `preco_venda`, never markup/margem); `GET /produtos/:id/precos/historico` (admin only) is the paginated history, with an optional canal filter. `GET /canais-venda` lists sales channels, open to all authenticated roles.
 
 ### Changed
 
 - `margem_percentual` is now computed at read time for each produto (not stored).
 - `custo` and `margem_percentual` are stripped from all produto responses when the authenticated user has role `vendedor`.
 - `estoque_atual` was removed from `PUT /produtos/:id`'s editable fields — it can now only change through an audited stock movement, not a direct catalog edit.
+- `GET /produtos` and `GET /produtos/:id` now include `preco_canal`, the current price for the sales channel given by `?canal=` (defaults to `loja_fisica`), filtered by role the same way as the rest of the produto object.
 - Split `src/app.js` (Express app) from a new `src/server.js` (`app.listen` bootstrap) so the app can be imported by tests without binding to a port.
 
 ## [2.3.0] - 2026-07-20
