@@ -74,6 +74,21 @@ CREATE TABLE movimentacoes_estoque (
     criado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE contas_pagar (
+    id SERIAL PRIMARY KEY,
+    descricao VARCHAR(255) NOT NULL,
+    fornecedor VARCHAR(255),
+    valor NUMERIC(10, 2) NOT NULL CHECK (valor > 0),
+    data_vencimento DATE NOT NULL,
+    data_pagamento DATE,
+    status VARCHAR(20) NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'pago', 'cancelado')),
+    categoria VARCHAR(100),
+    observacao TEXT,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX idx_vendas_cliente_id ON vendas(cliente_id);
 CREATE INDEX idx_vendas_canal_id ON vendas(canal_id);
 CREATE INDEX idx_vendas_usuario_id ON vendas(usuario_id);
@@ -81,3 +96,6 @@ CREATE INDEX idx_itens_venda_venda_id ON itens_venda(venda_id);
 CREATE INDEX idx_itens_venda_produto_id ON itens_venda(produto_id);
 CREATE INDEX idx_movimentacoes_estoque_produto_id ON movimentacoes_estoque(produto_id);
 CREATE INDEX idx_precos_produto_produto_canal ON precos_produto(produto_id, canal_id, criado_em DESC);
+CREATE INDEX idx_contas_pagar_status ON contas_pagar(status);
+CREATE INDEX idx_contas_pagar_vencimento ON contas_pagar(data_vencimento);
+CREATE INDEX idx_contas_pagar_usuario_id ON contas_pagar(usuario_id);
