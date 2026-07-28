@@ -63,29 +63,58 @@ async function criar({ descricao, fornecedor, valor, data_vencimento, categoria,
     return rows[0];
 }
 
+// Lock de linha (FOR UPDATE), mesmo motivo de transicionarStatus: impede que
+// um PUT concorrente com um PATCH /:id/pagar (ou /cancelar) passem ambos pela
+// checagem de status antes de qualquer um gravar.
 async function atualizar(id, dados) {
     const campos = ['descricao', 'fornecedor', 'valor', 'data_vencimento', 'categoria', 'observacao'];
+    const client = await db.connect();
 
-    const sets = ['atualizado_em = NOW()'];
-    const valores = [];
-    let i = 1;
+    try {
+        await client.query('BEGIN');
 
-    for (const campo of campos) {
-        if (dados[campo] !== undefined) {
-            sets.push(`${campo} = $${i}`);
-            valores.push(dados[campo]);
-            i++;
+        const { rows: contaRows } = await client.query(
+            'SELECT * FROM contas_pagar WHERE id = $1 FOR UPDATE',
+            [id]
+        );
+
+        if (!contaRows.length) {
+            throw new AppError('Conta a pagar não encontrada', 404);
         }
+
+        if (contaRows[0].status !== 'pendente') {
+            throw new AppError('Contas pagas ou canceladas não podem ser editadas', 409);
+        }
+
+        const sets = ['atualizado_em = NOW()'];
+        const valores = [];
+        let i = 1;
+
+        for (const campo of campos) {
+            if (dados[campo] !== undefined) {
+                sets.push(`${campo} = $${i}`);
+                valores.push(dados[campo]);
+                i++;
+            }
+        }
+
+        valores.push(id);
+
+        const { rows } = await client.query(
+            `UPDATE contas_pagar SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+            valores
+        );
+
+        await client.query('COMMIT');
+
+        return rows[0];
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
     }
-
-    valores.push(id);
-
-    const { rows } = await db.query(
-        `UPDATE contas_pagar SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
-        valores
-    );
-
-    return rows.length ? rows[0] : null;
 }
 
 // Lock de linha (FOR UPDATE) dentro de uma transação, no mesmo espírito de

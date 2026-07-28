@@ -28,6 +28,10 @@ function makeFakeClient({ conta = {} } = {}) {
       return Promise.resolve({ rows: [{ id: params[0], status: 'cancelado' }] });
     }
 
+    if (sql.startsWith('UPDATE contas_pagar SET')) {
+      return Promise.resolve({ rows: [{ id: params[params.length - 1], status: 'pendente', valor: params[0] }] });
+    }
+
     return Promise.resolve({ rows: [] });
   });
 
@@ -111,6 +115,57 @@ describe('cancelar', () => {
     await expect(contasPagarRepository.cancelar(1)).rejects.toMatchObject({
       statusCode: 409,
       message: 'Somente contas pendentes podem ser canceladas'
+    });
+  });
+});
+
+describe('atualizar', () => {
+  test('updates a pendente conta and commits', async () => {
+    const fakeClient = makeFakeClient({ conta: { status: 'pendente' } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    const resultado = await contasPagarRepository.atualizar(1, { valor: 200 });
+
+    expect(resultado.valor).toBe(200);
+    expect(fakeClient.query).toHaveBeenCalledWith('COMMIT');
+    expect(fakeClient.release).toHaveBeenCalledTimes(1);
+  });
+
+  test('throws 404 and rolls back when the conta does not exist', async () => {
+    const fakeClient = makeFakeClient({ conta: { existe: false } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    await expect(contasPagarRepository.atualizar(999, { valor: 200 })).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Conta a pagar não encontrada'
+    });
+
+    const sqlChamados = fakeClient.query.mock.calls.map(([sql]) => sql);
+    expect(sqlChamados).toContain('ROLLBACK');
+    expect(sqlChamados).not.toContain('COMMIT');
+  });
+
+  test('throws 409 and rolls back when the conta is already paga', async () => {
+    const fakeClient = makeFakeClient({ conta: { status: 'pago' } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    await expect(contasPagarRepository.atualizar(1, { valor: 200 })).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Contas pagas ou canceladas não podem ser editadas'
+    });
+
+    const sqlChamados = fakeClient.query.mock.calls.map(([sql]) => sql);
+    expect(sqlChamados).toContain('ROLLBACK');
+    expect(sqlChamados.some((sql) => sql.startsWith('UPDATE contas_pagar SET'))).toBe(false);
+  });
+
+  test('throws 409 and rolls back when the conta is already cancelada', async () => {
+    const fakeClient = makeFakeClient({ conta: { status: 'cancelado' } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    await expect(contasPagarRepository.atualizar(1, { valor: 200 })).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Contas pagas ou canceladas não podem ser editadas'
     });
   });
 });

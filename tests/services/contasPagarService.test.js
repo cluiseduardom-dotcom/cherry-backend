@@ -128,18 +128,7 @@ describe('criar', () => {
 });
 
 describe('atualizar', () => {
-  test('throws 404 when the conta does not exist', async () => {
-    contasPagarRepository.buscarPorId.mockResolvedValue(null);
-
-    await expect(contasPagarService.atualizar(999, { valor: 200 })).rejects.toMatchObject({
-      statusCode: 404,
-      message: 'Conta a pagar não encontrada'
-    });
-    expect(contasPagarRepository.atualizar).not.toHaveBeenCalled();
-  });
-
-  test('delegates to the repository when the conta exists', async () => {
-    contasPagarRepository.buscarPorId.mockResolvedValue({ id: 1, status: 'pendente', data_vencimento: '2026-08-10' });
+  test('delegates the guarded update to the repository', async () => {
     contasPagarRepository.atualizar.mockResolvedValue({
       id: 1, valor: '200.00', status: 'pendente', data_vencimento: '2026-08-10'
     });
@@ -148,6 +137,28 @@ describe('atualizar', () => {
 
     expect(contasPagarRepository.atualizar).toHaveBeenCalledWith(1, { valor: 200 });
     expect(result.valor).toBe('200.00');
+  });
+
+  test('propagates the 404 thrown by the repository when the conta does not exist', async () => {
+    contasPagarRepository.atualizar.mockRejectedValue(
+      new AppError('Conta a pagar não encontrada', 404)
+    );
+
+    await expect(contasPagarService.atualizar(999, { valor: 200 })).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Conta a pagar não encontrada'
+    });
+  });
+
+  test('propagates the 409 thrown by the repository when the conta is not pendente', async () => {
+    contasPagarRepository.atualizar.mockRejectedValue(
+      new AppError('Contas pagas ou canceladas não podem ser editadas', 409)
+    );
+
+    await expect(contasPagarService.atualizar(1, { valor: 200 })).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Contas pagas ou canceladas não podem ser editadas'
+    });
   });
 });
 

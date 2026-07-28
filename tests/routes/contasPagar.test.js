@@ -198,6 +198,19 @@ describe('PUT /contas-pagar/:id', () => {
     expect(res.status).toBe(200);
     expect(contasPagarService.atualizar).toHaveBeenCalledWith(1, { valor: 200 });
   });
+
+  test('returns 409 when the conta is not pendente', async () => {
+    contasPagarService.atualizar.mockRejectedValue(
+      new AppError('Contas pagas ou canceladas não podem ser editadas', 409)
+    );
+
+    const res = await request(app)
+      .put('/contas-pagar/1')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ valor: 200 });
+
+    expect(res.status).toBe(409);
+  });
 });
 
 describe('PATCH /contas-pagar/:id/pagar', () => {

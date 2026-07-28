@@ -51,13 +51,10 @@ async function criar(dados, usuario_id) {
     return comAtraso(conta);
 }
 
+// A checagem de "só pendente pode ser editada" mora no repository (transação
+// com FOR UPDATE), mesmo motivo de marcarComoPaga/cancelar: leitura+checagem
+// aqui deixaria uma janela para um PATCH concorrente escapar da validação.
 async function atualizar(id, dados) {
-    const conta = await contasPagarRepository.buscarPorId(id);
-
-    if (!conta) {
-        throw new AppError('Conta a pagar não encontrada', 404);
-    }
-
     const atualizada = await contasPagarRepository.atualizar(id, dados);
     return comAtraso(atualizada);
 }
