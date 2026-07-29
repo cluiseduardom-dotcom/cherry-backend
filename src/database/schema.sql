@@ -41,8 +41,9 @@ CREATE TABLE produtos (
 CREATE TABLE canais_venda (
     id SERIAL PRIMARY KEY,
     empresa_id INTEGER NOT NULL REFERENCES empresas(id),
-    nome VARCHAR(50) NOT NULL UNIQUE,
-    ativo BOOLEAN NOT NULL DEFAULT true
+    nome VARCHAR(50) NOT NULL,
+    ativo BOOLEAN NOT NULL DEFAULT true,
+    UNIQUE (empresa_id, nome)
 );
 
 CREATE TABLE precos_produto (
