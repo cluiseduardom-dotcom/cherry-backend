@@ -43,7 +43,7 @@ async function listar(req, res, next) {
     try {
         const paginacao = parsePaginacao(req.query);
         const canal = parseCanal(req.query);
-        const resultado = await produtosService.listar({ ...paginacao, canal });
+        const resultado = await produtosService.listar({ ...paginacao, canal }, req.usuario.empresa_id);
 
         const items = resultado.items.map((produto) => filtrarParaRole(produto, req.usuario.role));
 
@@ -57,7 +57,7 @@ async function buscarPorId(req, res, next) {
     try {
         const id = parseId(req.params.id);
         const canal = parseCanal(req.query);
-        const produto = await produtosService.buscarPorId(id, canal);
+        const produto = await produtosService.buscarPorId(id, canal, req.usuario.empresa_id);
 
         return response.success(res, filtrarParaRole(produto, req.usuario.role));
     } catch (error) {
@@ -73,7 +73,7 @@ async function criar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const produto = await produtosService.criar(parsed.data);
+        const produto = await produtosService.criar(parsed.data, req.usuario.empresa_id);
 
         return response.success(res, produto, 201);
     } catch (error) {
@@ -91,7 +91,7 @@ async function atualizar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const produto = await produtosService.atualizar(id, parsed.data);
+        const produto = await produtosService.atualizar(id, parsed.data, req.usuario.empresa_id);
 
         return response.success(res, produto);
     } catch (error) {
@@ -102,7 +102,7 @@ async function atualizar(req, res, next) {
 async function remover(req, res, next) {
     try {
         const id = parseId(req.params.id);
-        const produto = await produtosService.remover(id);
+        const produto = await produtosService.remover(id, req.usuario.empresa_id);
 
         return response.success(res, produto);
     } catch (error) {
@@ -112,7 +112,7 @@ async function remover(req, res, next) {
 
 async function giro(req, res, next) {
     try {
-        const dados = await produtosService.giro();
+        const dados = await produtosService.giro(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -121,7 +121,7 @@ async function giro(req, res, next) {
 
 async function parados(req, res, next) {
     try {
-        const dados = await produtosService.parados();
+        const dados = await produtosService.parados(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -130,7 +130,7 @@ async function parados(req, res, next) {
 
 async function pricingProfissional(req, res, next) {
     try {
-        const dados = await produtosService.pricingProfissional();
+        const dados = await produtosService.pricingProfissional(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -139,7 +139,7 @@ async function pricingProfissional(req, res, next) {
 
 async function lucroPorProduto(req, res, next) {
     try {
-        const dados = await produtosService.lucroPorProduto();
+        const dados = await produtosService.lucroPorProduto(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -148,7 +148,7 @@ async function lucroPorProduto(req, res, next) {
 
 async function alertaPrejuizo(req, res, next) {
     try {
-        const dados = await produtosService.alertaPrejuizo();
+        const dados = await produtosService.alertaPrejuizo(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -157,7 +157,7 @@ async function alertaPrejuizo(req, res, next) {
 
 async function maisVendidos(req, res, next) {
     try {
-        const dados = await produtosService.maisVendidos();
+        const dados = await produtosService.maisVendidos(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -166,7 +166,7 @@ async function maisVendidos(req, res, next) {
 
 async function curvaABC(req, res, next) {
     try {
-        const dados = await produtosService.curvaABC();
+        const dados = await produtosService.curvaABC(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -175,7 +175,7 @@ async function curvaABC(req, res, next) {
 
 async function reposicao(req, res, next) {
     try {
-        const dados = await produtosService.reposicao();
+        const dados = await produtosService.reposicao(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -184,7 +184,7 @@ async function reposicao(req, res, next) {
 
 async function sugestaoPreco(req, res, next) {
     try {
-        const dados = await produtosService.sugestaoPreco();
+        const dados = await produtosService.sugestaoPreco(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -193,7 +193,7 @@ async function sugestaoPreco(req, res, next) {
 
 async function inteligencia(req, res, next) {
     try {
-        const dados = await produtosService.inteligencia();
+        const dados = await produtosService.inteligencia(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -202,7 +202,7 @@ async function inteligencia(req, res, next) {
 
 async function acoes(req, res, next) {
     try {
-        const dados = await produtosService.acoes();
+        const dados = await produtosService.acoes(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -219,7 +219,7 @@ async function ajustarPreco(req, res, next) {
 
         const { id, percentual } = parsed.data;
 
-        const produto = await produtosService.ajustarPreco(id, percentual);
+        const produto = await produtosService.ajustarPreco(id, percentual, req.usuario.empresa_id);
 
         return response.success(res, produto);
     } catch (error) {
@@ -229,7 +229,7 @@ async function ajustarPreco(req, res, next) {
 
 async function dashboard(req, res, next) {
     try {
-        const dados = await produtosService.dashboard();
+        const dados = await produtosService.dashboard(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);

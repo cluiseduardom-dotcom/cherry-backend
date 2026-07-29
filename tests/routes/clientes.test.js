@@ -6,7 +6,7 @@ const AppError = require('../../src/errors/AppError');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
 
-const token = makeToken({ id: 1, role: 'vendedor' });
+const token = makeToken({ id: 1, role: 'vendedor', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -66,7 +66,7 @@ test('GET /clientes/:id/total-gasto returns 404 when the service throws', async 
     .set('Authorization', `Bearer ${token}`);
 
   expect(res.status).toBe(404);
-  expect(clientesService.totalGasto).toHaveBeenCalledWith(999);
+  expect(clientesService.totalGasto).toHaveBeenCalledWith(999, 1);
 });
 
 test('GET /clientes/:id/historico returns 200 with the registros', async () => {

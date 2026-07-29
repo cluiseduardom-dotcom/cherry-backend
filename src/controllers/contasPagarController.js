@@ -47,7 +47,7 @@ async function listar(req, res, next) {
             status: parsedFiltros.data.status,
             vencimentoDe: parsedFiltros.data.vencimento_de,
             vencimentoAte: parsedFiltros.data.vencimento_ate
-        });
+        }, req.usuario.empresa_id);
 
         return response.success(res, resultado);
     } catch (error) {
@@ -58,7 +58,7 @@ async function listar(req, res, next) {
 async function buscarPorId(req, res, next) {
     try {
         const id = parseId(req.params.id);
-        const conta = await contasPagarService.buscarPorId(id);
+        const conta = await contasPagarService.buscarPorId(id, req.usuario.empresa_id);
 
         return response.success(res, conta);
     } catch (error) {
@@ -74,7 +74,7 @@ async function criar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const conta = await contasPagarService.criar(parsed.data, req.usuario.id);
+        const conta = await contasPagarService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id);
 
         return response.success(res, conta, 201);
     } catch (error) {
@@ -92,7 +92,7 @@ async function atualizar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const conta = await contasPagarService.atualizar(id, parsed.data);
+        const conta = await contasPagarService.atualizar(id, parsed.data, req.usuario.empresa_id);
 
         return response.success(res, conta);
     } catch (error) {
@@ -103,7 +103,7 @@ async function atualizar(req, res, next) {
 async function marcarComoPaga(req, res, next) {
     try {
         const id = parseId(req.params.id);
-        const conta = await contasPagarService.marcarComoPaga(id);
+        const conta = await contasPagarService.marcarComoPaga(id, req.usuario.empresa_id);
 
         return response.success(res, conta);
     } catch (error) {
@@ -114,7 +114,7 @@ async function marcarComoPaga(req, res, next) {
 async function cancelar(req, res, next) {
     try {
         const id = parseId(req.params.id);
-        const conta = await contasPagarService.cancelar(id);
+        const conta = await contasPagarService.cancelar(id, req.usuario.empresa_id);
 
         return response.success(res, conta);
     } catch (error) {

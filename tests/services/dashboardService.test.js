@@ -21,9 +21,9 @@ describe('giro', () => {
       { id: 1, nome: 'X', estoque_atual: 10, quantidade_vendida_periodo: 5, giro: 0.5, cobertura_dias: 60 }
     ]);
 
-    const result = await dashboardService.giro(90);
+    const result = await dashboardService.giro(90, 9);
 
-    expect(dashboardRepository.getGiroECobertura).toHaveBeenCalledWith(90);
+    expect(dashboardRepository.getGiroECobertura).toHaveBeenCalledWith(90, 9);
     expect(result).toEqual([{ id: 1, nome: 'X', estoque_atual: 10, quantidade_vendida_periodo: 5, giro: 0.5 }]);
     expect(result[0]).not.toHaveProperty('cobertura_dias');
   });
@@ -35,9 +35,9 @@ describe('cobertura', () => {
       { id: 1, nome: 'X', estoque_atual: 10, quantidade_vendida_periodo: 5, giro: 0.5, cobertura_dias: 60 }
     ]);
 
-    const result = await dashboardService.cobertura(30);
+    const result = await dashboardService.cobertura(30, 9);
 
-    expect(dashboardRepository.getGiroECobertura).toHaveBeenCalledWith(30);
+    expect(dashboardRepository.getGiroECobertura).toHaveBeenCalledWith(30, 9);
     expect(result).toEqual([{ id: 1, nome: 'X', estoque_atual: 10, quantidade_vendida_periodo: 5, cobertura_dias: 60 }]);
     expect(result[0]).not.toHaveProperty('giro');
   });
@@ -63,9 +63,9 @@ describe('resumo', () => {
     ]);
     precosRepository.listarMargemPorProdutoECanal.mockResolvedValue([{ produto_id: 1, canal: 'loja_fisica' }]);
 
-    const result = await dashboardService.resumo(45);
+    const result = await dashboardService.resumo(45, 9);
 
-    expect(dashboardRepository.getGiroECobertura).toHaveBeenCalledWith(45);
+    expect(dashboardRepository.getGiroECobertura).toHaveBeenCalledWith(45, 9);
     expect(result).toEqual({
       curva_abc: [{ id: 1, curva: 'A' }],
       giro: [{ id: 1, nome: 'X', estoque_atual: 10, quantidade_vendida_periodo: 5, giro: 0.5 }],

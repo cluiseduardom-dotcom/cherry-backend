@@ -2,24 +2,24 @@ const vendasRepository = require('../repositories/vendasRepository');
 const precosRepository = require('../repositories/precosRepository');
 const AppError = require('../errors/AppError');
 
-async function resumo() {
-    return vendasRepository.getResumo();
+async function resumo(empresaId) {
+    return vendasRepository.getResumo(empresaId);
 }
 
-async function porDia() {
-    return vendasRepository.getPorDia();
+async function porDia(empresaId) {
+    return vendasRepository.getPorDia(empresaId);
 }
 
-async function porMes() {
-    return vendasRepository.getPorMes();
+async function porMes(empresaId) {
+    return vendasRepository.getPorMes(empresaId);
 }
 
-async function maisVendidos() {
-    return vendasRepository.getMaisVendidosPeriodo();
+async function maisVendidos(empresaId) {
+    return vendasRepository.getMaisVendidosPeriodo(empresaId);
 }
 
-async function criar({ cliente_id, canal, itens }, usuario_id) {
-    const canalRow = await precosRepository.buscarCanalPorNome(canal || 'loja_fisica');
+async function criar({ cliente_id, canal, itens }, usuario_id, empresaId) {
+    const canalRow = await precosRepository.buscarCanalPorNome(canal || 'loja_fisica', empresaId);
 
     if (!canalRow) {
         throw new AppError('Canal inválido', 400);
@@ -29,6 +29,7 @@ async function criar({ cliente_id, canal, itens }, usuario_id) {
         cliente_id: cliente_id ?? null,
         canal_id: canalRow.id,
         usuario_id,
+        empresa_id: empresaId,
         itens
     });
 }
@@ -39,7 +40,7 @@ async function listar({ page, pageSize }, usuario) {
 
     const usuario_id = usuario.role === 'vendedor' ? usuario.id : undefined;
 
-    const { items, total } = await vendasRepository.listarPaginado({ limit, offset, usuario_id });
+    const { items, total } = await vendasRepository.listarPaginado({ limit, offset, usuario_id, empresa_id: usuario.empresa_id });
 
     return {
         items,
@@ -51,7 +52,7 @@ async function listar({ page, pageSize }, usuario) {
 }
 
 async function buscarPorId(id, usuario) {
-    const venda = await vendasRepository.buscarPorId(id);
+    const venda = await vendasRepository.buscarPorId(id, usuario.empresa_id);
 
     if (!venda) {
         throw new AppError('Venda não encontrada', 404);
@@ -66,8 +67,8 @@ async function buscarPorId(id, usuario) {
     return venda;
 }
 
-async function cancelar(id, usuario_id) {
-    return vendasRepository.cancelar(id, usuario_id);
+async function cancelar(id, usuario_id, empresaId) {
+    return vendasRepository.cancelar(id, usuario_id, empresaId);
 }
 
 module.exports = {

@@ -26,12 +26,12 @@ function calcularPreco({ custo, markup_percentual, preco_venda }) {
     return { preco_venda: precoVenda, markup_percentual: markup, margem_percentual: margem };
 }
 
-async function listarCanais() {
-    return precosRepository.listarCanais();
+async function listarCanais(empresaId) {
+    return precosRepository.listarCanais(empresaId);
 }
 
-async function obterCanalPorNome(nome) {
-    const canal = await precosRepository.buscarCanalPorNome(nome);
+async function obterCanalPorNome(nome, empresaId) {
+    const canal = await precosRepository.buscarCanalPorNome(nome, empresaId);
 
     if (!canal) {
         throw new AppError('Canal inválido', 400);
@@ -40,14 +40,14 @@ async function obterCanalPorNome(nome) {
     return canal;
 }
 
-async function definirPreco(produto_id, canal_id, dados, usuario_id) {
-    const produto = await produtosRepository.buscarPorId(produto_id);
+async function definirPreco(produto_id, canal_id, dados, usuario_id, empresaId) {
+    const produto = await produtosRepository.buscarPorId(produto_id, empresaId);
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
     }
 
-    const canal = await precosRepository.buscarCanalPorId(canal_id);
+    const canal = await precosRepository.buscarCanalPorId(canal_id, empresaId);
 
     if (!canal) {
         throw new AppError('Canal não encontrado', 404);
@@ -66,22 +66,23 @@ async function definirPreco(produto_id, canal_id, dados, usuario_id) {
         preco_venda: calculado.preco_venda,
         markup_percentual: calculado.markup_percentual,
         margem_percentual: calculado.margem_percentual,
-        usuario_id
+        usuario_id,
+        empresa_id: empresaId
     });
 }
 
-async function listarVigentesPorProduto(produto_id) {
-    const produto = await produtosRepository.buscarPorId(produto_id);
+async function listarVigentesPorProduto(produto_id, empresaId) {
+    const produto = await produtosRepository.buscarPorId(produto_id, empresaId);
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
     }
 
-    return precosRepository.listarPrecosVigentesPorProduto(produto_id);
+    return precosRepository.listarPrecosVigentesPorProduto(produto_id, empresaId);
 }
 
-async function historicoPorProduto(produto_id, canalNome, { page, pageSize }) {
-    const produto = await produtosRepository.buscarPorId(produto_id);
+async function historicoPorProduto(produto_id, canalNome, { page, pageSize }, empresaId) {
+    const produto = await produtosRepository.buscarPorId(produto_id, empresaId);
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
@@ -90,14 +91,14 @@ async function historicoPorProduto(produto_id, canalNome, { page, pageSize }) {
     let canal_id;
 
     if (canalNome !== undefined) {
-        const canal = await obterCanalPorNome(canalNome);
+        const canal = await obterCanalPorNome(canalNome, empresaId);
         canal_id = canal.id;
     }
 
     const limit = pageSize;
     const offset = (page - 1) * pageSize;
 
-    const { items, total } = await precosRepository.listarHistoricoPorProduto(produto_id, canal_id, { limit, offset });
+    const { items, total } = await precosRepository.listarHistoricoPorProduto(produto_id, canal_id, empresaId, { limit, offset });
 
     return {
         items,

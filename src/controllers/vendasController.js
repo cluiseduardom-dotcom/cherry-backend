@@ -26,7 +26,7 @@ function parsePaginacao(query) {
 
 async function resumo(req, res, next) {
     try {
-        const dados = await vendasService.resumo();
+        const dados = await vendasService.resumo(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -35,7 +35,7 @@ async function resumo(req, res, next) {
 
 async function porDia(req, res, next) {
     try {
-        const dados = await vendasService.porDia();
+        const dados = await vendasService.porDia(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -44,7 +44,7 @@ async function porDia(req, res, next) {
 
 async function porMes(req, res, next) {
     try {
-        const dados = await vendasService.porMes();
+        const dados = await vendasService.porMes(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -53,7 +53,7 @@ async function porMes(req, res, next) {
 
 async function maisVendidos(req, res, next) {
     try {
-        const dados = await vendasService.maisVendidos();
+        const dados = await vendasService.maisVendidos(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -68,7 +68,7 @@ async function criar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const venda = await vendasService.criar(parsed.data, req.usuario.id);
+        const venda = await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id);
 
         return response.success(res, venda, 201);
     } catch (error) {
@@ -101,7 +101,7 @@ async function buscarPorId(req, res, next) {
 async function cancelar(req, res, next) {
     try {
         const id = parseId(req.params.id);
-        const venda = await vendasService.cancelar(id, req.usuario.id);
+        const venda = await vendasService.cancelar(id, req.usuario.id, req.usuario.empresa_id);
 
         return response.success(res, venda);
     } catch (error) {

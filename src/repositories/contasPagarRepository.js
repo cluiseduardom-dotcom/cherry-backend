@@ -1,9 +1,9 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 
-async function listarPaginado({ limit, offset, status, vencimentoDe, vencimentoAte }) {
-    const condicoes = [];
-    const valores = [];
+async function listarPaginado({ limit, offset, status, vencimentoDe, vencimentoAte, empresa_id }) {
+    const condicoes = ['empresa_id = $1'];
+    const valores = [empresa_id];
 
     if (status !== undefined) {
         valores.push(status);
@@ -20,7 +20,7 @@ async function listarPaginado({ limit, offset, status, vencimentoDe, vencimentoA
         condicoes.push(`data_vencimento <= $${valores.length}`);
     }
 
-    const where = condicoes.length ? `WHERE ${condicoes.join(' AND ')}` : '';
+    const where = `WHERE ${condicoes.join(' AND ')}`;
 
     const valoresListagem = [...valores, limit, offset];
     const { rows } = await db.query(
@@ -39,15 +39,18 @@ async function listarPaginado({ limit, offset, status, vencimentoDe, vencimentoA
     return { items: rows, total: Number(countRows[0].count) };
 }
 
-async function buscarPorId(id) {
-    const { rows } = await db.query('SELECT * FROM contas_pagar WHERE id = $1', [id]);
+async function buscarPorId(id, empresa_id) {
+    const { rows } = await db.query(
+        'SELECT * FROM contas_pagar WHERE id = $1 AND empresa_id = $2',
+        [id, empresa_id]
+    );
     return rows.length ? rows[0] : null;
 }
 
-async function criar({ descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id }) {
+async function criar({ descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id, empresa_id }) {
     const { rows } = await db.query(
-        `INSERT INTO contas_pagar (descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO contas_pagar (descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id, empresa_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
         [
             descricao,
@@ -56,7 +59,8 @@ async function criar({ descricao, fornecedor, valor, data_vencimento, categoria,
             data_vencimento,
             categoria ?? null,
             observacao ?? null,
-            usuario_id
+            usuario_id,
+            empresa_id
         ]
     );
 
@@ -66,7 +70,7 @@ async function criar({ descricao, fornecedor, valor, data_vencimento, categoria,
 // Lock de linha (FOR UPDATE), mesmo motivo de transicionarStatus: impede que
 // um PUT concorrente com um PATCH /:id/pagar (ou /cancelar) passem ambos pela
 // checagem de status antes de qualquer um gravar.
-async function atualizar(id, dados) {
+async function atualizar(id, dados, empresa_id) {
     const campos = ['descricao', 'fornecedor', 'valor', 'data_vencimento', 'categoria', 'observacao'];
     const client = await db.connect();
 
@@ -74,8 +78,8 @@ async function atualizar(id, dados) {
         await client.query('BEGIN');
 
         const { rows: contaRows } = await client.query(
-            'SELECT * FROM contas_pagar WHERE id = $1 FOR UPDATE',
-            [id]
+            'SELECT * FROM contas_pagar WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
+            [id, empresa_id]
         );
 
         if (!contaRows.length) {
@@ -121,15 +125,15 @@ async function atualizar(id, dados) {
 // vendasRepository.cancelar: evita que duas requisições concorrentes (ex:
 // dois cliques em "marcar como paga") passem ambas pela checagem de status
 // antes de qualquer uma delas gravar a mudança.
-async function transicionarStatus(id, { statusEsperado, mensagemStatusInvalido, sets }) {
+async function transicionarStatus(id, empresa_id, { statusEsperado, mensagemStatusInvalido, sets }) {
     const client = await db.connect();
 
     try {
         await client.query('BEGIN');
 
         const { rows: contaRows } = await client.query(
-            'SELECT * FROM contas_pagar WHERE id = $1 FOR UPDATE',
-            [id]
+            'SELECT * FROM contas_pagar WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
+            [id, empresa_id]
         );
 
         if (!contaRows.length) {
@@ -157,16 +161,16 @@ async function transicionarStatus(id, { statusEsperado, mensagemStatusInvalido, 
     }
 }
 
-async function marcarComoPaga(id) {
-    return transicionarStatus(id, {
+async function marcarComoPaga(id, empresa_id) {
+    return transicionarStatus(id, empresa_id, {
         statusEsperado: 'pendente',
         mensagemStatusInvalido: 'Somente contas pendentes podem ser marcadas como pagas',
         sets: `status = 'pago', data_pagamento = CURRENT_DATE`
     });
 }
 
-async function cancelar(id) {
-    return transicionarStatus(id, {
+async function cancelar(id, empresa_id) {
+    return transicionarStatus(id, empresa_id, {
         statusEsperado: 'pendente',
         mensagemStatusInvalido: 'Somente contas pendentes podem ser canceladas',
         sets: `status = 'cancelado'`

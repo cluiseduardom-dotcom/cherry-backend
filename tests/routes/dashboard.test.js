@@ -5,9 +5,9 @@ const dashboardService = require('../../src/services/dashboardService');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
 
-const adminToken = makeToken({ id: 1, role: 'admin' });
-const vendedorToken = makeToken({ id: 2, role: 'vendedor' });
-const estoquistaToken = makeToken({ id: 3, role: 'estoquista' });
+const adminToken = makeToken({ id: 1, role: 'admin', empresa_id: 1 });
+const vendedorToken = makeToken({ id: 2, role: 'vendedor', empresa_id: 1 });
+const estoquistaToken = makeToken({ id: 3, role: 'estoquista', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -55,7 +55,7 @@ describe('dias query param (giro, cobertura, resumo)', () => {
 
     await request(app).get('/dashboard/giro').set('Authorization', `Bearer ${adminToken}`);
 
-    expect(dashboardService.giro).toHaveBeenCalledWith(90);
+    expect(dashboardService.giro).toHaveBeenCalledWith(90, 1);
   });
 
   test('passes an explicit dias through', async () => {
@@ -63,7 +63,7 @@ describe('dias query param (giro, cobertura, resumo)', () => {
 
     await request(app).get('/dashboard/cobertura?dias=30').set('Authorization', `Bearer ${adminToken}`);
 
-    expect(dashboardService.cobertura).toHaveBeenCalledWith(30);
+    expect(dashboardService.cobertura).toHaveBeenCalledWith(30, 1);
   });
 
   test('falls back to 90 for an invalid dias', async () => {
@@ -71,7 +71,7 @@ describe('dias query param (giro, cobertura, resumo)', () => {
 
     await request(app).get('/dashboard/giro?dias=abc').set('Authorization', `Bearer ${adminToken}`);
 
-    expect(dashboardService.giro).toHaveBeenCalledWith(90);
+    expect(dashboardService.giro).toHaveBeenCalledWith(90, 1);
   });
 
   test('caps dias at 365', async () => {
@@ -79,6 +79,6 @@ describe('dias query param (giro, cobertura, resumo)', () => {
 
     await request(app).get('/dashboard?dias=9999').set('Authorization', `Bearer ${adminToken}`);
 
-    expect(dashboardService.resumo).toHaveBeenCalledWith(365);
+    expect(dashboardService.resumo).toHaveBeenCalledWith(365, 1);
   });
 });

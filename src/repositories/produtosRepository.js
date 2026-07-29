@@ -1,30 +1,36 @@
 const db = require('../config/db');
 
-async function listar() {
-    const { rows } = await db.query('SELECT * FROM produtos');
+async function listar(empresa_id) {
+    const { rows } = await db.query('SELECT * FROM produtos WHERE empresa_id = $1', [empresa_id]);
     return rows;
 }
 
-async function listarPaginado({ limit, offset }) {
+async function listarPaginado({ limit, offset, empresa_id }) {
     const { rows } = await db.query(
-        'SELECT * FROM produtos ORDER BY id LIMIT $1 OFFSET $2',
-        [limit, offset]
+        'SELECT * FROM produtos WHERE empresa_id = $1 ORDER BY id LIMIT $2 OFFSET $3',
+        [empresa_id, limit, offset]
     );
 
-    const { rows: countRows } = await db.query('SELECT COUNT(*) FROM produtos');
+    const { rows: countRows } = await db.query(
+        'SELECT COUNT(*) FROM produtos WHERE empresa_id = $1',
+        [empresa_id]
+    );
 
     return { items: rows, total: Number(countRows[0].count) };
 }
 
-async function buscarPorSku(sku) {
-    const { rows } = await db.query('SELECT * FROM produtos WHERE sku = $1', [sku]);
+async function buscarPorSku(sku, empresa_id) {
+    const { rows } = await db.query(
+        'SELECT * FROM produtos WHERE sku = $1 AND empresa_id = $2',
+        [sku, empresa_id]
+    );
     return rows.length ? rows[0] : null;
 }
 
-async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo }) {
+async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, empresa_id }) {
     const { rows } = await db.query(
-        `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, empresa_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
         [
             sku,
@@ -35,14 +41,15 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
             custo,
             estoque_atual ?? 0,
             estoque_minimo ?? 0,
-            ativo ?? true
+            ativo ?? true,
+            empresa_id
         ]
     );
 
     return rows[0];
 }
 
-async function atualizar(id, dados) {
+async function atualizar(id, dados, empresa_id) {
     // estoque_atual is deliberately excluded: it's only ever changed via estoqueRepository.criarMovimentacao
     const campos = ['sku', 'nome', 'descricao', 'categoria', 'preco_venda', 'custo', 'estoque_minimo', 'ativo'];
 
@@ -58,43 +65,46 @@ async function atualizar(id, dados) {
         }
     }
 
-    valores.push(id);
+    valores.push(id, empresa_id);
 
     const { rows } = await db.query(
-        `UPDATE produtos SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+        `UPDATE produtos SET ${sets.join(', ')} WHERE id = $${i} AND empresa_id = $${i + 1} RETURNING *`,
         valores
     );
 
     return rows.length ? rows[0] : null;
 }
 
-async function desativar(id) {
+async function desativar(id, empresa_id) {
     const { rows } = await db.query(
-        `UPDATE produtos SET ativo = false WHERE id = $1 RETURNING *`,
-        [id]
+        `UPDATE produtos SET ativo = false WHERE id = $1 AND empresa_id = $2 RETURNING *`,
+        [id, empresa_id]
     );
 
     return rows.length ? rows[0] : null;
 }
 
-async function buscarPorId(id) {
-    const { rows } = await db.query('SELECT * FROM produtos WHERE id = $1', [id]);
+async function buscarPorId(id, empresa_id) {
+    const { rows } = await db.query(
+        'SELECT * FROM produtos WHERE id = $1 AND empresa_id = $2',
+        [id, empresa_id]
+    );
     return rows.length ? rows[0] : null;
 }
 
-async function ajustarPreco(id, percentual) {
+async function ajustarPreco(id, percentual, empresa_id) {
     const { rows } = await db.query(
         `UPDATE produtos
          SET preco_venda = preco_venda * (1 + $1)
-         WHERE id = $2
+         WHERE id = $2 AND empresa_id = $3
          RETURNING id, nome, preco_venda, custo`,
-        [percentual, id]
+        [percentual, id, empresa_id]
     );
 
     return rows.length ? rows[0] : null;
 }
 
-async function getGiro() {
+async function getGiro(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -104,13 +114,14 @@ async function getGiro() {
         FROM itens_venda iv
         JOIN produtos p ON p.id = iv.produto_id
         JOIN vendas v ON v.id = iv.venda_id
+        WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
         ORDER BY total_vendido DESC
-    `);
+    `, [empresa_id]);
     return rows;
 }
 
-async function getParados() {
+async function getParados(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -119,14 +130,15 @@ async function getParados() {
         FROM produtos p
         LEFT JOIN itens_venda iv ON iv.produto_id = p.id
         LEFT JOIN vendas v ON v.id = iv.venda_id
+        WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
         HAVING MAX(v.data) IS NULL
            OR MAX(v.data) < NOW() - INTERVAL '30 days'
-    `);
+    `, [empresa_id]);
     return rows;
 }
 
-async function getPricingProfissional() {
+async function getPricingProfissional(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -141,13 +153,14 @@ async function getPricingProfissional() {
           END AS preco_sugerido
         FROM produtos p
         LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome, p.custo, p.preco_venda
         ORDER BY total_vendido DESC
-    `);
+    `, [empresa_id]);
     return rows;
 }
 
-async function getLucroPorProduto() {
+async function getLucroPorProduto(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -164,13 +177,14 @@ async function getLucroPorProduto() {
           ) AS margem_percentual
         FROM produtos p
         LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
         ORDER BY lucro DESC
-    `);
+    `, [empresa_id]);
     return rows;
 }
 
-async function getAlertaPrejuizo() {
+async function getAlertaPrejuizo(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -180,11 +194,12 @@ async function getAlertaPrejuizo() {
           (p.preco_venda - p.custo) AS lucro_unitario
         FROM produtos p
         WHERE (p.preco_venda - p.custo) <= 0
-    `);
+          AND p.empresa_id = $1
+    `, [empresa_id]);
     return rows;
 }
 
-async function getMaisVendidos() {
+async function getMaisVendidos(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -193,14 +208,15 @@ async function getMaisVendidos() {
           SUM(iv.quantidade * iv.preco_unitario) AS faturamento
         FROM itens_venda iv
         JOIN produtos p ON p.id = iv.produto_id
+        WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
         ORDER BY total_vendido DESC
         LIMIT 10
-    `);
+    `, [empresa_id]);
     return rows;
 }
 
-async function getCurvaABC() {
+async function getCurvaABC(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -213,12 +229,13 @@ async function getCurvaABC() {
           END AS curva
         FROM itens_venda iv
         JOIN produtos p ON p.id = iv.produto_id
+        WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
-    `);
+    `, [empresa_id]);
     return rows;
 }
 
-async function getReposicao() {
+async function getReposicao(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -231,12 +248,13 @@ async function getReposicao() {
           END AS status
         FROM produtos p
         LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
-    `);
+    `, [empresa_id]);
     return rows;
 }
 
-async function getSugestaoPreco() {
+async function getSugestaoPreco(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -250,12 +268,13 @@ async function getSugestaoPreco() {
           END AS preco_sugerido
         FROM produtos p
         LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome, p.custo, p.preco_venda
-    `);
+    `, [empresa_id]);
     return rows;
 }
 
-async function getInteligencia() {
+async function getInteligencia(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -269,12 +288,13 @@ async function getInteligencia() {
           END AS decisao
         FROM produtos p
         LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome, p.custo, p.preco_venda
-    `);
+    `, [empresa_id]);
     return rows;
 }
 
-async function getAcoes() {
+async function getAcoes(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
@@ -287,19 +307,21 @@ async function getAcoes() {
           END AS acao
         FROM produtos p
         LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
-    `);
+    `, [empresa_id]);
     return rows;
 }
 
-async function getDashboard() {
+async function getDashboard(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           COUNT(*) AS total_vendas,
           COALESCE(SUM(total), 0) AS faturamento,
           COALESCE(AVG(total), 0) AS ticket_medio
         FROM vendas
-    `);
+        WHERE empresa_id = $1
+    `, [empresa_id]);
     return rows[0];
 }
 

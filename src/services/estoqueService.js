@@ -2,8 +2,8 @@ const estoqueRepository = require('../repositories/estoqueRepository');
 const produtosRepository = require('../repositories/produtosRepository');
 const AppError = require('../errors/AppError');
 
-async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo }, usuario_id) {
-    const produto = await produtosRepository.buscarPorId(produto_id);
+async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo }, usuario_id, empresaId) {
+    const produto = await produtosRepository.buscarPorId(produto_id, empresaId);
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
@@ -18,7 +18,8 @@ async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo }, u
         tipo,
         quantidade,
         motivo,
-        usuario_id
+        usuario_id,
+        empresa_id: empresaId
     });
 
     if (resultado.erro === 'PRODUTO_NAO_ENCONTRADO') {
@@ -32,8 +33,8 @@ async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo }, u
     return resultado.movimentacao;
 }
 
-async function historicoPorProduto(produto_id, { page, pageSize }) {
-    const produto = await produtosRepository.buscarPorId(produto_id);
+async function historicoPorProduto(produto_id, { page, pageSize }, empresaId) {
+    const produto = await produtosRepository.buscarPorId(produto_id, empresaId);
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
@@ -42,7 +43,7 @@ async function historicoPorProduto(produto_id, { page, pageSize }) {
     const limit = pageSize;
     const offset = (page - 1) * pageSize;
 
-    const { items, total } = await estoqueRepository.listarPorProduto(produto_id, { limit, offset });
+    const { items, total } = await estoqueRepository.listarPorProduto(produto_id, empresaId, { limit, offset });
 
     return {
         items,
@@ -53,8 +54,8 @@ async function historicoPorProduto(produto_id, { page, pageSize }) {
     };
 }
 
-async function alertasEstoqueBaixo() {
-    return estoqueRepository.getEstoqueBaixo();
+async function alertasEstoqueBaixo(empresaId) {
+    return estoqueRepository.getEstoqueBaixo(empresaId);
 }
 
 module.exports = {

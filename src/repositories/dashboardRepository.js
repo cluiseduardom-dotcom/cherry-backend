@@ -4,13 +4,13 @@ const db = require('../config/db');
 // decrescente, classificados pelo percentual acumulado de faturamento total —
 // A até 80%, B até 95%, C o restante. Só considera itens de vendas
 // 'finalizada' (vendas canceladas não contam como faturamento).
-async function getCurvaABC() {
+async function getCurvaABC(empresa_id) {
     const { rows } = await db.query(`
         WITH vendas_validas AS (
             SELECT iv.produto_id, iv.quantidade, iv.preco_unitario
             FROM itens_venda iv
             JOIN vendas v ON v.id = iv.venda_id
-            WHERE v.status = 'finalizada'
+            WHERE v.status = 'finalizada' AND v.empresa_id = $1
         ),
         faturamento_produto AS (
             SELECT
@@ -19,7 +19,7 @@ async function getCurvaABC() {
                 COALESCE(SUM(vv.quantidade * vv.preco_unitario), 0) AS faturamento
             FROM produtos p
             LEFT JOIN vendas_validas vv ON vv.produto_id = p.id
-            WHERE p.ativo = true
+            WHERE p.ativo = true AND p.empresa_id = $1
             GROUP BY p.id, p.nome
         ),
         com_acumulado AS (
@@ -42,7 +42,7 @@ async function getCurvaABC() {
             END AS curva
         FROM com_acumulado
         ORDER BY faturamento DESC, id
-    `);
+    `, [empresa_id]);
 
     return rows;
 }
@@ -52,13 +52,14 @@ async function getCurvaABC() {
 // média diária vendida no período (quantos dias o estoque atual ainda dura,
 // no ritmo observado). Ambos nulos quando não há base de cálculo (estoque
 // zerado para giro; nada vendido no período para cobertura).
-async function getGiroECobertura(dias) {
+async function getGiroECobertura(dias, empresa_id) {
     const { rows } = await db.query(
         `WITH vendidos_periodo AS (
             SELECT iv.produto_id, SUM(iv.quantidade) AS quantidade_vendida
             FROM itens_venda iv
             JOIN vendas v ON v.id = iv.venda_id
             WHERE v.status = 'finalizada' AND v.data >= NOW() - ($1::text || ' days')::interval
+              AND v.empresa_id = $2
             GROUP BY iv.produto_id
         )
         SELECT
@@ -73,9 +74,9 @@ async function getGiroECobertura(dias) {
             END AS cobertura_dias
         FROM produtos p
         LEFT JOIN vendidos_periodo vp ON vp.produto_id = p.id
-        WHERE p.ativo = true
+        WHERE p.ativo = true AND p.empresa_id = $2
         ORDER BY p.id`,
-        [dias]
+        [dias, empresa_id]
     );
 
     return rows;

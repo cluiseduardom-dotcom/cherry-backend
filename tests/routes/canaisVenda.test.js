@@ -5,9 +5,9 @@ const precosService = require('../../src/services/precosService');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
 
-const adminToken = makeToken({ id: 1, role: 'admin' });
-const estoquistaToken = makeToken({ id: 2, role: 'estoquista' });
-const vendedorToken = makeToken({ id: 3, role: 'vendedor' });
+const adminToken = makeToken({ id: 1, role: 'admin', empresa_id: 1 });
+const estoquistaToken = makeToken({ id: 2, role: 'estoquista', empresa_id: 1 });
+const vendedorToken = makeToken({ id: 3, role: 'vendedor', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();

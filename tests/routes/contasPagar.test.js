@@ -6,9 +6,9 @@ const AppError = require('../../src/errors/AppError');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
 
-const adminToken = makeToken({ id: 1, role: 'admin' });
-const vendedorToken = makeToken({ id: 2, role: 'vendedor' });
-const estoquistaToken = makeToken({ id: 3, role: 'estoquista' });
+const adminToken = makeToken({ id: 1, role: 'admin', empresa_id: 1 });
+const vendedorToken = makeToken({ id: 2, role: 'vendedor', empresa_id: 1 });
+const estoquistaToken = makeToken({ id: 3, role: 'estoquista', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -63,7 +63,7 @@ describe('GET /contas-pagar (list + filters)', () => {
 
     await request(app).get('/contas-pagar?page=2&pageSize=5').set('Authorization', `Bearer ${adminToken}`);
 
-    expect(contasPagarService.listar).toHaveBeenCalledWith(expect.objectContaining({ page: 2, pageSize: 5 }));
+    expect(contasPagarService.listar).toHaveBeenCalledWith(expect.objectContaining({ page: 2, pageSize: 5 }), 1);
   });
 
   test('falls back to defaults for invalid pagination params', async () => {
@@ -71,7 +71,7 @@ describe('GET /contas-pagar (list + filters)', () => {
 
     await request(app).get('/contas-pagar?page=abc&pageSize=-1').set('Authorization', `Bearer ${adminToken}`);
 
-    expect(contasPagarService.listar).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 20 }));
+    expect(contasPagarService.listar).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 20 }), 1);
   });
 
   test('forwards a status filter', async () => {
@@ -79,7 +79,7 @@ describe('GET /contas-pagar (list + filters)', () => {
 
     await request(app).get('/contas-pagar?status=pago').set('Authorization', `Bearer ${adminToken}`);
 
-    expect(contasPagarService.listar).toHaveBeenCalledWith(expect.objectContaining({ status: 'pago' }));
+    expect(contasPagarService.listar).toHaveBeenCalledWith(expect.objectContaining({ status: 'pago' }), 1);
   });
 
   test('returns 400 for an invalid status filter', async () => {
@@ -99,7 +99,7 @@ describe('GET /contas-pagar (list + filters)', () => {
     expect(contasPagarService.listar).toHaveBeenCalledWith(expect.objectContaining({
       vencimentoDe: '2026-01-01',
       vencimentoAte: '2026-12-31'
-    }));
+    }), 1);
   });
 });
 
@@ -171,6 +171,7 @@ describe('POST /contas-pagar', () => {
     expect(res.body.data.id).toBe(1);
     expect(contasPagarService.criar).toHaveBeenCalledWith(
       expect.objectContaining({ descricao: 'Aluguel', valor: 1500 }),
+      1,
       1
     );
   });
@@ -196,7 +197,7 @@ describe('PUT /contas-pagar/:id', () => {
       .send({ valor: 200 });
 
     expect(res.status).toBe(200);
-    expect(contasPagarService.atualizar).toHaveBeenCalledWith(1, { valor: 200 });
+    expect(contasPagarService.atualizar).toHaveBeenCalledWith(1, { valor: 200 }, 1);
   });
 
   test('returns 409 when the conta is not pendente', async () => {

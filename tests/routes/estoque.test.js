@@ -6,9 +6,9 @@ const AppError = require('../../src/errors/AppError');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
 
-const adminToken = makeToken({ id: 1, role: 'admin' });
-const estoquistaToken = makeToken({ id: 2, role: 'estoquista' });
-const vendedorToken = makeToken({ id: 3, role: 'vendedor' });
+const adminToken = makeToken({ id: 1, role: 'admin', empresa_id: 1 });
+const estoquistaToken = makeToken({ id: 2, role: 'estoquista', empresa_id: 1 });
+const vendedorToken = makeToken({ id: 3, role: 'vendedor', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -68,7 +68,8 @@ describe('POST /produtos/:id/movimentacoes', () => {
     expect(estoqueService.registrarMovimentacao).toHaveBeenCalledWith(
       1,
       { tipo: 'entrada', quantidade: 10, motivo: 'Reposição' },
-      2
+      2,
+      1
     );
   });
 
@@ -108,7 +109,7 @@ describe('GET /produtos/:id/movimentacoes', () => {
       .set('Authorization', `Bearer ${vendedorToken}`);
 
     expect(res.status).toBe(200);
-    expect(estoqueService.historicoPorProduto).toHaveBeenCalledWith(1, { page: 1, pageSize: 20 });
+    expect(estoqueService.historicoPorProduto).toHaveBeenCalledWith(1, { page: 1, pageSize: 20 }, 1);
   });
 
   test('returns 404 when the service throws', async () => {

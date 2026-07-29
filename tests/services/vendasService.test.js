@@ -20,13 +20,14 @@ describe('criar', () => {
     precosRepository.buscarCanalPorNome.mockResolvedValue({ id: 1, nome: 'loja_fisica' });
     vendasRepository.criar.mockResolvedValue({ id: 1, total: '30.00' });
 
-    const result = await vendasService.criar({ itens: [{ produto_id: 1, quantidade: 3 }] }, 7);
+    const result = await vendasService.criar({ itens: [{ produto_id: 1, quantidade: 3 }] }, 7, 9);
 
-    expect(precosRepository.buscarCanalPorNome).toHaveBeenCalledWith('loja_fisica');
+    expect(precosRepository.buscarCanalPorNome).toHaveBeenCalledWith('loja_fisica', 9);
     expect(vendasRepository.criar).toHaveBeenCalledWith({
       cliente_id: null,
       canal_id: 1,
       usuario_id: 7,
+      empresa_id: 9,
       itens: [{ produto_id: 1, quantidade: 3 }]
     });
     expect(result).toEqual({ id: 1, total: '30.00' });
@@ -36,13 +37,14 @@ describe('criar', () => {
     precosRepository.buscarCanalPorNome.mockResolvedValue({ id: 2, nome: 'online' });
     vendasRepository.criar.mockResolvedValue({ id: 1 });
 
-    await vendasService.criar({ cliente_id: 5, canal: 'online', itens: [{ produto_id: 1, quantidade: 1 }] }, 7);
+    await vendasService.criar({ cliente_id: 5, canal: 'online', itens: [{ produto_id: 1, quantidade: 1 }] }, 7, 9);
 
-    expect(precosRepository.buscarCanalPorNome).toHaveBeenCalledWith('online');
+    expect(precosRepository.buscarCanalPorNome).toHaveBeenCalledWith('online', 9);
     expect(vendasRepository.criar).toHaveBeenCalledWith({
       cliente_id: 5,
       canal_id: 2,
       usuario_id: 7,
+      empresa_id: 9,
       itens: [{ produto_id: 1, quantidade: 1 }]
     });
   });
@@ -71,26 +73,26 @@ describe('listar', () => {
   test('does not filter by usuario_id for an admin', async () => {
     vendasRepository.listarPaginado.mockResolvedValue({ items: [{ id: 1 }, { id: 2 }], total: 2 });
 
-    const result = await vendasService.listar({ page: 1, pageSize: 20 }, { id: 1, role: 'admin' });
+    const result = await vendasService.listar({ page: 1, pageSize: 20 }, { id: 1, role: 'admin', empresa_id: 9 });
 
-    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: undefined });
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: undefined, empresa_id: 9 });
     expect(result).toEqual({ items: [{ id: 1 }, { id: 2 }], page: 1, pageSize: 20, total: 2, totalPages: 1 });
   });
 
   test('filters by usuario_id for a vendedor (sees only their own vendas)', async () => {
     vendasRepository.listarPaginado.mockResolvedValue({ items: [{ id: 1 }], total: 1 });
 
-    await vendasService.listar({ page: 1, pageSize: 20 }, { id: 42, role: 'vendedor' });
+    await vendasService.listar({ page: 1, pageSize: 20 }, { id: 42, role: 'vendedor', empresa_id: 9 });
 
-    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: 42 });
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: 42, empresa_id: 9 });
   });
 
   test('computes the correct offset for page > 1', async () => {
     vendasRepository.listarPaginado.mockResolvedValue({ items: [], total: 0 });
 
-    await vendasService.listar({ page: 3, pageSize: 10 }, { id: 1, role: 'admin' });
+    await vendasService.listar({ page: 3, pageSize: 10 }, { id: 1, role: 'admin', empresa_id: 9 });
 
-    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 10, offset: 20, usuario_id: undefined });
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 10, offset: 20, usuario_id: undefined, empresa_id: 9 });
   });
 });
 
@@ -134,9 +136,9 @@ describe('cancelar', () => {
   test('delegates to the repository', async () => {
     vendasRepository.cancelar.mockResolvedValue({ id: 1, status: 'cancelada' });
 
-    const result = await vendasService.cancelar(1, 7);
+    const result = await vendasService.cancelar(1, 7, 9);
 
-    expect(vendasRepository.cancelar).toHaveBeenCalledWith(1, 7);
+    expect(vendasRepository.cancelar).toHaveBeenCalledWith(1, 7, 9);
     expect(result).toEqual({ id: 1, status: 'cancelada' });
   });
 
@@ -145,6 +147,6 @@ describe('cancelar', () => {
       Object.assign(new Error('Somente vendas finalizadas podem ser canceladas'), { statusCode: 409 })
     );
 
-    await expect(vendasService.cancelar(1, 7)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(vendasService.cancelar(1, 7, 9)).rejects.toMatchObject({ statusCode: 409 });
   });
 });

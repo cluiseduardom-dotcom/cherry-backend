@@ -15,7 +15,7 @@ function comAtraso(conta) {
     return { ...conta, atrasado };
 }
 
-async function listar({ page, pageSize, status, vencimentoDe, vencimentoAte }) {
+async function listar({ page, pageSize, status, vencimentoDe, vencimentoAte }, empresaId) {
     const limit = pageSize;
     const offset = (page - 1) * pageSize;
 
@@ -24,7 +24,8 @@ async function listar({ page, pageSize, status, vencimentoDe, vencimentoAte }) {
         offset,
         status,
         vencimentoDe,
-        vencimentoAte
+        vencimentoAte,
+        empresa_id: empresaId
     });
 
     return {
@@ -36,8 +37,8 @@ async function listar({ page, pageSize, status, vencimentoDe, vencimentoAte }) {
     };
 }
 
-async function buscarPorId(id) {
-    const conta = await contasPagarRepository.buscarPorId(id);
+async function buscarPorId(id, empresaId) {
+    const conta = await contasPagarRepository.buscarPorId(id, empresaId);
 
     if (!conta) {
         throw new AppError('Conta a pagar não encontrada', 404);
@@ -46,16 +47,16 @@ async function buscarPorId(id) {
     return comAtraso(conta);
 }
 
-async function criar(dados, usuario_id) {
-    const conta = await contasPagarRepository.criar({ ...dados, usuario_id });
+async function criar(dados, usuario_id, empresaId) {
+    const conta = await contasPagarRepository.criar({ ...dados, usuario_id, empresa_id: empresaId });
     return comAtraso(conta);
 }
 
 // A checagem de "só pendente pode ser editada" mora no repository (transação
 // com FOR UPDATE), mesmo motivo de marcarComoPaga/cancelar: leitura+checagem
 // aqui deixaria uma janela para um PATCH concorrente escapar da validação.
-async function atualizar(id, dados) {
-    const atualizada = await contasPagarRepository.atualizar(id, dados);
+async function atualizar(id, dados, empresaId) {
+    const atualizada = await contasPagarRepository.atualizar(id, dados, empresaId);
     return comAtraso(atualizada);
 }
 
@@ -64,13 +65,13 @@ async function atualizar(id, dados) {
 // delegar direto pro repository: fazer a leitura+checagem aqui e a escrita lá
 // deixaria uma janela para duas requisições concorrentes passarem ambas pela
 // checagem antes de qualquer uma escrever.
-async function marcarComoPaga(id) {
-    const paga = await contasPagarRepository.marcarComoPaga(id);
+async function marcarComoPaga(id, empresaId) {
+    const paga = await contasPagarRepository.marcarComoPaga(id, empresaId);
     return comAtraso(paga);
 }
 
-async function cancelar(id) {
-    const cancelada = await contasPagarRepository.cancelar(id);
+async function cancelar(id, empresaId) {
+    const cancelada = await contasPagarRepository.cancelar(id, empresaId);
     return comAtraso(cancelada);
 }
 

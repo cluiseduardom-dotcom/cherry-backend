@@ -80,7 +80,7 @@ describe('definirPreco', () => {
     precosRepository.buscarCanalPorId.mockResolvedValue({ id: 1, nome: 'loja_fisica' });
     precosRepository.inserirPreco.mockResolvedValue({ id: 1, produto_id: 1, canal_id: 1, preco_venda: '30.00' });
 
-    const result = await precosService.definirPreco(1, 1, { markup_percentual: 50 }, 7);
+    const result = await precosService.definirPreco(1, 1, { markup_percentual: 50 }, 7, 9);
 
     expect(precosRepository.inserirPreco).toHaveBeenCalledWith({
       produto_id: 1,
@@ -88,7 +88,8 @@ describe('definirPreco', () => {
       preco_venda: 30,
       markup_percentual: 50,
       margem_percentual: 33.33,
-      usuario_id: 7
+      usuario_id: 7,
+      empresa_id: 9
     });
     expect(result.preco_venda).toBe('30.00');
   });
@@ -137,9 +138,9 @@ describe('historicoPorProduto', () => {
     produtosRepository.buscarPorId.mockResolvedValue({ id: 1 });
     precosRepository.listarHistoricoPorProduto.mockResolvedValue({ items: [{ id: 1 }], total: 1 });
 
-    const result = await precosService.historicoPorProduto(1, undefined, { page: 1, pageSize: 20 });
+    const result = await precosService.historicoPorProduto(1, undefined, { page: 1, pageSize: 20 }, 9);
 
-    expect(precosRepository.listarHistoricoPorProduto).toHaveBeenCalledWith(1, undefined, { limit: 20, offset: 0 });
+    expect(precosRepository.listarHistoricoPorProduto).toHaveBeenCalledWith(1, undefined, 9, { limit: 20, offset: 0 });
     expect(result).toEqual({ items: [{ id: 1 }], page: 1, pageSize: 20, total: 1, totalPages: 1 });
   });
 
@@ -157,9 +158,9 @@ describe('historicoPorProduto', () => {
     precosRepository.buscarCanalPorNome.mockResolvedValue({ id: 2, nome: 'online' });
     precosRepository.listarHistoricoPorProduto.mockResolvedValue({ items: [], total: 0 });
 
-    await precosService.historicoPorProduto(1, 'online', { page: 1, pageSize: 20 });
+    await precosService.historicoPorProduto(1, 'online', { page: 1, pageSize: 20 }, 9);
 
-    expect(precosRepository.listarHistoricoPorProduto).toHaveBeenCalledWith(1, 2, { limit: 20, offset: 0 });
+    expect(precosRepository.listarHistoricoPorProduto).toHaveBeenCalledWith(1, 2, 9, { limit: 20, offset: 0 });
   });
 });
 

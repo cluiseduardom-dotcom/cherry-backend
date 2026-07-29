@@ -32,7 +32,7 @@ function filtrarPrecoParaRole(preco, role) {
 
 async function listarCanais(req, res, next) {
     try {
-        const canais = await precosService.listarCanais();
+        const canais = await precosService.listarCanais(req.usuario.empresa_id);
         return response.success(res, canais);
     } catch (error) {
         next(error);
@@ -42,7 +42,7 @@ async function listarCanais(req, res, next) {
 async function listarVigentes(req, res, next) {
     try {
         const produtoId = parseId(req.params.id);
-        const precos = await precosService.listarVigentesPorProduto(produtoId);
+        const precos = await precosService.listarVigentesPorProduto(produtoId, req.usuario.empresa_id);
 
         const filtrados = precos.map((preco) => filtrarPrecoParaRole(preco, req.usuario.role));
 
@@ -57,7 +57,7 @@ async function historico(req, res, next) {
         const produtoId = parseId(req.params.id);
         const paginacao = parsePaginacao(req.query);
 
-        const resultado = await precosService.historicoPorProduto(produtoId, req.query.canal, paginacao);
+        const resultado = await precosService.historicoPorProduto(produtoId, req.query.canal, paginacao, req.usuario.empresa_id);
 
         return response.success(res, resultado);
     } catch (error) {
@@ -76,7 +76,7 @@ async function definirPreco(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const preco = await precosService.definirPreco(produtoId, canalId, parsed.data, req.usuario.id);
+        const preco = await precosService.definirPreco(produtoId, canalId, parsed.data, req.usuario.id, req.usuario.empresa_id);
 
         return response.success(res, preco, 201);
     } catch (error) {

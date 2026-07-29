@@ -164,9 +164,9 @@ describe('remover', () => {
     produtosRepository.buscarPorId.mockResolvedValue({ id: 1 });
     produtosRepository.desativar.mockResolvedValue({ id: 1, ativo: false, preco_venda: '10.00', custo: '5.00' });
 
-    const result = await produtosService.remover(1);
+    const result = await produtosService.remover(1, 7);
 
-    expect(produtosRepository.desativar).toHaveBeenCalledWith(1);
+    expect(produtosRepository.desativar).toHaveBeenCalledWith(1, 7);
     expect(result.ativo).toBe(false);
   });
 });
@@ -187,9 +187,9 @@ describe('ajustarPreco', () => {
     produtosRepository.buscarPorId.mockResolvedValue({ id: 1 });
     produtosRepository.ajustarPreco.mockResolvedValue({ id: 1, preco_venda: 11 });
 
-    const result = await produtosService.ajustarPreco(1, 0.1);
+    const result = await produtosService.ajustarPreco(1, 0.1, 7);
 
-    expect(produtosRepository.ajustarPreco).toHaveBeenCalledWith(1, 0.1);
+    expect(produtosRepository.ajustarPreco).toHaveBeenCalledWith(1, 0.1, 7);
     expect(result).toEqual({ id: 1, preco_venda: 11 });
   });
 });

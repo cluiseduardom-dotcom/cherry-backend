@@ -37,7 +37,8 @@ async function registrarMovimentacao(req, res, next) {
         const movimentacao = await estoqueService.registrarMovimentacao(
             produtoId,
             parsed.data,
-            req.usuario.id
+            req.usuario.id,
+            req.usuario.empresa_id
         );
 
         return response.success(res, movimentacao, 201);
@@ -51,7 +52,7 @@ async function historico(req, res, next) {
         const produtoId = parseId(req.params.id);
         const paginacao = parsePaginacao(req.query);
 
-        const resultado = await estoqueService.historicoPorProduto(produtoId, paginacao);
+        const resultado = await estoqueService.historicoPorProduto(produtoId, paginacao, req.usuario.empresa_id);
 
         return response.success(res, resultado);
     } catch (error) {
@@ -61,7 +62,7 @@ async function historico(req, res, next) {
 
 async function alertas(req, res, next) {
     try {
-        const dados = await estoqueService.alertasEstoqueBaixo();
+        const dados = await estoqueService.alertasEstoqueBaixo(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);

@@ -6,8 +6,8 @@ const AppError = require('../../src/errors/AppError');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
 
-const vendedorToken = makeToken({ id: 1, role: 'vendedor' });
-const adminToken = makeToken({ id: 2, role: 'admin' });
+const vendedorToken = makeToken({ id: 1, role: 'vendedor', empresa_id: 1 });
+const adminToken = makeToken({ id: 2, role: 'admin', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -62,7 +62,7 @@ describe('GET /produtos (list + pagination)', () => {
       .get('/produtos?page=2&pageSize=5')
       .set('Authorization', `Bearer ${adminToken}`);
 
-    expect(produtosService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5, canal: 'loja_fisica' });
+    expect(produtosService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5, canal: 'loja_fisica' }, 1);
   });
 
   test('falls back to defaults for invalid pagination params', async () => {
@@ -72,7 +72,7 @@ describe('GET /produtos (list + pagination)', () => {
       .get('/produtos?page=abc&pageSize=-1')
       .set('Authorization', `Bearer ${adminToken}`);
 
-    expect(produtosService.listar).toHaveBeenCalledWith({ page: 1, pageSize: 20, canal: 'loja_fisica' });
+    expect(produtosService.listar).toHaveBeenCalledWith({ page: 1, pageSize: 20, canal: 'loja_fisica' }, 1);
   });
 
   test('passes an explicit canal query param through', async () => {
@@ -82,7 +82,7 @@ describe('GET /produtos (list + pagination)', () => {
       .get('/produtos?canal=online')
       .set('Authorization', `Bearer ${adminToken}`);
 
-    expect(produtosService.listar).toHaveBeenCalledWith({ page: 1, pageSize: 20, canal: 'online' });
+    expect(produtosService.listar).toHaveBeenCalledWith({ page: 1, pageSize: 20, canal: 'online' }, 1);
   });
 
   test('returns 400 when the service rejects an invalid canal', async () => {
@@ -138,10 +138,10 @@ describe('GET /produtos/:id', () => {
     produtosService.buscarPorId.mockResolvedValue(produto);
 
     await request(app).get('/produtos/1').set('Authorization', `Bearer ${adminToken}`);
-    expect(produtosService.buscarPorId).toHaveBeenCalledWith(1, 'loja_fisica');
+    expect(produtosService.buscarPorId).toHaveBeenCalledWith(1, 'loja_fisica', 1);
 
     await request(app).get('/produtos/1?canal=online').set('Authorization', `Bearer ${adminToken}`);
-    expect(produtosService.buscarPorId).toHaveBeenCalledWith(1, 'online');
+    expect(produtosService.buscarPorId).toHaveBeenCalledWith(1, 'online', 1);
   });
 });
 
@@ -183,7 +183,7 @@ describe('POST /produtos (admin only)', () => {
 
 describe('PUT /produtos/:id (admin only)', () => {
   test('returns 403 for a non-admin (estoquista) token', async () => {
-    const estoquistaToken = makeToken({ id: 3, role: 'estoquista' });
+    const estoquistaToken = makeToken({ id: 3, role: 'estoquista', empresa_id: 1 });
 
     const res = await request(app)
       .put('/produtos/1')
@@ -213,7 +213,7 @@ describe('PUT /produtos/:id (admin only)', () => {
       .send({ preco_venda: 60 });
 
     expect(res.status).toBe(200);
-    expect(produtosService.atualizar).toHaveBeenCalledWith(1, { preco_venda: 60 });
+    expect(produtosService.atualizar).toHaveBeenCalledWith(1, { preco_venda: 60 }, 1);
   });
 });
 

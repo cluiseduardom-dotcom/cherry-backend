@@ -10,8 +10,8 @@ function comMargem(produto) {
     return { ...produto, margem_percentual };
 }
 
-async function resolverCanal(nome) {
-    const canal = await precosRepository.buscarCanalPorNome(nome);
+async function resolverCanal(nome, empresaId) {
+    const canal = await precosRepository.buscarCanalPorNome(nome, empresaId);
 
     if (!canal) {
         throw new AppError('Canal inválido', 400);
@@ -33,14 +33,14 @@ function comPrecoCanal(produto, canalNome, precoRow) {
     };
 }
 
-async function listar({ page, pageSize, canal }) {
+async function listar({ page, pageSize, canal }, empresaId) {
     const limit = pageSize;
     const offset = (page - 1) * pageSize;
 
-    const canalRow = await resolverCanal(canal);
-    const { items, total } = await produtosRepository.listarPaginado({ limit, offset });
+    const canalRow = await resolverCanal(canal, empresaId);
+    const { items, total } = await produtosRepository.listarPaginado({ limit, offset, empresa_id: empresaId });
 
-    const precos = await precosRepository.listarPrecosVigentesPorCanal(items.map((produto) => produto.id), canalRow.id);
+    const precos = await precosRepository.listarPrecosVigentesPorCanal(items.map((produto) => produto.id), canalRow.id, empresaId);
     const precosPorProduto = new Map(precos.map((preco) => [preco.produto_id, preco]));
 
     return {
@@ -52,119 +52,119 @@ async function listar({ page, pageSize, canal }) {
     };
 }
 
-async function buscarPorId(id, canal) {
-    const produto = await produtosRepository.buscarPorId(id);
+async function buscarPorId(id, canal, empresaId) {
+    const produto = await produtosRepository.buscarPorId(id, empresaId);
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
     }
 
-    const canalRow = await resolverCanal(canal);
-    const precoRow = await precosRepository.buscarPrecoVigente(id, canalRow.id);
+    const canalRow = await resolverCanal(canal, empresaId);
+    const precoRow = await precosRepository.buscarPrecoVigente(id, canalRow.id, empresaId);
 
     return comPrecoCanal(comMargem(produto), canalRow.nome, precoRow);
 }
 
-async function criar(dados) {
-    const existente = await produtosRepository.buscarPorSku(dados.sku);
+async function criar(dados, empresaId) {
+    const existente = await produtosRepository.buscarPorSku(dados.sku, empresaId);
 
     if (existente) {
         throw new AppError('SKU já cadastrado', 409);
     }
 
-    const produto = await produtosRepository.criar(dados);
+    const produto = await produtosRepository.criar({ ...dados, empresa_id: empresaId });
 
     return comMargem(produto);
 }
 
-async function atualizar(id, dados) {
-    const produto = await produtosRepository.buscarPorId(id);
+async function atualizar(id, dados, empresaId) {
+    const produto = await produtosRepository.buscarPorId(id, empresaId);
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
     }
 
     if (dados.sku && dados.sku !== produto.sku) {
-        const existente = await produtosRepository.buscarPorSku(dados.sku);
+        const existente = await produtosRepository.buscarPorSku(dados.sku, empresaId);
 
         if (existente) {
             throw new AppError('SKU já cadastrado', 409);
         }
     }
 
-    const atualizado = await produtosRepository.atualizar(id, dados);
+    const atualizado = await produtosRepository.atualizar(id, dados, empresaId);
 
     return comMargem(atualizado);
 }
 
-async function remover(id) {
-    const produto = await produtosRepository.buscarPorId(id);
+async function remover(id, empresaId) {
+    const produto = await produtosRepository.buscarPorId(id, empresaId);
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
     }
 
-    const desativado = await produtosRepository.desativar(id);
+    const desativado = await produtosRepository.desativar(id, empresaId);
 
     return comMargem(desativado);
 }
 
-async function ajustarPreco(id, percentual) {
-    const produto = await produtosRepository.buscarPorId(id);
+async function ajustarPreco(id, percentual, empresaId) {
+    const produto = await produtosRepository.buscarPorId(id, empresaId);
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
     }
 
-    return produtosRepository.ajustarPreco(id, percentual);
+    return produtosRepository.ajustarPreco(id, percentual, empresaId);
 }
 
-async function giro() {
-    return produtosRepository.getGiro();
+async function giro(empresaId) {
+    return produtosRepository.getGiro(empresaId);
 }
 
-async function parados() {
-    return produtosRepository.getParados();
+async function parados(empresaId) {
+    return produtosRepository.getParados(empresaId);
 }
 
-async function pricingProfissional() {
-    return produtosRepository.getPricingProfissional();
+async function pricingProfissional(empresaId) {
+    return produtosRepository.getPricingProfissional(empresaId);
 }
 
-async function lucroPorProduto() {
-    return produtosRepository.getLucroPorProduto();
+async function lucroPorProduto(empresaId) {
+    return produtosRepository.getLucroPorProduto(empresaId);
 }
 
-async function alertaPrejuizo() {
-    return produtosRepository.getAlertaPrejuizo();
+async function alertaPrejuizo(empresaId) {
+    return produtosRepository.getAlertaPrejuizo(empresaId);
 }
 
-async function maisVendidos() {
-    return produtosRepository.getMaisVendidos();
+async function maisVendidos(empresaId) {
+    return produtosRepository.getMaisVendidos(empresaId);
 }
 
-async function curvaABC() {
-    return produtosRepository.getCurvaABC();
+async function curvaABC(empresaId) {
+    return produtosRepository.getCurvaABC(empresaId);
 }
 
-async function reposicao() {
-    return produtosRepository.getReposicao();
+async function reposicao(empresaId) {
+    return produtosRepository.getReposicao(empresaId);
 }
 
-async function sugestaoPreco() {
-    return produtosRepository.getSugestaoPreco();
+async function sugestaoPreco(empresaId) {
+    return produtosRepository.getSugestaoPreco(empresaId);
 }
 
-async function inteligencia() {
-    return produtosRepository.getInteligencia();
+async function inteligencia(empresaId) {
+    return produtosRepository.getInteligencia(empresaId);
 }
 
-async function acoes() {
-    return produtosRepository.getAcoes();
+async function acoes(empresaId) {
+    return produtosRepository.getAcoes(empresaId);
 }
 
-async function dashboard() {
-    return produtosRepository.getDashboard();
+async function dashboard(empresaId) {
+    return produtosRepository.getDashboard(empresaId);
 }
 
 module.exports = {

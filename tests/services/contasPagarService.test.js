@@ -77,10 +77,10 @@ describe('listar', () => {
 
     const result = await contasPagarService.listar({
       page: 1, pageSize: 20, status: 'pendente', vencimentoDe: undefined, vencimentoAte: undefined
-    });
+    }, 9);
 
     expect(contasPagarRepository.listarPaginado).toHaveBeenCalledWith({
-      limit: 20, offset: 0, status: 'pendente', vencimentoDe: undefined, vencimentoAte: undefined
+      limit: 20, offset: 0, status: 'pendente', vencimentoDe: undefined, vencimentoAte: undefined, empresa_id: 9
     });
     expect(result.items).toHaveLength(1);
     expect(result.items[0]).toHaveProperty('atrasado');
@@ -117,11 +117,12 @@ describe('criar', () => {
 
     const result = await contasPagarService.criar(
       { descricao: 'Aluguel', valor: 1500, data_vencimento: new Date('2026-08-10') },
-      7
+      7,
+      9
     );
 
     expect(contasPagarRepository.criar).toHaveBeenCalledWith({
-      descricao: 'Aluguel', valor: 1500, data_vencimento: new Date('2026-08-10'), usuario_id: 7
+      descricao: 'Aluguel', valor: 1500, data_vencimento: new Date('2026-08-10'), usuario_id: 7, empresa_id: 9
     });
     expect(result.id).toBe(1);
   });
@@ -133,9 +134,9 @@ describe('atualizar', () => {
       id: 1, valor: '200.00', status: 'pendente', data_vencimento: '2026-08-10'
     });
 
-    const result = await contasPagarService.atualizar(1, { valor: 200 });
+    const result = await contasPagarService.atualizar(1, { valor: 200 }, 9);
 
-    expect(contasPagarRepository.atualizar).toHaveBeenCalledWith(1, { valor: 200 });
+    expect(contasPagarRepository.atualizar).toHaveBeenCalledWith(1, { valor: 200 }, 9);
     expect(result.valor).toBe('200.00');
   });
 
@@ -168,9 +169,9 @@ describe('marcarComoPaga', () => {
       id: 1, status: 'pago', data_vencimento: '2026-08-10', data_pagamento: '2026-07-27'
     });
 
-    const result = await contasPagarService.marcarComoPaga(1);
+    const result = await contasPagarService.marcarComoPaga(1, 9);
 
-    expect(contasPagarRepository.marcarComoPaga).toHaveBeenCalledWith(1);
+    expect(contasPagarRepository.marcarComoPaga).toHaveBeenCalledWith(1, 9);
     expect(result.status).toBe('pago');
   });
 
@@ -192,9 +193,9 @@ describe('cancelar', () => {
       id: 1, status: 'cancelado', data_vencimento: '2026-08-10'
     });
 
-    const result = await contasPagarService.cancelar(1);
+    const result = await contasPagarService.cancelar(1, 9);
 
-    expect(contasPagarRepository.cancelar).toHaveBeenCalledWith(1);
+    expect(contasPagarRepository.cancelar).toHaveBeenCalledWith(1, 9);
     expect(result.status).toBe('cancelado');
   });
 

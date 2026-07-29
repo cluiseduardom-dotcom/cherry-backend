@@ -39,7 +39,7 @@ async function register(req, res, next) {
 
         const { nome, email, senha, papel } = parsed.data;
 
-        const resultado = await authService.register(nome, email, senha, papel);
+        const resultado = await authService.register(nome, email, senha, papel, req.usuario.empresa_id);
 
         return response.success(res, resultado, 201);
 

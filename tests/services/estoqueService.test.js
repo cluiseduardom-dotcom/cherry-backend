@@ -45,14 +45,15 @@ describe('registrarMovimentacao', () => {
       movimentacao: { id: 1, produto_id: 1, tipo: 'entrada', quantidade: 5, estoque_resultante: 15 }
     });
 
-    const result = await estoqueService.registrarMovimentacao(1, { tipo: 'entrada', quantidade: 5 }, 42);
+    const result = await estoqueService.registrarMovimentacao(1, { tipo: 'entrada', quantidade: 5 }, 42, 7);
 
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith({
       produto_id: 1,
       tipo: 'entrada',
       quantidade: 5,
       motivo: undefined,
-      usuario_id: 42
+      usuario_id: 42,
+      empresa_id: 7
     });
     expect(result.estoque_resultante).toBe(15);
   });
@@ -71,9 +72,9 @@ describe('historicoPorProduto', () => {
     produtosRepository.buscarPorId.mockResolvedValue({ id: 1 });
     estoqueRepository.listarPorProduto.mockResolvedValue({ items: [{ id: 1 }], total: 1 });
 
-    const result = await estoqueService.historicoPorProduto(1, { page: 1, pageSize: 20 });
+    const result = await estoqueService.historicoPorProduto(1, { page: 1, pageSize: 20 }, 7);
 
-    expect(estoqueRepository.listarPorProduto).toHaveBeenCalledWith(1, { limit: 20, offset: 0 });
+    expect(estoqueRepository.listarPorProduto).toHaveBeenCalledWith(1, 7, { limit: 20, offset: 0 });
     expect(result).toEqual({ items: [{ id: 1 }], page: 1, pageSize: 20, total: 1, totalPages: 1 });
   });
 });
@@ -81,7 +82,8 @@ describe('historicoPorProduto', () => {
 test('alertasEstoqueBaixo delegates to the repository', async () => {
   estoqueRepository.getEstoqueBaixo.mockResolvedValue([{ id: 1, estoque_atual: 1, estoque_minimo: 5 }]);
 
-  await expect(estoqueService.alertasEstoqueBaixo()).resolves.toEqual([
+  await expect(estoqueService.alertasEstoqueBaixo(7)).resolves.toEqual([
     { id: 1, estoque_atual: 1, estoque_minimo: 5 }
   ]);
+  expect(estoqueRepository.getEstoqueBaixo).toHaveBeenCalledWith(7);
 });

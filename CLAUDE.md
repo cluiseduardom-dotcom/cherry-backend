@@ -2,7 +2,7 @@
 
 ERP para empresa de semijoias. Este arquivo é lido a cada sessão: mantenha-o curto.
 
-**Multi-tenant desde a migration `007_multi_tenant.sql`**: existe tabela `empresas`; toda tabela de dado de negócio tem `empresa_id` (FK NOT NULL, indexada). Toda tabela nova precisa da coluna `empresa_id` desde a criação, e toda query nova (SELECT/UPDATE/DELETE) precisa filtrar por `empresa_id` — nunca confiar só no id do recurso. O schema/migração já está pronto; controllers/services/repositories **ainda não filtram por empresa_id** (isso é a próxima etapa) — trate isso como pendência de segurança até lá, não como acabado.
+**Multi-tenant desde a migration `007_multi_tenant.sql`**: existe tabela `empresas`; toda tabela de dado de negócio tem `empresa_id` (FK NOT NULL, indexada), e toda a camada de aplicação (controllers/services/repositories) já filtra por ele. `empresa_id` vem do JWT (`req.usuario.empresa_id`, setado no login) — nunca do body/query da requisição. Toda tabela nova precisa da coluna `empresa_id` desde a criação, e toda query nova (SELECT/UPDATE/DELETE/INSERT) precisa considerar `empresa_id` — nunca confiar só no id do recurso.
 
 ## Stack
 
@@ -72,10 +72,16 @@ Regras já decididas na migração multi-tenant (não reabrir):
 - Tabela `empresas`: `id`, `nome`, `cnpj` (opcional), `status` (`ativa`/`inativa`), `criado_em`. Campo pedido como `created_at` foi renomeado pra `criado_em` pra seguir a convenção de nomes do projeto (português, snake_case) já usada em todas as outras tabelas.
 - `empresa_id` foi adicionado (FK NOT NULL + índice) em `usuarios`, `clientes`, `produtos`, `vendas`, `itens_venda`, `movimentacoes_estoque`, `contas_pagar` (lista original) **e também** em `canais_venda` e `precos_produto` (não estavam na lista original, mas ficaram de fora seria inconsistente: canal de venda pode variar por empresa no futuro, e `precos_produto` é dado transacional). Confirmado com o usuário antes de implementar.
 - Todas as linhas existentes foram migradas pra um registro seed único em `empresas`: nome "Cherry Semijoias" (placeholder, nome real não encontrado no repo), `cnpj` NULL. **Pendência:** ajustar nome/CNPJ reais quando o usuário informar.
-- **Não foram alteradas** as UNIQUE constraints existentes (`usuarios.email`, `produtos.sku`, `canais_venda.nome`) para incluir `empresa_id` — hoje continuam únicas globalmente, não por empresa. Isso significa que duas empresas diferentes não podem ter usuário com o mesmo email, nem produto com o mesmo SKU. Ficou fora do escopo desta migração (era só sobre `empresa_id`); é decisão de regra de negócio a confirmar antes de mudar.
-- Controllers, services e repositories **ainda não usam `empresa_id`** — nenhuma query filtra por ele ainda. Essa é a próxima etapa; até lá, o isolamento entre empresas não existe de fato na camada de aplicação, só no schema.
+- **Não foram alteradas** as UNIQUE constraints existentes (`usuarios.email`, `produtos.sku`, `canais_venda.nome`) para incluir `empresa_id` — hoje continuam únicas globalmente, não por empresa. Isso significa que duas empresas diferentes não podem ter usuário com o mesmo email, nem produto com o mesmo SKU. Ainda é decisão de regra de negócio a confirmar antes de mudar (não reabrir sem decisão explícita).
 
-Próximo: filtrar controllers/services/repositories por `empresa_id` (próxima etapa do multi-tenant); depois, contas a receber (vínculo com vendas).
+Regras já decididas no filtro de `empresa_id` na aplicação (não reabrir):
+- `empresa_id` só existe no JWT (setado em `authService.login`, lido em `authMiddleware` como `req.usuario.empresa_id`). Controllers sempre passam `req.usuario.empresa_id` explicitamente pros services — nunca inferido de outro lugar.
+- `POST /auth/register`: o novo usuário é criado na **mesma empresa do admin que está logado** (não existe campo de escolher empresa no body). Não há endpoint de "criar empresa" ainda — só o registro seed da migration.
+- Toda leitura por id (`buscarPorId`, `FOR UPDATE`, etc.) filtra por `id AND empresa_id` na mesma query, nunca busca por id e checa depois em JS — evita corrida e é mais barato.
+- Referência cruzada (ex: `cliente_id` numa venda, `produto_id` num item, `canal_id` num preço) é validada contra a mesma `empresa_id` de quem está fazendo a requisição, dentro da própria transação quando aplicável (`vendasRepository.criar` valida cliente e cada produto). Referência a recurso de outra empresa responde como se o recurso não existisse (404), nunca 403 — mesmo padrão já usado em `vendasService.buscarPorId` pra vendedor vendo venda de outro usuário (não confirma a existência do id).
+- `itens_venda` e `movimentacoes_estoque` recebem `empresa_id` diretamente (denormalizado), não só via join — decisão já tomada na migration 007, mantida aqui pra evitar joins extras em toda leitura.
+
+Próximo: contas a receber (vínculo com vendas).
 
 ## Banco
 

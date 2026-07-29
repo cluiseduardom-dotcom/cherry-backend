@@ -6,9 +6,9 @@ const AppError = require('../../src/errors/AppError');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
 
-const adminToken = makeToken({ id: 1, role: 'admin' });
-const vendedorToken = makeToken({ id: 2, role: 'vendedor' });
-const estoquistaToken = makeToken({ id: 3, role: 'estoquista' });
+const adminToken = makeToken({ id: 1, role: 'admin', empresa_id: 1 });
+const vendedorToken = makeToken({ id: 2, role: 'vendedor', empresa_id: 1 });
+const estoquistaToken = makeToken({ id: 3, role: 'estoquista', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -75,7 +75,7 @@ describe('POST /vendas (admin and vendedor only)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.total).toBe('30.00');
-    expect(vendasService.criar).toHaveBeenCalledWith({ itens: [{ produto_id: 1, quantidade: 3 }] }, 2);
+    expect(vendasService.criar).toHaveBeenCalledWith({ itens: [{ produto_id: 1, quantidade: 3 }] }, 2, 1);
   });
 
   test('returns 201 for an admin too', async () => {
@@ -143,7 +143,7 @@ describe('GET /vendas (admin and vendedor only, paginated)', () => {
       .get('/vendas?page=2&pageSize=5')
       .set('Authorization', `Bearer ${vendedorToken}`);
 
-    expect(vendasService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5 }, { id: 2, role: 'vendedor' });
+    expect(vendasService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5 }, { id: 2, role: 'vendedor', empresa_id: 1 });
   });
 
   test('never exposes custo or margem_percentual for an admin or vendedor', async () => {
@@ -191,7 +191,7 @@ describe('GET /vendas/:id (admin and vendedor only)', () => {
     const res = await request(app).get('/vendas/1').set('Authorization', `Bearer ${vendedorToken}`);
 
     expect(res.status).toBe(200);
-    expect(vendasService.buscarPorId).toHaveBeenCalledWith(1, { id: 2, role: 'vendedor' });
+    expect(vendasService.buscarPorId).toHaveBeenCalledWith(1, { id: 2, role: 'vendedor', empresa_id: 1 });
     const json = JSON.stringify(res.body);
     expect(json).not.toMatch(/custo|preco_custo|margem_percentual/);
   });
@@ -228,6 +228,6 @@ describe('PATCH /vendas/:id/cancelar (admin only)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('cancelada');
-    expect(vendasService.cancelar).toHaveBeenCalledWith(1, 1);
+    expect(vendasService.cancelar).toHaveBeenCalledWith(1, 1, 1);
   });
 });

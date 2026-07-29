@@ -6,9 +6,9 @@ const AppError = require('../../src/errors/AppError');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
 
-const adminToken = makeToken({ id: 1, role: 'admin' });
-const estoquistaToken = makeToken({ id: 2, role: 'estoquista' });
-const vendedorToken = makeToken({ id: 3, role: 'vendedor' });
+const adminToken = makeToken({ id: 1, role: 'admin', empresa_id: 1 });
+const estoquistaToken = makeToken({ id: 2, role: 'estoquista', empresa_id: 1 });
+const vendedorToken = makeToken({ id: 3, role: 'vendedor', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -88,7 +88,7 @@ describe('PUT /produtos/:id/precos/:canalId (admin only)', () => {
       .send({ markup_percentual: 50 });
 
     expect(res.status).toBe(201);
-    expect(precosService.definirPreco).toHaveBeenCalledWith(1, 1, { markup_percentual: 50 }, 1);
+    expect(precosService.definirPreco).toHaveBeenCalledWith(1, 1, { markup_percentual: 50 }, 1, 1);
     expect(res.body.data.preco_venda).toBe('30.00');
   });
 
@@ -192,7 +192,7 @@ describe('GET /produtos/:id/precos/historico (admin only)', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(precosService.historicoPorProduto).toHaveBeenCalledWith(1, undefined, { page: 2, pageSize: 5 });
+    expect(precosService.historicoPorProduto).toHaveBeenCalledWith(1, undefined, { page: 2, pageSize: 5 }, 1);
   });
 
   test('passes the canal query param through', async () => {
@@ -202,6 +202,6 @@ describe('GET /produtos/:id/precos/historico (admin only)', () => {
       .get('/produtos/1/precos/historico?canal=online')
       .set('Authorization', `Bearer ${adminToken}`);
 
-    expect(precosService.historicoPorProduto).toHaveBeenCalledWith(1, 'online', { page: 1, pageSize: 20 });
+    expect(precosService.historicoPorProduto).toHaveBeenCalledWith(1, 'online', { page: 1, pageSize: 20 }, 1);
   });
 });

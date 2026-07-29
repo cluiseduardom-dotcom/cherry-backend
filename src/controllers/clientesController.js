@@ -15,7 +15,7 @@ function parseId(value) {
 
 async function listar(req, res, next) {
     try {
-        const clientes = await clientesService.listar();
+        const clientes = await clientesService.listar(req.usuario.empresa_id);
         return response.success(res, clientes);
     } catch (error) {
         next(error);
@@ -30,7 +30,7 @@ async function criar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const cliente = await clientesService.criar(parsed.data);
+        const cliente = await clientesService.criar(parsed.data, req.usuario.empresa_id);
 
         return response.success(res, cliente, 201);
     } catch (error) {
@@ -42,7 +42,7 @@ async function historico(req, res, next) {
     try {
         const id = parseId(req.params.id);
 
-        const registros = await clientesService.historico(id);
+        const registros = await clientesService.historico(id, req.usuario.empresa_id);
 
         return response.success(res, registros);
     } catch (error) {
@@ -52,7 +52,7 @@ async function historico(req, res, next) {
 
 async function ranking(req, res, next) {
     try {
-        const dados = await clientesService.ranking();
+        const dados = await clientesService.ranking(req.usuario.empresa_id);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -63,7 +63,7 @@ async function totalGasto(req, res, next) {
     try {
         const id = parseId(req.params.id);
 
-        const dados = await clientesService.totalGasto(id);
+        const dados = await clientesService.totalGasto(id, req.usuario.empresa_id);
 
         return response.success(res, dados);
     } catch (error) {

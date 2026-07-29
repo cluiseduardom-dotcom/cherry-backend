@@ -55,7 +55,7 @@ describe('POST /auth/register', () => {
   });
 
   test('returns 403 for a non-admin token', async () => {
-    const token = makeToken({ id: 2, role: 'vendedor' });
+    const token = makeToken({ id: 2, role: 'vendedor', empresa_id: 1 });
 
     const res = await request(app)
       .post('/auth/register')
@@ -67,7 +67,7 @@ describe('POST /auth/register', () => {
   });
 
   test('returns 400 for an invalid body even with an admin token', async () => {
-    const token = makeToken({ id: 1, role: 'admin' });
+    const token = makeToken({ id: 1, role: 'admin', empresa_id: 1 });
 
     const res = await request(app)
       .post('/auth/register')
@@ -79,7 +79,7 @@ describe('POST /auth/register', () => {
   });
 
   test('returns 201 and creates the user for an admin token', async () => {
-    const token = makeToken({ id: 1, role: 'admin' });
+    const token = makeToken({ id: 1, role: 'admin', empresa_id: 1 });
     authService.register.mockResolvedValue({
       usuario: { id: 9, nome: 'X', email: 'x@x.com', papel: 'vendedor' }
     });
@@ -91,6 +91,6 @@ describe('POST /auth/register', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.usuario.id).toBe(9);
-    expect(authService.register).toHaveBeenCalledWith('X', 'x@x.com', 'senha123', 'vendedor');
+    expect(authService.register).toHaveBeenCalledWith('X', 'x@x.com', 'senha123', 'vendedor', 1);
   });
 });
