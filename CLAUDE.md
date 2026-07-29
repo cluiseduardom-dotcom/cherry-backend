@@ -2,6 +2,8 @@
 
 ERP para empresa de semijoias. Este arquivo é lido a cada sessão: mantenha-o curto.
 
+**Multi-tenant desde a migration `007_multi_tenant.sql`**: existe tabela `empresas`; toda tabela de dado de negócio tem `empresa_id` (FK NOT NULL, indexada). Toda tabela nova precisa da coluna `empresa_id` desde a criação, e toda query nova (SELECT/UPDATE/DELETE) precisa filtrar por `empresa_id` — nunca confiar só no id do recurso. O schema/migração já está pronto; controllers/services/repositories **ainda não filtram por empresa_id** (isso é a próxima etapa) — trate isso como pendência de segurança até lá, não como acabado.
+
 ## Stack
 
 - Node.js + Express
@@ -66,7 +68,14 @@ Regras já decididas em contas a pagar (não reabrir):
 - `PUT /:id` (editar) não tem restrição de status — pode editar conta paga ou cancelada. Não foi pedido bloqueio nisso; se quiser travar edição de conta já paga/cancelada, é decisão de negócio a confirmar antes de implementar.
 - **Armadilha de fuso horário com colunas `DATE`**: o driver `pg` serializa um `Date` do Node pra uma coluna `DATE`/`TIMESTAMP` usando os métodos de **fuso horário local** do processo (`getFullYear`/`getMonth`/`getDate`), não UTC. `z.coerce.date('2026-08-10')` gera meia-noite UTC, que em qualquer servidor com fuso negativo (ex: `America/Sao_Paulo`, UTC-3) vira 09/08 21h local — grava um dia a menos. Corrigido usando `z.iso.date()` (mantém string `'YYYY-MM-DD'` do início ao fim, nunca vira `Date`). Vale lembrar disso pra qualquer coluna `DATE` futura.
 
-Próximo: contas a receber (vínculo com vendas).
+Regras já decididas na migração multi-tenant (não reabrir):
+- Tabela `empresas`: `id`, `nome`, `cnpj` (opcional), `status` (`ativa`/`inativa`), `criado_em`. Campo pedido como `created_at` foi renomeado pra `criado_em` pra seguir a convenção de nomes do projeto (português, snake_case) já usada em todas as outras tabelas.
+- `empresa_id` foi adicionado (FK NOT NULL + índice) em `usuarios`, `clientes`, `produtos`, `vendas`, `itens_venda`, `movimentacoes_estoque`, `contas_pagar` (lista original) **e também** em `canais_venda` e `precos_produto` (não estavam na lista original, mas ficaram de fora seria inconsistente: canal de venda pode variar por empresa no futuro, e `precos_produto` é dado transacional). Confirmado com o usuário antes de implementar.
+- Todas as linhas existentes foram migradas pra um registro seed único em `empresas`: nome "Cherry Semijoias" (placeholder, nome real não encontrado no repo), `cnpj` NULL. **Pendência:** ajustar nome/CNPJ reais quando o usuário informar.
+- **Não foram alteradas** as UNIQUE constraints existentes (`usuarios.email`, `produtos.sku`, `canais_venda.nome`) para incluir `empresa_id` — hoje continuam únicas globalmente, não por empresa. Isso significa que duas empresas diferentes não podem ter usuário com o mesmo email, nem produto com o mesmo SKU. Ficou fora do escopo desta migração (era só sobre `empresa_id`); é decisão de regra de negócio a confirmar antes de mudar.
+- Controllers, services e repositories **ainda não usam `empresa_id`** — nenhuma query filtra por ele ainda. Essa é a próxima etapa; até lá, o isolamento entre empresas não existe de fato na camada de aplicação, só no schema.
+
+Próximo: filtrar controllers/services/repositories por `empresa_id` (próxima etapa do multi-tenant); depois, contas a receber (vínculo com vendas).
 
 ## Banco
 

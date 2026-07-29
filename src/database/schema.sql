@@ -1,5 +1,14 @@
+CREATE TABLE empresas (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(255) NOT NULL,
+    cnpj VARCHAR(20),
+    status VARCHAR(20) NOT NULL DEFAULT 'ativa' CHECK (status IN ('ativa', 'inativa')),
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE usuarios (
     id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     nome VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
     senha VARCHAR(255) NOT NULL,
@@ -9,6 +18,7 @@ CREATE TABLE usuarios (
 
 CREATE TABLE clientes (
     id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     nome VARCHAR(255) NOT NULL,
     telefone VARCHAR(20),
     email VARCHAR(255)
@@ -16,6 +26,7 @@ CREATE TABLE clientes (
 
 CREATE TABLE produtos (
     id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     sku VARCHAR(50) UNIQUE,
     nome VARCHAR(255) NOT NULL,
     descricao TEXT,
@@ -29,12 +40,14 @@ CREATE TABLE produtos (
 
 CREATE TABLE canais_venda (
     id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     nome VARCHAR(50) NOT NULL UNIQUE,
     ativo BOOLEAN NOT NULL DEFAULT true
 );
 
 CREATE TABLE precos_produto (
     id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     produto_id INTEGER NOT NULL REFERENCES produtos(id),
     canal_id INTEGER NOT NULL REFERENCES canais_venda(id),
     preco_venda NUMERIC(10, 2) NOT NULL,
@@ -47,6 +60,7 @@ CREATE TABLE precos_produto (
 
 CREATE TABLE vendas (
     id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     cliente_id INTEGER REFERENCES clientes(id),
     canal_id INTEGER NOT NULL REFERENCES canais_venda(id),
     usuario_id INTEGER REFERENCES usuarios(id),
@@ -57,6 +71,7 @@ CREATE TABLE vendas (
 
 CREATE TABLE itens_venda (
     id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     venda_id INTEGER NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
     produto_id INTEGER NOT NULL REFERENCES produtos(id),
     quantidade INTEGER NOT NULL,
@@ -65,6 +80,7 @@ CREATE TABLE itens_venda (
 
 CREATE TABLE movimentacoes_estoque (
     id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     produto_id INTEGER NOT NULL REFERENCES produtos(id),
     tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('entrada', 'saida', 'ajuste')),
     quantidade INTEGER NOT NULL CHECK (quantidade >= 0),
@@ -76,6 +92,7 @@ CREATE TABLE movimentacoes_estoque (
 
 CREATE TABLE contas_pagar (
     id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     descricao VARCHAR(255) NOT NULL,
     fornecedor VARCHAR(255),
     valor NUMERIC(10, 2) NOT NULL CHECK (valor > 0),
@@ -99,3 +116,12 @@ CREATE INDEX idx_precos_produto_produto_canal ON precos_produto(produto_id, cana
 CREATE INDEX idx_contas_pagar_status ON contas_pagar(status);
 CREATE INDEX idx_contas_pagar_vencimento ON contas_pagar(data_vencimento);
 CREATE INDEX idx_contas_pagar_usuario_id ON contas_pagar(usuario_id);
+CREATE INDEX idx_usuarios_empresa_id ON usuarios(empresa_id);
+CREATE INDEX idx_clientes_empresa_id ON clientes(empresa_id);
+CREATE INDEX idx_produtos_empresa_id ON produtos(empresa_id);
+CREATE INDEX idx_canais_venda_empresa_id ON canais_venda(empresa_id);
+CREATE INDEX idx_precos_produto_empresa_id ON precos_produto(empresa_id);
+CREATE INDEX idx_vendas_empresa_id ON vendas(empresa_id);
+CREATE INDEX idx_itens_venda_empresa_id ON itens_venda(empresa_id);
+CREATE INDEX idx_movimentacoes_estoque_empresa_id ON movimentacoes_estoque(empresa_id);
+CREATE INDEX idx_contas_pagar_empresa_id ON contas_pagar(empresa_id);
