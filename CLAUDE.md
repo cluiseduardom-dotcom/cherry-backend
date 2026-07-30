@@ -51,7 +51,8 @@ Prontos:
 - **Precificação** — preço por canal (`precos_produto`), ledger append-only (nunca UPDATE, só INSERT de nova linha vigente).
 - **PDV/vendas** — `POST /vendas` trava o preço vigente do canal no momento da venda; `PATCH /vendas/:id/cancelar` estorna estoque.
 - **Dashboard analítico** — curva ABC, giro, cobertura em dias, margem por produto e canal. Admin-only.
-- **Financeiro: contas a pagar** — primeira etapa do módulo financeiro, lançamento manual, sem vínculo com vendas (contas a receber é etapa futura). CRUD completo em `/contas-pagar`.
+- **Financeiro: contas a pagar** — primeira etapa do módulo financeiro, lançamento manual, sem vínculo com vendas. CRUD completo em `/contas-pagar`.
+- **Financeiro: contas a receber** — segunda etapa, com vínculo automático a vendas (migration `009_contas_receber.sql`). Sem CRUD manual: nasce de `POST /vendas` com `forma_pagamento: 'prazo'`, é cancelada junto com a venda. `/contas-receber` só lê e marca como recebida.
 
 Regras já decididas no estoque (não reabrir):
 - `tipo`: `entrada` soma, `saida` subtrai, `ajuste` fixa valor absoluto (correção de contagem física).
@@ -83,7 +84,14 @@ Regras já decididas no filtro de `empresa_id` na aplicação (não reabrir):
 - Referência cruzada (ex: `cliente_id` numa venda, `produto_id` num item, `canal_id` num preço) é validada contra a mesma `empresa_id` de quem está fazendo a requisição, dentro da própria transação quando aplicável (`vendasRepository.criar` valida cliente e cada produto). Referência a recurso de outra empresa responde como se o recurso não existisse (404), nunca 403 — mesmo padrão já usado em `vendasService.buscarPorId` pra vendedor vendo venda de outro usuário (não confirma a existência do id).
 - `itens_venda` e `movimentacoes_estoque` recebem `empresa_id` diretamente (denormalizado), não só via join — decisão já tomada na migration 007, mantida aqui pra evitar joins extras em toda leitura.
 
-Próximo: contas a receber (vínculo com vendas).
+Regras já decididas em contas a receber (não reabrir):
+- Acesso: **admin apenas** (mesmo padrão de contas a pagar/dashboard). Nem vendedor nem estoquista acessam.
+- Vínculo é automático, não manual: `vendas` ganhou `forma_pagamento` (`a_vista`/`prazo`, default `a_vista`). Só venda `prazo` gera uma linha em `contas_receber`, dentro da mesma transação de `vendasRepository.criar` — venda à vista já é dinheiro recebido na hora, não entra no fluxo de "a receber". Não existe `POST`/`PUT` manual em `/contas-receber`: toda linha nasce de uma venda.
+- `data_vencimento` vem de `dias_prazo` (número, obrigatório só quando `forma_pagamento = 'prazo'`, validado com `.refine` em `criarVendaSchema`) somado à data da venda — não é uma data explícita no payload. Cálculo usa getters locais do `Date` (`getFullYear`/`getMonth`/`getDate`), nunca `toISOString`, pela mesma armadilha de fuso horário já documentada em contas a pagar.
+- `valor` é copiado de `vendas.total` no momento da criação e travado (nunca recalculado a partir da venda depois) — mesma filosofia de `preco_unitario` em `itens_venda`.
+- `PATCH /vendas/:id/cancelar` cancela a conta a receber vinculada automaticamente, mas **só se ainda estiver `pendente`**: se já foi `recebido`, o dinheiro já entrou e a conta não é mexida (`contasReceberRepository.cancelarPorVendaId`, dentro da mesma transação de `vendasRepository.cancelar`, reaproveitando o client externo, mesmo padrão de `estoqueRepository.criarMovimentacao`). Venda à vista nunca gerou conta, então é no-op.
+- `status` segue o mesmo padrão de contas a pagar: só 3 valores persistidos (`pendente`, `recebido`, `cancelado`); `atrasado` é campo calculado na leitura, nunca gravado.
+- `PATCH /contas-receber/:id/receber` marca como recebida, só a partir de `pendente`, com `FOR UPDATE` — mesmo padrão de `contasPagarRepository.marcarComoPaga`. Não existe cancelamento manual de conta a receber fora do cancelamento da venda: se for necessário no futuro (ex: perdão de dívida), é decisão de negócio a confirmar antes de implementar.
 
 ## Banco
 

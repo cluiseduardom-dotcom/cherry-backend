@@ -74,4 +74,34 @@ describe('criarVendaSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  test('accepts an omitted forma_pagamento (defaults to à vista downstream)', () => {
+    expect(criarVendaSchema.safeParse(valid).success).toBe(true);
+  });
+
+  test('accepts forma_pagamento a_vista without dias_prazo', () => {
+    const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'a_vista' });
+    expect(result.success).toBe(true);
+  });
+
+  test('accepts forma_pagamento prazo with dias_prazo', () => {
+    const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'prazo', dias_prazo: 30 });
+    expect(result.success).toBe(true);
+  });
+
+  test('rejects forma_pagamento prazo without dias_prazo', () => {
+    const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'prazo' });
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('Informe dias_prazo para vendas a prazo');
+  });
+
+  test('rejects an invalid forma_pagamento', () => {
+    const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'boleto' });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects dias_prazo <= 0', () => {
+    const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'prazo', dias_prazo: 0 });
+    expect(result.success).toBe(false);
+  });
 });

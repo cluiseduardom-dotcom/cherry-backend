@@ -1,10 +1,12 @@
 jest.mock('../../src/config/db');
 jest.mock('../../src/repositories/estoqueRepository');
 jest.mock('../../src/repositories/precosRepository');
+jest.mock('../../src/repositories/contasReceberRepository');
 
 const db = require('../../src/config/db');
 const estoqueRepository = require('../../src/repositories/estoqueRepository');
 const precosRepository = require('../../src/repositories/precosRepository');
+const contasReceberRepository = require('../../src/repositories/contasReceberRepository');
 const vendasRepository = require('../../src/repositories/vendasRepository');
 
 function makeFakeClient({ produtos = {}, venda = {}, clienteExiste = true } = {}) {
@@ -182,6 +184,57 @@ describe('criar', () => {
 
     expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
   });
+
+  test('creates a linked conta a receber, locked in at the venda total, when forma_pagamento is prazo', async () => {
+    const fakeClient = makeFakeClient({ produtos: { 1: { ativo: true } } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    precosRepository.buscarPrecoVigente.mockResolvedValue({ preco_venda: '10.00' });
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 } });
+    contasReceberRepository.criar.mockResolvedValue({ id: 1, venda_id: 1, valor: 10, status: 'pendente' });
+
+    const resultado = await vendasRepository.criar({
+      cliente_id: null,
+      canal_id: 1,
+      usuario_id: 2,
+      empresa_id: 9,
+      forma_pagamento: 'prazo',
+      dias_prazo: 30,
+      itens: [{ produto_id: 1, quantidade: 1 }]
+    });
+
+    expect(contasReceberRepository.criar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        venda_id: 1,
+        descricao: 'Venda #1',
+        valor: 10,
+        empresa_id: 9,
+        data_vencimento: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
+      }),
+      fakeClient
+    );
+    expect(resultado.conta_receber).toEqual({ id: 1, venda_id: 1, valor: 10, status: 'pendente' });
+    expect(fakeClient.query).toHaveBeenCalledWith('COMMIT');
+  });
+
+  test('does not create a conta a receber for an à vista (default) venda', async () => {
+    const fakeClient = makeFakeClient({ produtos: { 1: { ativo: true } } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    precosRepository.buscarPrecoVigente.mockResolvedValue({ preco_venda: '10.00' });
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 } });
+
+    const resultado = await vendasRepository.criar({
+      cliente_id: null,
+      canal_id: 1,
+      usuario_id: 2,
+      empresa_id: 9,
+      itens: [{ produto_id: 1, quantidade: 1 }]
+    });
+
+    expect(contasReceberRepository.criar).not.toHaveBeenCalled();
+    expect(resultado.conta_receber).toBeNull();
+  });
 });
 
 describe('cancelar', () => {
@@ -223,5 +276,14 @@ describe('cancelar', () => {
       message: 'Somente vendas finalizadas podem ser canceladas'
     });
     expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
+  });
+
+  test('cancels the linked conta a receber (if any) in the same transaction', async () => {
+    const fakeClient = makeFakeClient({ venda: { status: 'finalizada', itens: [] } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    await vendasRepository.cancelar(1, 9, 5);
+
+    expect(contasReceberRepository.cancelarPorVendaId).toHaveBeenCalledWith(1, 5, fakeClient);
   });
 });

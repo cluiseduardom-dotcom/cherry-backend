@@ -1,7 +1,24 @@
 const db = require('../config/db');
 const estoqueRepository = require('./estoqueRepository');
 const precosRepository = require('./precosRepository');
+const contasReceberRepository = require('./contasReceberRepository');
 const AppError = require('../errors/AppError');
+
+// Usa os getters LOCAIS do Date (não toISOString/UTC) de propósito: a mesma
+// armadilha de fuso horário documentada em 006_contas_pagar.sql — o driver pg
+// grava uma coluna DATE a partir dos métodos de fuso horário local do Node, e
+// dias_prazo é "dias corridos a partir de hoje", não de um instante UTC.
+// new Date(ano, mes, dia + diasPrazo) rola mês/ano corretamente.
+function calcularDataVencimento(diasPrazo) {
+    const hoje = new Date();
+    const vencimento = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + diasPrazo);
+
+    const ano = vencimento.getFullYear();
+    const mes = String(vencimento.getMonth() + 1).padStart(2, '0');
+    const dia = String(vencimento.getDate()).padStart(2, '0');
+
+    return `${ano}-${mes}-${dia}`;
+}
 
 async function getResumo(empresa_id) {
     const { rows } = await db.query(`
@@ -64,7 +81,7 @@ async function getMaisVendidosPeriodo(empresa_id) {
 // (reaproveitando estoqueRepository.criarMovimentacao nesta mesma transação).
 // Qualquer falha em qualquer item reverte a venda inteira — nada fica
 // parcialmente criado.
-async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens }) {
+async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, forma_pagamento, dias_prazo }) {
     const client = await db.connect();
 
     try {
@@ -82,10 +99,10 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens }) {
         }
 
         const vendaResult = await client.query(
-            `INSERT INTO vendas (cliente_id, canal_id, usuario_id, total, status, data, empresa_id)
-             VALUES ($1, $2, $3, 0, 'finalizada', NOW(), $4)
+            `INSERT INTO vendas (cliente_id, canal_id, usuario_id, total, status, data, empresa_id, forma_pagamento)
+             VALUES ($1, $2, $3, 0, 'finalizada', NOW(), $4, $5)
              RETURNING *`,
-            [cliente_id ?? null, canal_id, usuario_id, empresa_id]
+            [cliente_id ?? null, canal_id, usuario_id, empresa_id, forma_pagamento ?? 'a_vista']
         );
 
         const venda = vendaResult.rows[0];
@@ -158,9 +175,24 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens }) {
             valores.flat()
         );
 
+        let contaReceber = null;
+
+        if (forma_pagamento === 'prazo') {
+            contaReceber = await contasReceberRepository.criar(
+                {
+                    venda_id: venda.id,
+                    descricao: `Venda #${venda.id}`,
+                    valor: total,
+                    data_vencimento: calcularDataVencimento(dias_prazo),
+                    empresa_id
+                },
+                client
+            );
+        }
+
         await client.query('COMMIT');
 
-        return { ...venda, total, itens: itensRows };
+        return { ...venda, total, forma_pagamento: forma_pagamento ?? 'a_vista', itens: itensRows, conta_receber: contaReceber };
 
     } catch (error) {
         await client.query('ROLLBACK');
@@ -270,6 +302,11 @@ async function cancelar(id, usuario_id, empresa_id) {
             `UPDATE vendas SET status = 'cancelada' WHERE id = $1 RETURNING *`,
             [id]
         );
+
+        // Cancela a conta a receber vinculada, se ainda pendente (venda à
+        // vista nunca gerou uma, e isso é um no-op). Uma conta já recebida
+        // não é mexida: o dinheiro já entrou.
+        await contasReceberRepository.cancelarPorVendaId(id, empresa_id, client);
 
         await client.query('COMMIT');
 

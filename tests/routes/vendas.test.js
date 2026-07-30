@@ -112,6 +112,33 @@ describe('POST /vendas (admin and vendedor only)', () => {
     expect(res.status).toBe(400);
   });
 
+  test('returns 400 for forma_pagamento prazo without dias_prazo', async () => {
+    const res = await request(app)
+      .post('/vendas')
+      .set('Authorization', `Bearer ${vendedorToken}`)
+      .send({ forma_pagamento: 'prazo', itens: [{ produto_id: 1, quantidade: 1 }] });
+
+    expect(res.status).toBe(400);
+    expect(vendasService.criar).not.toHaveBeenCalled();
+  });
+
+  test('returns 201 for a prazo venda and forwards forma_pagamento/dias_prazo to the service', async () => {
+    vendasService.criar.mockResolvedValue({ id: 1, total: '10.00', conta_receber: { id: 1, status: 'pendente' } });
+
+    const res = await request(app)
+      .post('/vendas')
+      .set('Authorization', `Bearer ${vendedorToken}`)
+      .send({ forma_pagamento: 'prazo', dias_prazo: 30, itens: [{ produto_id: 1, quantidade: 1 }] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.conta_receber.status).toBe('pendente');
+    expect(vendasService.criar).toHaveBeenCalledWith(
+      { forma_pagamento: 'prazo', dias_prazo: 30, itens: [{ produto_id: 1, quantidade: 1 }] },
+      2,
+      1
+    );
+  });
+
   test('maps a 409 (no price defined for the canal) from the service', async () => {
     vendasService.criar.mockRejectedValue(new AppError('Produto sem preço definido para o canal informado', 409));
 
