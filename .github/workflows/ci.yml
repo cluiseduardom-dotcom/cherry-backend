@@ -18,6 +18,13 @@ jobs:
           node-version: 20
           cache: npm
 
+      # Node 20 vem com npm 10.8.2, que resolve peer deps opcionais (ex: as do
+      # jest-resolve via unrs-resolver/@napi-rs/wasm-runtime) de forma
+      # diferente do npm 11 usado localmente — isso já quebrou "npm ci" várias
+      # vezes com lockfile fora de sincronia mesmo sem mudança real de
+      # dependência. Fixar a major do npm aqui evita a divergência de vez.
+      - run: npm install -g npm@11
+
       - run: npm ci
 
       - name: Syntax check
