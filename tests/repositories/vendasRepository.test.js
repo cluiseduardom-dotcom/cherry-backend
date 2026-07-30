@@ -286,4 +286,28 @@ describe('cancelar', () => {
 
     expect(contasReceberRepository.cancelarPorVendaId).toHaveBeenCalledWith(1, 5, fakeClient);
   });
+
+  test('blocks cancellation (409) and rolls back without touching stock or venda status when the linked conta a receber is already recebida', async () => {
+    const fakeClient = makeFakeClient({
+      venda: { status: 'finalizada', itens: [{ produto_id: 1, quantidade: 3 }] }
+    });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    const AppError = require('../../src/errors/AppError');
+    contasReceberRepository.cancelarPorVendaId.mockRejectedValue(
+      new AppError('Venda com conta a receber já recebida não pode ser cancelada', 409)
+    );
+
+    await expect(vendasRepository.cancelar(1, 9, 5)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Venda com conta a receber já recebida não pode ser cancelada'
+    });
+
+    expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
+
+    const sqlChamados = fakeClient.query.mock.calls.map(([sql]) => sql);
+    expect(sqlChamados.some((sql) => sql.includes("UPDATE vendas SET status = 'cancelada'"))).toBe(false);
+    expect(sqlChamados).toContain('ROLLBACK');
+    expect(sqlChamados).not.toContain('COMMIT');
+  });
 });

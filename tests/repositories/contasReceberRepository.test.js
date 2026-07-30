@@ -91,16 +91,19 @@ describe('cancelarPorVendaId', () => {
     expect(fakeClient.query).toHaveBeenCalledWith('COMMIT');
   });
 
-  test('leaves an already recebida conta untouched', async () => {
+  test('throws 409 and rolls back when the conta is already recebida', async () => {
     const fakeClient = makeFakeClient({ contaPorVenda: { id: 5, status: 'recebido' } });
     db.connect = jest.fn().mockResolvedValue(fakeClient);
 
-    const resultado = await contasReceberRepository.cancelarPorVendaId(1, 9);
+    await expect(contasReceberRepository.cancelarPorVendaId(1, 9)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Venda com conta a receber já recebida não pode ser cancelada'
+    });
 
-    expect(resultado.status).toBe('recebido');
     const sqlChamados = fakeClient.query.mock.calls.map(([sql]) => sql);
     expect(sqlChamados.some((sql) => sql.includes("SET status = 'cancelado'"))).toBe(false);
-    expect(fakeClient.query).toHaveBeenCalledWith('COMMIT');
+    expect(sqlChamados).toContain('ROLLBACK');
+    expect(sqlChamados).not.toContain('COMMIT');
   });
 
   test('is a no-op when the venda has no linked conta (à vista sale)', async () => {
@@ -120,6 +123,18 @@ describe('cancelarPorVendaId', () => {
 
     const sqlChamados = fakeClient.query.mock.calls.map(([sql]) => sql);
     expect(sqlChamados).not.toContain('BEGIN');
+    expect(sqlChamados).not.toContain('COMMIT');
+    expect(fakeClient.release).not.toHaveBeenCalled();
+  });
+
+  test('propagates the 409 without touching the transaction when reusing an external client', async () => {
+    const fakeClient = makeFakeClient({ contaPorVenda: { id: 5, status: 'recebido' } });
+
+    await expect(contasReceberRepository.cancelarPorVendaId(1, 9, fakeClient)).rejects.toMatchObject({ statusCode: 409 });
+
+    const sqlChamados = fakeClient.query.mock.calls.map(([sql]) => sql);
+    expect(sqlChamados).not.toContain('BEGIN');
+    expect(sqlChamados).not.toContain('ROLLBACK');
     expect(sqlChamados).not.toContain('COMMIT');
     expect(fakeClient.release).not.toHaveBeenCalled();
   });

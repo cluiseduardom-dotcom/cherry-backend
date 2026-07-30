@@ -78,10 +78,13 @@ async function criar({ venda_id, descricao, valor, data_vencimento, empresa_id }
 }
 
 // Cancela a conta a receber vinculada a uma venda, só se ainda estiver
-// pendente — se já tiver sido recebida, o dinheiro já entrou e a conta não é
-// mexida (mesma decisão de negócio de vendasRepository.cancelar). Se a venda
-// era à vista e nunca gerou conta, é um no-op silencioso. clienteExterno
-// participa da transação de vendasRepository.cancelar, mesmo padrão de criar().
+// pendente. Se já tiver sido recebida, o dinheiro já entrou: bloqueia o
+// cancelamento (409), mesmo padrão de contasPagarRepository.atualizar
+// bloqueando edição de conta paga/cancelada — quem chama (vendasRepository.
+// cancelar) deixa esse erro estourar antes de tocar em estoque ou no status
+// da venda, então nada fica parcialmente cancelado. Se a venda era à vista e
+// nunca gerou conta, é um no-op silencioso. clienteExterno participa da
+// transação de vendasRepository.cancelar, mesmo padrão de criar().
 async function cancelarPorVendaId(venda_id, empresa_id, clienteExterno) {
     const client = clienteExterno || await db.connect();
     const gerenciaTransacao = !clienteExterno;
@@ -94,16 +97,23 @@ async function cancelarPorVendaId(venda_id, empresa_id, clienteExterno) {
             [venda_id, empresa_id]
         );
 
-        let resultado = null;
+        if (!rows.length) {
+            if (gerenciaTransacao) await client.query('COMMIT');
+            return null;
+        }
 
-        if (rows.length && rows[0].status === 'pendente') {
+        if (rows[0].status === 'recebido') {
+            throw new AppError('Venda com conta a receber já recebida não pode ser cancelada', 409);
+        }
+
+        let resultado = rows[0];
+
+        if (rows[0].status === 'pendente') {
             const { rows: atualizadaRows } = await client.query(
                 `UPDATE contas_receber SET status = 'cancelado', atualizado_em = NOW() WHERE id = $1 RETURNING *`,
                 [rows[0].id]
             );
             resultado = atualizadaRows[0];
-        } else if (rows.length) {
-            resultado = rows[0];
         }
 
         if (gerenciaTransacao) await client.query('COMMIT');

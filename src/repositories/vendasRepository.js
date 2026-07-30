@@ -279,6 +279,14 @@ async function cancelar(id, usuario_id, empresa_id) {
             throw new AppError('Somente vendas finalizadas podem ser canceladas', 409);
         }
 
+        // Checa a conta a receber vinculada antes de mexer em qualquer coisa:
+        // se já estiver recebida, bloqueia o cancelamento da venda inteira
+        // (o dinheiro já entrou, não faz sentido desfazer a venda por trás
+        // dele). Se ainda pendente, cancela junto. Venda à vista nunca gerou
+        // conta, e isso é um no-op — mesmo padrão de bloqueio de
+        // contasPagarRepository.atualizar (checa e falha antes de escrever).
+        await contasReceberRepository.cancelarPorVendaId(id, empresa_id, client);
+
         const { rows: itensRows } = await client.query(
             'SELECT produto_id, quantidade FROM itens_venda WHERE venda_id = $1',
             [id]
@@ -302,11 +310,6 @@ async function cancelar(id, usuario_id, empresa_id) {
             `UPDATE vendas SET status = 'cancelada' WHERE id = $1 RETURNING *`,
             [id]
         );
-
-        // Cancela a conta a receber vinculada, se ainda pendente (venda à
-        // vista nunca gerou uma, e isso é um no-op). Uma conta já recebida
-        // não é mexida: o dinheiro já entrou.
-        await contasReceberRepository.cancelarPorVendaId(id, empresa_id, client);
 
         await client.query('COMMIT');
 

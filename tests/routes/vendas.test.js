@@ -248,6 +248,16 @@ describe('PATCH /vendas/:id/cancelar (admin only)', () => {
     expect(res.status).toBe(409);
   });
 
+  test('returns 409 when the linked conta a receber is already recebida', async () => {
+    vendasService.cancelar.mockRejectedValue(
+      new AppError('Venda com conta a receber já recebida não pode ser cancelada', 409)
+    );
+
+    const res = await request(app).patch('/vendas/1/cancelar').set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe('Venda com conta a receber já recebida não pode ser cancelada');
+  });
+
   test('cancels and returns the updated venda for an admin, reversing stock', async () => {
     vendasService.cancelar.mockResolvedValue({ id: 1, status: 'cancelada' });
 
