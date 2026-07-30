@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
 
