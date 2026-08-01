@@ -268,3 +268,39 @@ describe('read-only sub-routes', () => {
     expect(produtosService[serviceMethod]).toHaveBeenCalled();
   });
 });
+
+describe('analytical sub-routes exposing custo/margem/lucro (admin only)', () => {
+  const cases = [
+    ['/produtos/pricing', 'pricingProfissional'],
+    ['/produtos/pricing-profissional', 'pricingProfissional'],
+    ['/produtos/lucro', 'lucroPorProduto'],
+    ['/produtos/alerta-prejuizo', 'alertaPrejuizo'],
+    ['/produtos/sugestao-preco', 'sugestaoPreco'],
+    ['/produtos/inteligencia', 'inteligencia']
+  ];
+
+  test.each(cases)('GET %s returns 200 for an admin', async (path, serviceMethod) => {
+    produtosService[serviceMethod].mockResolvedValue({ ok: true });
+
+    const res = await request(app).get(path).set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(produtosService[serviceMethod]).toHaveBeenCalled();
+  });
+
+  test.each(cases)('GET %s returns 403 for a vendedor', async (path, serviceMethod) => {
+    const res = await request(app).get(path).set('Authorization', `Bearer ${vendedorToken}`);
+
+    expect(res.status).toBe(403);
+    expect(produtosService[serviceMethod]).not.toHaveBeenCalled();
+  });
+
+  test.each(cases)('GET %s returns 403 for an estoquista', async (path, serviceMethod) => {
+    const estoquistaToken = makeToken({ id: 3, role: 'estoquista', empresa_id: 1 });
+
+    const res = await request(app).get(path).set('Authorization', `Bearer ${estoquistaToken}`);
+
+    expect(res.status).toBe(403);
+    expect(produtosService[serviceMethod]).not.toHaveBeenCalled();
+  });
+});
