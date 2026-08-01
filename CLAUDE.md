@@ -118,3 +118,9 @@ Regras já decididas em contas a receber (não reabrir):
 - Commit ao final, mensagem descritiva em português. Push só quando eu pedir.
 - Resumo final curto: o que mudou, decisões tomadas sozinho, o que foi testado, hash do commit.
 - NUNCA faça push sem eu pedir explicitamente
+
+## Fluxo de branches
+- Nunca commitar direto em `master`.
+- Todo trabalho começa com `git checkout -b feat/<modulo>` a partir de `master` atualizado.
+- Push e abertura de PR são feitos manualmente por mim, no terminal.
+- Merge só depois do CI verde.
