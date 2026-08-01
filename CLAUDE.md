@@ -97,8 +97,13 @@ Regras já decididas em contas a receber (não reabrir):
 
 - Alterações de schema vão em migration versionada, nunca em SQL solto direto no banco.
 - Toda operação que envolve estoque ou dinheiro roda em transação.
-- Seed com usuários de teste dos três papéis já existe; senhas com hash bcrypt.
-- Dados de teste sempre limpos do banco ao fim da tarefa.
+- Seed (`src/database/seed.js`) cria a empresa "Cherry Semijoias" com usuários de teste dos três papéis (senhas com hash bcrypt), clientes, produtos (com preço em `precos_produto` e estoque via movimentação auditada) e vendas. **Idempotente**: pula silenciosamente se essa empresa já existir — seguro rodar contra um banco já seedado (dev local ou o branch `ci-test` da CI, que é persistente entre runs).
+- `schema.sql` é mantido como referência do estado atual consolidado (fora das migrations incrementais); ao criar uma migration nova, replicar a mudança lá também.
+- Dados de teste sempre limpos do banco ao fim da tarefa — exceto o seed acima, que é dado de baseline permanente, não "dado de teste temporário".
+
+## CI
+
+- `.github/workflows/ci.yml`: `npm ci` → syntax check → seed (`node src/database/seed.js`, idempotente) → `npm test`. Os steps de seed e teste recebem `DATABASE_URL`/`JWT_SECRET` via secrets do GitHub, apontando pro branch `ci-test` do Neon — um banco dedicado só pra CI, separado do banco de dev. `tests/routes/multiTenantIsolation.test.js` é o único teste que fala com banco de verdade (sem mock) e por isso é o único que depende desses secrets/seed; o resto da suíte roda mockada e não precisa de banco.
 
 ## Testes
 

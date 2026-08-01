@@ -30,6 +30,13 @@ jobs:
       - name: Syntax check
         run: find src -name "*.js" -exec node --check {} +
 
+      # Idempotente: pula se a empresa "Cherry Semijoias" já existir (branch
+      # ci-test é persistente entre runs, não recriado do zero a cada push).
+      - name: Seed database
+        run: node src/database/seed.js
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Run tests
         run: npm test
         env:

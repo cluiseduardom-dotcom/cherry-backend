@@ -67,7 +67,8 @@ CREATE TABLE vendas (
     usuario_id INTEGER REFERENCES usuarios(id),
     status VARCHAR(20) NOT NULL DEFAULT 'finalizada' CHECK (status IN ('aberta', 'finalizada', 'cancelada')),
     total NUMERIC(10, 2) NOT NULL DEFAULT 0,
-    data TIMESTAMP NOT NULL DEFAULT NOW()
+    data TIMESTAMP NOT NULL DEFAULT NOW(),
+    forma_pagamento VARCHAR(20) NOT NULL DEFAULT 'a_vista' CHECK (forma_pagamento IN ('a_vista', 'prazo'))
 );
 
 CREATE TABLE itens_venda (
@@ -107,6 +108,19 @@ CREATE TABLE contas_pagar (
     atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE contas_receber (
+    id SERIAL PRIMARY KEY,
+    venda_id INTEGER NOT NULL UNIQUE REFERENCES vendas(id),
+    descricao VARCHAR(255) NOT NULL,
+    valor NUMERIC(10, 2) NOT NULL CHECK (valor > 0),
+    data_vencimento DATE NOT NULL,
+    data_recebimento DATE,
+    status VARCHAR(20) NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'recebido', 'cancelado')),
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX idx_vendas_cliente_id ON vendas(cliente_id);
 CREATE INDEX idx_vendas_canal_id ON vendas(canal_id);
 CREATE INDEX idx_vendas_usuario_id ON vendas(usuario_id);
@@ -126,3 +140,6 @@ CREATE INDEX idx_vendas_empresa_id ON vendas(empresa_id);
 CREATE INDEX idx_itens_venda_empresa_id ON itens_venda(empresa_id);
 CREATE INDEX idx_movimentacoes_estoque_empresa_id ON movimentacoes_estoque(empresa_id);
 CREATE INDEX idx_contas_pagar_empresa_id ON contas_pagar(empresa_id);
+CREATE INDEX idx_contas_receber_status ON contas_receber(status);
+CREATE INDEX idx_contas_receber_vencimento ON contas_receber(data_vencimento);
+CREATE INDEX idx_contas_receber_empresa_id ON contas_receber(empresa_id);
