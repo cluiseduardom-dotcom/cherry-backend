@@ -19,13 +19,45 @@ test('GET /vendas/resumo returns 401 without a token', async () => {
   expect(res.status).toBe(401);
 });
 
-test('GET /vendas/resumo returns the wrapped summary', async () => {
+test('GET /vendas/resumo returns the wrapped summary for an admin', async () => {
   vendasService.resumo.mockResolvedValue({ total_vendas: 3, faturamento: 100 });
 
-  const res = await request(app).get('/vendas/resumo').set('Authorization', `Bearer ${vendedorToken}`);
+  const res = await request(app).get('/vendas/resumo').set('Authorization', `Bearer ${adminToken}`);
 
   expect(res.status).toBe(200);
   expect(res.body).toEqual({ success: true, data: { total_vendas: 3, faturamento: 100 } });
+});
+
+describe('analytical sub-routes (admin only)', () => {
+  const cases = [
+    ['/vendas/resumo', 'resumo'],
+    ['/vendas/por-dia', 'porDia'],
+    ['/vendas/por-mes', 'porMes'],
+    ['/vendas/mais-vendidos', 'maisVendidos']
+  ];
+
+  test.each(cases)('GET %s returns 200 for an admin', async (path, serviceMethod) => {
+    vendasService[serviceMethod].mockResolvedValue({ ok: true });
+
+    const res = await request(app).get(path).set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(vendasService[serviceMethod]).toHaveBeenCalled();
+  });
+
+  test.each(cases)('GET %s returns 403 for a vendedor', async (path, serviceMethod) => {
+    const res = await request(app).get(path).set('Authorization', `Bearer ${vendedorToken}`);
+
+    expect(res.status).toBe(403);
+    expect(vendasService[serviceMethod]).not.toHaveBeenCalled();
+  });
+
+  test.each(cases)('GET %s returns 403 for an estoquista', async (path, serviceMethod) => {
+    const res = await request(app).get(path).set('Authorization', `Bearer ${estoquistaToken}`);
+
+    expect(res.status).toBe(403);
+    expect(vendasService[serviceMethod]).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /vendas (admin and vendedor only)', () => {
