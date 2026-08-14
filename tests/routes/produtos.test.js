@@ -269,38 +269,105 @@ describe('read-only sub-routes', () => {
   });
 });
 
-describe('analytical sub-routes exposing custo/margem/lucro (admin only)', () => {
-  const cases = [
-    ['/produtos/pricing', 'pricingProfissional'],
-    ['/produtos/pricing-profissional', 'pricingProfissional'],
-    ['/produtos/lucro', 'lucroPorProduto'],
-    ['/produtos/alerta-prejuizo', 'alertaPrejuizo'],
-    ['/produtos/sugestao-preco', 'sugestaoPreco'],
-    ['/produtos/inteligencia', 'inteligencia']
+describe('rotas analíticas de /produtos filtram custo/margem/lucro por papel (leitura liberada, sem bloqueio total)', () => {
+  const casos = [
+    {
+      path: '/produtos/giro', metodo: 'giro',
+      dados: [{ id: 1, nome: 'Camiseta', total_vendido: 5, dias_com_venda: 3 }],
+      sensiveis: []
+    },
+    {
+      path: '/produtos/parados', metodo: 'parados',
+      dados: [{ id: 1, nome: 'Camiseta', ultima_venda: null }],
+      sensiveis: []
+    },
+    {
+      path: '/produtos/mais-vendidos', metodo: 'maisVendidos',
+      dados: [{ id: 1, nome: 'Camiseta', total_vendido: 5, faturamento: 250 }],
+      sensiveis: []
+    },
+    {
+      path: '/produtos/curva-abc', metodo: 'curvaABC',
+      dados: [{ id: 1, nome: 'Camiseta', faturamento: 1200, curva: 'A' }],
+      sensiveis: []
+    },
+    {
+      path: '/produtos/reposicao', metodo: 'reposicao',
+      dados: [{ id: 1, nome: 'Camiseta', vendido: 2, status: 'REPOR URGENTE' }],
+      sensiveis: []
+    },
+    {
+      path: '/produtos/dashboard', metodo: 'dashboard',
+      dados: { total_vendas: 10, faturamento: 500, ticket_medio: 50 },
+      sensiveis: []
+    },
+    {
+      path: '/produtos/pricing', metodo: 'pricingProfissional',
+      dados: [{ id: 1, nome: 'Camiseta', custo: 20, preco_venda: 49.9, total_vendido: 5, preco_sugerido: 44 }],
+      sensiveis: ['custo']
+    },
+    {
+      path: '/produtos/pricing-profissional', metodo: 'pricingProfissional',
+      dados: [{ id: 1, nome: 'Camiseta', custo: 20, preco_venda: 49.9, total_vendido: 5, preco_sugerido: 44 }],
+      sensiveis: ['custo']
+    },
+    {
+      path: '/produtos/lucro', metodo: 'lucroPorProduto',
+      dados: [{ id: 1, nome: 'Camiseta', total_vendido: 5, faturamento: 250, custo_total: 100, lucro: 150, margem_percentual: 60 }],
+      sensiveis: ['custo_total', 'lucro', 'margem_percentual']
+    },
+    {
+      path: '/produtos/alerta-prejuizo', metodo: 'alertaPrejuizo',
+      dados: [{ id: 1, nome: 'Camiseta', custo: 20, preco_venda: 15, lucro_unitario: -5 }],
+      sensiveis: ['custo', 'lucro_unitario']
+    },
+    {
+      path: '/produtos/sugestao-preco', metodo: 'sugestaoPreco',
+      dados: [{ id: 1, nome: 'Camiseta', custo: 20, preco_venda: 49.9, preco_sugerido: 64 }],
+      sensiveis: ['custo']
+    },
+    {
+      path: '/produtos/inteligencia', metodo: 'inteligencia',
+      dados: [{ id: 1, nome: 'Camiseta', total_vendido: 5, lucro_unitario: 29.9, decisao: 'MANTER' }],
+      sensiveis: ['lucro_unitario']
+    }
   ];
 
-  test.each(cases)('GET %s returns 200 for an admin', async (path, serviceMethod) => {
-    produtosService[serviceMethod].mockResolvedValue({ ok: true });
+  const primeiraLinha = (data) => (Array.isArray(data) ? data[0] : data);
+
+  test.each(casos)('GET $path — admin recebe o dado completo, sem filtro', async ({ path, metodo, dados }) => {
+    produtosService[metodo].mockResolvedValue(dados);
 
     const res = await request(app).get(path).set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(produtosService[serviceMethod]).toHaveBeenCalled();
+    expect(res.body.data).toEqual(dados);
   });
 
-  test.each(cases)('GET %s returns 403 for a vendedor', async (path, serviceMethod) => {
+  test.each(casos)('GET $path — vendedor recebe 200 sem custo/margem/lucro', async ({ path, metodo, dados, sensiveis }) => {
+    produtosService[metodo].mockResolvedValue(dados);
+
     const res = await request(app).get(path).set('Authorization', `Bearer ${vendedorToken}`);
 
-    expect(res.status).toBe(403);
-    expect(produtosService[serviceMethod]).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    const linha = primeiraLinha(res.body.data);
+    for (const campo of sensiveis) {
+      expect(linha).not.toHaveProperty(campo);
+    }
+    expect(produtosService[metodo]).toHaveBeenCalled();
   });
 
-  test.each(cases)('GET %s returns 403 for an estoquista', async (path, serviceMethod) => {
+  test.each(casos)('GET $path — estoquista recebe 200 sem custo/margem/lucro', async ({ path, metodo, dados, sensiveis }) => {
     const estoquistaToken = makeToken({ id: 3, role: 'estoquista', empresa_id: 1 });
+    produtosService[metodo].mockResolvedValue(dados);
 
     const res = await request(app).get(path).set('Authorization', `Bearer ${estoquistaToken}`);
 
-    expect(res.status).toBe(403);
-    expect(produtosService[serviceMethod]).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    const linha = primeiraLinha(res.body.data);
+    for (const campo of sensiveis) {
+      expect(linha).not.toHaveProperty(campo);
+    }
+    expect(produtosService[metodo]).toHaveBeenCalled();
   });
 });
