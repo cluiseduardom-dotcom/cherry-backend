@@ -4,10 +4,10 @@ const controller = require('../controllers/vendasController');
 const requireAdmin = require('../middlewares/requireAdmin');
 const requireVendedor = require('../middlewares/requireVendedor');
 
-router.get('/resumo', requireAdmin, controller.resumo);
-router.get('/por-dia', requireAdmin, controller.porDia);
-router.get('/por-mes', requireAdmin, controller.porMes);
-router.get('/mais-vendidos', requireAdmin, controller.maisVendidos);
+router.get('/resumo', requireVendedor, controller.resumo);
+router.get('/por-dia', requireVendedor, controller.porDia);
+router.get('/por-mes', requireVendedor, controller.porMes);
+router.get('/mais-vendidos', requireVendedor, controller.maisVendidos);
 
 router.get('/', requireVendedor, controller.listar);
 router.post('/', requireVendedor, controller.criar);
