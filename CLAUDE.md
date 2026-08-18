@@ -40,7 +40,7 @@ Outras regras:
 - Respostas: `{ success: true, data }` ou `{ success: false, message }`. Sem exceções.
 - Códigos: 400 validação, 401 sem token/token inválido, 403 papel sem permissão, 404 não encontrado, 409 conflito de regra de negócio, 500 erro inesperado.
 - Listagens têm paginação simples (`page`, `limit`).
-- Nomes de rotas, colunas e campos em **português**, sem acento e em snake_case (`preco_custo`, `estoque_minimo`).
+- Nomes de rotas, colunas e campos em **português**, sem acento e em snake_case (`preco_custo`, `estoque_minimo`). Isso vale também pra timestamp: colunas novas são `criado_em`/`atualizado_em`, nunca `created_at`/`updated_at` — decisão já tomada e reafirmada em fornecedores (ver abaixo), não reabrir.
 
 ## Estado atual dos módulos
 
@@ -53,6 +53,7 @@ Prontos:
 - **Dashboard analítico** — curva ABC, giro, cobertura em dias, margem por produto e canal. Admin-only.
 - **Financeiro: contas a pagar** — primeira etapa do módulo financeiro, lançamento manual, sem vínculo com vendas. CRUD completo em `/contas-pagar`.
 - **Financeiro: contas a receber** — segunda etapa, com vínculo automático a vendas (migration `009_contas_receber.sql`). Sem CRUD manual: nasce de `POST /vendas` com `forma_pagamento: 'prazo'`, é cancelada junto com a venda. `/contas-receber` só lê e marca como recebida.
+- **Fornecedores** — Fase A do módulo de Produção (migration `010_fornecedores.sql`): cadastro simples, CRUD completo em `/fornecedores`, acesso admin+estoquista. Compras (Fase B) e Produção própria com ficha técnica (Fase C) ainda não implementadas.
 
 Regras já decididas no estoque (não reabrir):
 - `tipo`: `entrada` soma, `saida` subtrai, `ajuste` fixa valor absoluto (correção de contagem física).
@@ -92,6 +93,15 @@ Regras já decididas em contas a receber (não reabrir):
 - `PATCH /vendas/:id/cancelar` cancela a conta a receber vinculada automaticamente, mas **só se ainda estiver `pendente`**. Se já foi `recebido`, o dinheiro já entrou: o cancelamento da **venda inteira** é bloqueado com 409 (`Venda com conta a receber já recebida não pode ser cancelada`), mesmo padrão de mensagem/status code do bloqueio de edição em `contasPagarRepository.atualizar`. Essa checagem roda logo após validar que a venda está `finalizada` e antes de estornar estoque ou atualizar o status da venda (`contasReceberRepository.cancelarPorVendaId`, dentro da mesma transação, reaproveitando o client externo, mesmo padrão de `estoqueRepository.criarMovimentacao`) — se bloquear, a transação inteira roda `ROLLBACK` e nada (estoque, status da venda) fica parcialmente alterado. Venda à vista nunca gerou conta, então é no-op.
 - `status` segue o mesmo padrão de contas a pagar: só 3 valores persistidos (`pendente`, `recebido`, `cancelado`); `atrasado` é campo calculado na leitura, nunca gravado.
 - `PATCH /contas-receber/:id/receber` marca como recebida, só a partir de `pendente`, com `FOR UPDATE` — mesmo padrão de `contasPagarRepository.marcarComoPaga`. Não existe cancelamento manual de conta a receber fora do cancelamento da venda: se for necessário no futuro (ex: perdão de dívida), é decisão de negócio a confirmar antes de implementar.
+
+Regras já decididas em fornecedores (não reabrir):
+- Acesso: **admin e estoquista** (`authMiddleware` + `requireEstoquista` no mount da rota em `app.js` — o mesmo middleware já usado em `POST /produtos/:id/movimentacoes`). Vendedor recebe 403 em toda rota do módulo, inclusive leitura. Diferente de contas a pagar/receber (admin apenas): fornecedor é dado operacional de estoque/compras, não financeiro.
+- CRUD completo em `/fornecedores`: `GET /` (paginado, filtro opcional `nome` via `ILIKE`), `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`. `DELETE` **não apaga a linha** — faz soft delete via `ativo = false`, mesma filosofia do soft delete de produtos (não a de contas a pagar/receber, que usam `status = 'cancelado'` em vez de uma flag `ativo`).
+- Único campo obrigatório é `nome`; `contato`, `telefone`, `email`, `cnpj_cpf`, `observacoes` são opcionais. `cnpj_cpf` valida só quantidade de dígitos (11 = CPF, 14 = CNPJ, ignorando pontuação) — sem checar dígito verificador, decisão explícita pra não sobre-engenhar validação de documento nesta fase.
+- Multi-tenancy: `fornecedoresRepository` filtra `id AND empresa_id` na mesma query em toda leitura/escrita (listar, buscar por id, atualizar, desativar), mesmo padrão do resto do sistema. Fornecedor de outra empresa responde 404 (nunca 403) em `GET/PUT/DELETE /:id`.
+- **Nomenclatura de timestamp**: `criado_em`/`atualizado_em` (português), não `created_at`/`updated_at` — mesma convenção já usada em `contas_pagar`/`contas_receber` (ver `## Convenções de API`). A tarefa original pedia `created_at`/`updated_at`; segui o padrão do projeto e avisei a divergência em vez de assumir. **Vale pra qualquer tabela nova daqui pra frente, não é específico de fornecedores — não reabrir esta discussão.**
+- `produtos.fornecedor` (texto livre, `VARCHAR`) **não foi tocado** — continua existindo em paralelo à nova tabela `fornecedores`. Hoje um produto não tem `fornecedor_id`; a migração de dados (ligar produto ao fornecedor por FK) fica pra uma sessão futura, depois de validação manual do cadastro.
+- Esta é só a Fase A do módulo de Produção (cadastro). Compras (Fase B) e Produção própria com ficha técnica (Fase C) ainda não existem — ver `MAPA_CHERRY_ERP.md` §7/§8 pra decisões de design já tomadas pra quando forem implementadas.
 
 ## Banco
 

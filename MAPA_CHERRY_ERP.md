@@ -2,6 +2,8 @@
 
 Auditoria feita em 2026-08-01, lendo o código-fonte (controllers/services/repositories/rotas/migrations) e rodando a suíte de testes real. Este documento reflete o estado **verificado em código**, não intenção ou documentação anterior — onde não foi possível confirmar algo com certeza, está marcado como "a verificar".
 
+Última atualização: 2026-08-18 — Fase A do módulo de Produção/Fornecedores (entidade Fornecedores) concluída e validada no banco de dev (ver §3, §4, §5 e §8).
+
 `package.json`: `cherry-backend@2.4.0`.
 
 ---
@@ -18,6 +20,7 @@ Auditoria feita em 2026-08-01, lendo o código-fonte (controllers/services/repos
 | `007_multi_tenant.sql` | Cria `empresas`; adiciona `empresa_id` (NOT NULL + índice) em `usuarios`, `clientes`, `produtos`, `canais_venda`, `precos_produto`, `vendas`, `itens_venda`, `movimentacoes_estoque`, `contas_pagar`. Seed de uma empresa única ("Cherry Semijoias") para migrar dados existentes. |
 | `008_canais_venda_unique_por_empresa.sql` | Troca `canais_venda.nome UNIQUE` (global) por `UNIQUE(empresa_id, nome)`. |
 | `009_contas_receber.sql` | Adiciona `forma_pagamento` (`a_vista`/`prazo`) a `vendas`; cria `contas_receber` (vínculo automático via `venda_id UNIQUE`, `status` `pendente`/`recebido`/`cancelado`). |
+| `010_fornecedores.sql` | Cria `fornecedores` (`empresa_id`, `nome` obrigatório, `contato`/`telefone`/`email`/`cnpj_cpf`/`observacoes` opcionais, `ativo` para soft delete, `criado_em`/`atualizado_em`). |
 
 Não existe migration `001_*`: a tabela base (`empresas` já incluída, `usuarios`, `clientes`, `produtos`, `vendas`, `itens_venda`) está apenas em `src/database/schema.sql`, mantido como snapshot consolidado — `schema.sql` já reflete o schema pós-migration 009 (inclui `empresa_id` em tudo).
 
@@ -101,6 +104,16 @@ Mount inteiro atrás de `authMiddleware + requireAdmin` — admin-only.
 
 Sem `POST`/`PUT` manual, como já documentado — toda linha nasce de `POST /vendas` com `forma_pagamento: 'prazo'`.
 
+### Fornecedores (`/fornecedores`)
+Mount inteiro atrás de `authMiddleware + requireEstoquista` — admin ou estoquista (vendedor recebe 403 em toda rota do módulo, inclusive leitura).
+
+| Método | Rota |
+|---|---|
+| GET | `/fornecedores` (paginado, filtro opcional `nome`), `/:id` |
+| POST | `/fornecedores` |
+| PUT | `/fornecedores/:id` |
+| DELETE | `/fornecedores/:id` (soft delete via `ativo = false`, não apaga a linha) |
+
 ---
 
 ## 3. Status real por módulo
@@ -115,29 +128,33 @@ Sem `POST`/`PUT` manual, como já documentado — toda linha nasce de `POST /ven
 | Dashboard analítico (`/dashboard`) | **Implementado** | Curva ABC, giro, cobertura, margem — admin-only, como documentado. |
 | Financeiro — contas a pagar | **Implementado** | CRUD completo, transições de status com lock de linha, `atrasado` calculado na leitura. **A CLAUDE.md desatualizada dizia isso como pendente — não é: está implementado e testado (87 testes).** |
 | Financeiro — contas a receber | **Implementado** | Vínculo automático a vendas a prazo, sem CRUD manual, cancelamento em cascata com a venda respeitando conta já recebida. |
+| Produção / Fornecedores | 🔄 Em andamento | Fase A concluída: entidade Fornecedores (CRUD, RBAC admin+estoquista, multi-tenancy, migration `010_fornecedores.sql`). Fase B (Compras) e Fase C (Produção própria com ficha técnica) pendentes. |
 
-Não existe nenhum módulo do backend hoje classificável como "ausente" — todos os módulos descritos no CLAUDE.md têm código, rotas e testes. O que existe são **ressalvas dentro de módulos implementados** (ver §6) e funcionalidades fora do escopo atual (ver §7).
+Não existe nenhum módulo do backend hoje totalmente "ausente" no sentido de zero código — todos os módulos descritos no CLAUDE.md, mais a Fase A de Fornecedores, têm código, rotas e testes. O que existe são **ressalvas dentro de módulos implementados** (ver §6), o módulo de Produção com fases ainda pendentes (Compras e Produção própria — ver §3 acima e §8) e funcionalidades fora do escopo atual (ver §7).
 
 ---
 
-## 4. Contagem de testes (suíte rodada em 2026-08-01 — `npm test`)
+## 4. Contagem de testes (suíte rodada em 2026-08-18 — `npm test`, com banco real acessível)
 
-**Total: 453 testes, 35 suítes, todos passando.**
+**Total: 564 testes, 39 suítes, todos passando.**
+
+Nota de correção: a contagem anterior deste documento (auditoria de 2026-08-01) mostrava 453 testes, mas o commit `8c3902b` (correção de RBAC do PR #4) já tinha elevado o total real para 501 sem que esta tabela fosse atualizada — os testes por papel adicionados em `produtos.test.js` e `vendas.test.js` não estavam refletidos aqui. Corrigido nesta atualização junto com a adição de Fornecedores.
 
 | Módulo | Arquivos | Testes |
 |---|---|---|
 | Auth | `middlewares/authMiddleware`, `requireAdmin`, `requireEstoquista`, `routes/auth`, `services/authService`, `validations/authValidation` | 34 |
-| Produtos | `routes/produtos`, `services/produtosService`, `validations/produtosValidation` | 71 |
+| Produtos | `routes/produtos`, `services/produtosService`, `validations/produtosValidation` | 107 |
 | Estoque | `repositories/estoqueRepository`, `routes/estoque`, `services/estoqueService`, `validations/estoqueValidation` | 32 |
 | Precificação (+ canais de venda) | `routes/precos`, `routes/canaisVenda`, `services/precosService`, `validations/precosValidation` | 46 |
-| Vendas/PDV | `repositories/vendasRepository`, `routes/vendas`, `services/vendasService`, `validations/vendasValidation` | 70 |
+| Vendas/PDV | `repositories/vendasRepository`, `routes/vendas`, `services/vendasService`, `validations/vendasValidation` | 82 |
 | Clientes | `routes/clientes`, `services/clientesService`, `validations/clientesValidation` | 20 |
 | Dashboard | `routes/dashboard`, `services/dashboardService` | 29 |
 | Contas a pagar | `repositories/contasPagarRepository`, `routes/contasPagar`, `services/contasPagarService`, `validations/contasPagarValidation` | 87 |
 | Contas a receber | `repositories/contasReceberRepository`, `routes/contasReceber`, `services/contasReceberService`, `validations/contasReceberValidation` | 48 |
+| Fornecedores | `repositories/fornecedoresRepository`, `routes/fornecedores`, `services/fornecedoresService`, `validations/fornecedoresValidation` | 63 |
 | Isolamento multi-tenant (cross-módulo, banco real) | `routes/multiTenantIsolation` | 16 |
 
-(Soma: 34+71+32+46+70+20+29+87+48+16 = 453.)
+(Soma: 34+107+32+46+82+20+29+87+48+63+16 = 564.)
 
 ---
 
@@ -156,10 +173,11 @@ Todos os repositories foram lidos linha a linha; toda query de leitura/escrita f
 | Dashboard | Sim | `dashboardRepository` e `precosRepository.listarMargemPorProdutoECanal` filtram `empresa_id`. |
 | Contas a pagar | Sim | `contasPagarRepository` filtra em listagem, busca por id e nas transições de status (`FOR UPDATE`). |
 | Contas a receber | Sim | `contasReceberRepository` filtra em todas as queries, inclusive `cancelarPorVendaId`. |
+| Fornecedores | Sim | `fornecedoresRepository` filtra `empresa_id` em todas as queries (listagem paginada, busca por id, criar, atualizar, soft delete). Confirmado por testes de repository/service/rotas com mock e, adicionalmente, validado manualmente via API contra o banco de dev (login como admin e como estoquista, criação e listagem funcionando; vendedor bloqueado com 403). |
 
 **Teste de isolamento ponta a ponta com banco real** (`tests/routes/multiTenantIsolation.test.js`, 16 testes) cobre: produtos, clientes, vendas, contas a pagar, movimentações de estoque — confirma que a empresa 1 não vê dados da empresa 2 e vice-versa, inclusive em busca por id (404, não 403).
 
-**Não coberto por teste de isolamento ponta a ponta com banco real** (a filtragem foi confirmada lendo o código e por testes unitários com mock, mas não por um teste de integração com duas empresas reais, como existe para os módulos acima): contas a receber, canais de venda, preços/precificação, dashboard. Marcar como "a verificar com teste de integração" se isolamento multi-tenant nesses módulos precisar de garantia mais forte que leitura de código.
+**Não coberto por teste de isolamento ponta a ponta com banco real** (a filtragem foi confirmada lendo o código e por testes unitários com mock, mas não por um teste de integração com duas empresas reais, como existe para os módulos acima): contas a receber, canais de venda, preços/precificação, dashboard, fornecedores. Marcar como "a verificar com teste de integração" se isolamento multi-tenant nesses módulos precisar de garantia mais forte que leitura de código.
 
 ---
 
@@ -183,4 +201,15 @@ Nenhum código foi alterado nesta tarefa (auditoria/documentação apenas) — o
 - UNIQUE por empresa em `usuarios.email` e `produtos.sku` — continuam únicos globalmente entre empresas (decisão pendente de confirmação, não implementado).
 - Nome/CNPJ reais da empresa seed — ainda usa o placeholder "Cherry Semijoias" com `cnpj` NULL.
 - Qualquer autenticação/fluxo de "esqueci minha senha", refresh token, ou revogação de token antes de expirar (JWT de 8h é o único mecanismo).
-- Testes de integração com banco real para isolamento multi-tenant de contas a receber, canais de venda, preços e dashboard (ver §5).
+- Testes de integração com banco real para isolamento multi-tenant de contas a receber, canais de venda, preços, dashboard e fornecedores (ver §5).
+- **Módulo de Compras (Produção Fase B).** Cadastro de fornecedores existe (Fase A, ver §3), mas não há endpoint pra registrar uma compra/entrada de mercadoria vinculada a um fornecedor com preço de custo por lote — toda entrada de estoque hoje passa pela rota genérica `POST /produtos/:id/movimentacoes`, sem esse vínculo. Ver decisão de design já tomada para quando for implementado em §8.
+- **Módulo de Produção própria (Produção Fase C).** Não existe ficha técnica (consumo de insumos/matéria-prima do estoque por produto) nem fluxo de registrar produção — produtos continuam cadastrados com custo manual. Ver decisão de design já tomada em §8.
+
+---
+
+## 8. Decisões de arquitetura e negócio já tomadas (Fornecedores/Compras/Produção)
+
+- **Fornecedores:** RBAC libera admin e estoquista; vendedor sem acesso (mesmo padrão de 403 usado em outras rotas restritas).
+- **Nomenclatura de timestamp em tabelas novas** segue `criado_em`/`atualizado_em` (português), consistente com `contas_pagar`/`contas_receber` — não `created_at`/`updated_at`.
+- **Compras** (módulo ainda não implementado) vai nascer como entrada direta simples (uma compra = uma movimentação de estoque imediata), mas com campo `status` desde o schema inicial (default `'recebido'`), para permitir evoluir para fluxo de pedido formal (`pendente`→`recebido`) sem reescrever a tabela depois.
+- **Produção própria** (módulo ainda não implementado) vai usar ficha técnica — consumo de insumos/matéria-prima do estoque ao registrar produção, não só uma entrada simples com custo manual.
