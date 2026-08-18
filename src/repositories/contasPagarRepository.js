@@ -47,10 +47,16 @@ async function buscarPorId(id, empresa_id) {
     return rows.length ? rows[0] : null;
 }
 
-async function criar({ descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id, empresa_id }) {
-    const { rows } = await db.query(
-        `INSERT INTO contas_pagar (descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id, empresa_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+// clienteExterno permite participar da transação de comprasRepository.criar
+// (compra + itens + movimentação de estoque + conta a pagar viram uma única
+// transação), no mesmo espírito de contasReceberRepository.criar. Sem
+// clienteExterno, roda como statement avulso (comportamento original).
+async function criar({ descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id, empresa_id, compra_id }, clienteExterno) {
+    const client = clienteExterno || db;
+
+    const { rows } = await client.query(
+        `INSERT INTO contas_pagar (descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id, empresa_id, compra_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING *`,
         [
             descricao,
@@ -60,7 +66,8 @@ async function criar({ descricao, fornecedor, valor, data_vencimento, categoria,
             categoria ?? null,
             observacao ?? null,
             usuario_id,
-            empresa_id
+            empresa_id,
+            compra_id ?? null
         ]
     );
 
@@ -177,11 +184,62 @@ async function cancelar(id, empresa_id) {
     });
 }
 
+// Cancela a conta a pagar vinculada a uma compra, só se ainda estiver
+// pendente. Se já foi paga, o dinheiro já saiu: bloqueia o cancelamento da
+// COMPRA inteira (409), mesmo padrão de contasReceberRepository.
+// cancelarPorVendaId bloqueando o cancelamento da venda quando a conta a
+// receber já foi recebida. Se a compra foi à vista e nunca gerou conta, é um
+// no-op silencioso. clienteExterno participa da transação de
+// comprasRepository.cancelar, mesmo padrão de criar().
+async function cancelarPorCompraId(compra_id, empresa_id, clienteExterno) {
+    const client = clienteExterno || await db.connect();
+    const gerenciaTransacao = !clienteExterno;
+
+    try {
+        if (gerenciaTransacao) await client.query('BEGIN');
+
+        const { rows } = await client.query(
+            'SELECT * FROM contas_pagar WHERE compra_id = $1 AND empresa_id = $2 FOR UPDATE',
+            [compra_id, empresa_id]
+        );
+
+        if (!rows.length) {
+            if (gerenciaTransacao) await client.query('COMMIT');
+            return null;
+        }
+
+        if (rows[0].status === 'pago') {
+            throw new AppError('Compra com conta a pagar já paga não pode ser cancelada', 409);
+        }
+
+        let resultado = rows[0];
+
+        if (rows[0].status === 'pendente') {
+            const { rows: atualizadaRows } = await client.query(
+                `UPDATE contas_pagar SET status = 'cancelado', atualizado_em = NOW() WHERE id = $1 RETURNING *`,
+                [rows[0].id]
+            );
+            resultado = atualizadaRows[0];
+        }
+
+        if (gerenciaTransacao) await client.query('COMMIT');
+
+        return resultado;
+
+    } catch (error) {
+        if (gerenciaTransacao) await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        if (gerenciaTransacao) client.release();
+    }
+}
+
 module.exports = {
     listarPaginado,
     buscarPorId,
     criar,
     atualizar,
     marcarComoPaga,
-    cancelar
+    cancelar,
+    cancelarPorCompraId
 };

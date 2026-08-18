@@ -106,6 +106,10 @@ CREATE TABLE contas_pagar (
     usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
     criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
     atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+    -- compra_id (FK pra compras, UNIQUE, nullable) é adicionado via ALTER
+    -- logo depois da tabela compras existir, mais abaixo neste arquivo —
+    -- não dá pra referenciar compras aqui porque ela ainda não foi criada
+    -- neste ponto do script.
 );
 
 CREATE TABLE contas_receber (
@@ -135,6 +139,31 @@ CREATE TABLE fornecedores (
     atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE compras (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    fornecedor_id INTEGER NOT NULL REFERENCES fornecedores(id),
+    data_compra DATE NOT NULL,
+    nota_fiscal VARCHAR(50),
+    forma_pagamento VARCHAR(20) NOT NULL DEFAULT 'a_vista' CHECK (forma_pagamento IN ('a_vista', 'prazo')),
+    dias_prazo INTEGER,
+    status VARCHAR(20) NOT NULL DEFAULT 'recebido' CHECK (status IN ('recebido', 'pendente', 'cancelado')),
+    valor_total NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE itens_compra (
+    id SERIAL PRIMARY KEY,
+    compra_id INTEGER NOT NULL REFERENCES compras(id),
+    produto_id INTEGER NOT NULL REFERENCES produtos(id),
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    quantidade INTEGER NOT NULL,
+    custo_unitario NUMERIC(10, 2) NOT NULL
+);
+
+ALTER TABLE contas_pagar ADD COLUMN compra_id INTEGER UNIQUE REFERENCES compras(id);
+
 CREATE INDEX idx_vendas_cliente_id ON vendas(cliente_id);
 CREATE INDEX idx_vendas_canal_id ON vendas(canal_id);
 CREATE INDEX idx_vendas_usuario_id ON vendas(usuario_id);
@@ -158,3 +187,10 @@ CREATE INDEX idx_contas_receber_status ON contas_receber(status);
 CREATE INDEX idx_contas_receber_vencimento ON contas_receber(data_vencimento);
 CREATE INDEX idx_contas_receber_empresa_id ON contas_receber(empresa_id);
 CREATE INDEX idx_fornecedores_empresa_id ON fornecedores(empresa_id);
+CREATE INDEX idx_compras_empresa_id ON compras(empresa_id);
+CREATE INDEX idx_compras_fornecedor_id ON compras(fornecedor_id);
+CREATE INDEX idx_compras_data_compra ON compras(data_compra);
+CREATE INDEX idx_itens_compra_compra_id ON itens_compra(compra_id);
+CREATE INDEX idx_itens_compra_produto_id ON itens_compra(produto_id);
+CREATE INDEX idx_itens_compra_empresa_id ON itens_compra(empresa_id);
+CREATE INDEX idx_contas_pagar_compra_id ON contas_pagar(compra_id);

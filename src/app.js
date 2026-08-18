@@ -16,6 +16,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const contasPagarRoutes = require('./routes/contasPagar');
 const contasReceberRoutes = require('./routes/contasReceber');
 const fornecedoresRoutes = require('./routes/fornecedores');
+const comprasRoutes = require('./routes/compras');
 const authRoutes = require('./routes/authRoutes');
 const authMiddleware = require('./middlewares/authMiddleware');
 const requireAdmin = require('./middlewares/requireAdmin');
@@ -31,6 +32,7 @@ app.use('/dashboard', authMiddleware, requireAdmin, dashboardRoutes);
 app.use('/contas-pagar', authMiddleware, requireAdmin, contasPagarRoutes);
 app.use('/contas-receber', authMiddleware, requireAdmin, contasReceberRoutes);
 app.use('/fornecedores', authMiddleware, requireEstoquista, fornecedoresRoutes);
+app.use('/compras', authMiddleware, requireEstoquista, comprasRoutes);
 app.use(errorHandler);
 
 module.exports = app;
