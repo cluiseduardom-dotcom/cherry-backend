@@ -134,3 +134,17 @@ Regras já decididas em fornecedores (não reabrir):
 - Todo trabalho começa com `git checkout -b feat/<modulo>` a partir de `master` atualizado.
 - Push e abertura de PR são feitos manualmente por mim, no terminal.
 - Merge só depois do CI verde.
+
+## Agent skills
+
+### Issue tracker
+
+Issues vivem no GitHub Issues deste repo (via CLI `gh`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Vocabulário padrão das 5 roles canônicas (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — `CONTEXT.md` + `docs/adr/` na raiz do repo. See `docs/agents/domain.md`.
