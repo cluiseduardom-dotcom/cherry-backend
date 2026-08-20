@@ -135,6 +135,25 @@ CREATE TABLE fornecedores (
     atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE despesas_fixas (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    categoria VARCHAR(20) NOT NULL CHECK (categoria IN ('estrutural', 'pessoal', 'administrativa')),
+    descricao VARCHAR(255) NOT NULL,
+    valor NUMERIC(12,2) NOT NULL CHECK (valor >= 0),
+    ativo BOOLEAN NOT NULL DEFAULT true,
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    deletado_em TIMESTAMP
+);
+
+CREATE TABLE configuracoes_financeiras (
+    empresa_id INTEGER PRIMARY KEY REFERENCES empresas(id),
+    aliquota_imposto NUMERIC(5,4) NOT NULL DEFAULT 0 CHECK (aliquota_imposto >= 0 AND aliquota_imposto <= 1),
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX idx_vendas_cliente_id ON vendas(cliente_id);
 CREATE INDEX idx_vendas_canal_id ON vendas(canal_id);
 CREATE INDEX idx_vendas_usuario_id ON vendas(usuario_id);
@@ -158,3 +177,4 @@ CREATE INDEX idx_contas_receber_status ON contas_receber(status);
 CREATE INDEX idx_contas_receber_vencimento ON contas_receber(data_vencimento);
 CREATE INDEX idx_contas_receber_empresa_id ON contas_receber(empresa_id);
 CREATE INDEX idx_fornecedores_empresa_id ON fornecedores(empresa_id);
+CREATE INDEX idx_despesas_fixas_empresa_id ON despesas_fixas(empresa_id);
