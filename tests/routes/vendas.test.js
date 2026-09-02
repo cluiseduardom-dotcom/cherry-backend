@@ -146,7 +146,7 @@ describe('POST /vendas (admin and vendedor only)', () => {
     expect(res.status).toBe(400);
   });
 
-  test('returns 400 for forma_pagamento prazo without dias_prazo', async () => {
+  test('returns 400 for forma_pagamento prazo without meses_prazo', async () => {
     const res = await request(app)
       .post('/vendas')
       .set('Authorization', `Bearer ${vendedorToken}`)
@@ -156,18 +156,18 @@ describe('POST /vendas (admin and vendedor only)', () => {
     expect(vendasService.criar).not.toHaveBeenCalled();
   });
 
-  test('returns 201 for a prazo venda and forwards forma_pagamento/dias_prazo to the service', async () => {
+  test('returns 201 for a prazo venda and forwards forma_pagamento/meses_prazo to the service', async () => {
     vendasService.criar.mockResolvedValue({ id: 1, total: '10.00', conta_receber: { id: 1, status: 'pendente' } });
 
     const res = await request(app)
       .post('/vendas')
       .set('Authorization', `Bearer ${vendedorToken}`)
-      .send({ forma_pagamento: 'prazo', dias_prazo: 30, itens: [{ produto_id: 1, quantidade: 1 }] });
+      .send({ forma_pagamento: 'prazo', meses_prazo: 3, itens: [{ produto_id: 1, quantidade: 1 }] });
 
     expect(res.status).toBe(201);
     expect(res.body.data.conta_receber.status).toBe('pendente');
     expect(vendasService.criar).toHaveBeenCalledWith(
-      { forma_pagamento: 'prazo', dias_prazo: 30, itens: [{ produto_id: 1, quantidade: 1 }] },
+      { forma_pagamento: 'prazo', meses_prazo: 3, itens: [{ produto_id: 1, quantidade: 1 }] },
       2,
       1
     );

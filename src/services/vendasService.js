@@ -18,7 +18,7 @@ async function maisVendidos(empresaId) {
     return vendasRepository.getMaisVendidosPeriodo(empresaId);
 }
 
-async function criar({ cliente_id, canal, forma_pagamento, dias_prazo, itens }, usuario_id, empresaId) {
+async function criar({ cliente_id, canal, forma_pagamento, meses_prazo, itens }, usuario_id, empresaId) {
     const canalRow = await precosRepository.buscarCanalPorNome(canal || 'loja_fisica', empresaId);
 
     if (!canalRow) {
@@ -31,7 +31,7 @@ async function criar({ cliente_id, canal, forma_pagamento, dias_prazo, itens }, 
         usuario_id,
         empresa_id: empresaId,
         forma_pagamento,
-        dias_prazo,
+        meses_prazo,
         itens
     });
 }

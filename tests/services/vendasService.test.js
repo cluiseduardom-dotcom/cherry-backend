@@ -49,19 +49,19 @@ describe('criar', () => {
     });
   });
 
-  test('passes forma_pagamento and dias_prazo through to the repository', async () => {
+  test('passes forma_pagamento and meses_prazo through to the repository', async () => {
     precosRepository.buscarCanalPorNome.mockResolvedValue({ id: 1, nome: 'loja_fisica' });
     vendasRepository.criar.mockResolvedValue({ id: 1, total: '10.00' });
 
     await vendasService.criar({
       forma_pagamento: 'prazo',
-      dias_prazo: 30,
+      meses_prazo: 3,
       itens: [{ produto_id: 1, quantidade: 1 }]
     }, 7, 9);
 
     expect(vendasRepository.criar).toHaveBeenCalledWith(expect.objectContaining({
       forma_pagamento: 'prazo',
-      dias_prazo: 30
+      meses_prazo: 3
     }));
   });
 
