@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
+const { executarComLock, transicionarStatus } = require('./shared/transacoes');
 
 async function listarPaginado({ limit, offset, status, vencimentoDe, vencimentoAte, empresa_id }) {
     const condicoes = ['empresa_id = $1'];
@@ -83,88 +84,41 @@ async function criar({ venda_id, descricao, valor, data_vencimento, empresa_id }
 // bloqueando edição de conta paga/cancelada — quem chama (vendasRepository.
 // cancelar) deixa esse erro estourar antes de tocar em estoque ou no status
 // da venda, então nada fica parcialmente cancelado. Se a venda era à vista e
-// nunca gerou conta, é um no-op silencioso. clienteExterno participa da
-// transação de vendasRepository.cancelar, mesmo padrão de criar().
+// nunca gerou conta, é um no-op silencioso. Usa executarComLock direto (não
+// transicionarStatus) porque a ramificação é irregular: sem linha vinculada
+// → no-op, já cancelada → devolve como está, sem UPDATE nem erro.
+// clienteExterno participa da transação de vendasRepository.cancelar, mesmo
+// padrão de criar().
 async function cancelarPorVendaId(venda_id, empresa_id, clienteExterno) {
-    const client = clienteExterno || await db.connect();
-    const gerenciaTransacao = !clienteExterno;
-
-    try {
-        if (gerenciaTransacao) await client.query('BEGIN');
-
-        const { rows } = await client.query(
-            'SELECT * FROM contas_receber WHERE venda_id = $1 AND empresa_id = $2 FOR UPDATE',
-            [venda_id, empresa_id]
-        );
-
-        if (!rows.length) {
-            if (gerenciaTransacao) await client.query('COMMIT');
+    return executarComLock('contas_receber', { coluna: 'venda_id', valor: venda_id }, empresa_id, clienteExterno, async (conta, client) => {
+        if (!conta) {
             return null;
         }
 
-        if (rows[0].status === 'recebido') {
+        if (conta.status === 'recebido') {
             throw new AppError('Venda com conta a receber já recebida não pode ser cancelada', 409);
         }
 
-        let resultado = rows[0];
-
-        if (rows[0].status === 'pendente') {
-            const { rows: atualizadaRows } = await client.query(
-                `UPDATE contas_receber SET status = 'cancelado', atualizado_em = NOW() WHERE id = $1 RETURNING *`,
-                [rows[0].id]
-            );
-            resultado = atualizadaRows[0];
+        if (conta.status !== 'pendente') {
+            return conta;
         }
 
-        if (gerenciaTransacao) await client.query('COMMIT');
+        const { rows } = await client.query(
+            `UPDATE contas_receber SET status = 'cancelado', atualizado_em = NOW() WHERE id = $1 RETURNING *`,
+            [conta.id]
+        );
 
-        return resultado;
-
-    } catch (error) {
-        if (gerenciaTransacao) await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        if (gerenciaTransacao) client.release();
-    }
+        return rows[0];
+    });
 }
 
-// Lock de linha (FOR UPDATE), mesmo motivo de contasPagarRepository.marcarComoPaga:
-// impede que duas requisições concorrentes marquem a mesma conta como recebida.
 async function marcarComoRecebida(id, empresa_id) {
-    const client = await db.connect();
-
-    try {
-        await client.query('BEGIN');
-
-        const { rows: contaRows } = await client.query(
-            'SELECT * FROM contas_receber WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
-            [id, empresa_id]
-        );
-
-        if (!contaRows.length) {
-            throw new AppError('Conta a receber não encontrada', 404);
-        }
-
-        if (contaRows[0].status !== 'pendente') {
-            throw new AppError('Somente contas pendentes podem ser marcadas como recebidas', 409);
-        }
-
-        const { rows: atualizadaRows } = await client.query(
-            `UPDATE contas_receber SET status = 'recebido', data_recebimento = CURRENT_DATE, atualizado_em = NOW()
-             WHERE id = $1 RETURNING *`,
-            [id]
-        );
-
-        await client.query('COMMIT');
-
-        return atualizadaRows[0];
-
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
-    }
+    return transicionarStatus('contas_receber', id, empresa_id, {
+        statusEsperado: 'pendente',
+        mensagemNaoEncontrado: 'Conta a receber não encontrada',
+        mensagemStatusInvalido: 'Somente contas pendentes podem ser marcadas como recebidas',
+        sets: `status = 'recebido', data_recebimento = CURRENT_DATE`
+    });
 }
 
 module.exports = {

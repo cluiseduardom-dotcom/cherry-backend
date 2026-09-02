@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
+const { executarComLock, transicionarStatus } = require('./shared/transacoes');
 
 async function listarPaginado({ limit, offset, status, vencimentoDe, vencimentoAte, empresa_id }) {
     const condicoes = ['empresa_id = $1'];
@@ -67,26 +68,20 @@ async function criar({ descricao, fornecedor, valor, data_vencimento, categoria,
     return rows[0];
 }
 
-// Lock de linha (FOR UPDATE), mesmo motivo de transicionarStatus: impede que
-// um PUT concorrente com um PATCH /:id/pagar (ou /cancelar) passem ambos pela
-// checagem de status antes de qualquer um gravar.
+// Lock de linha (FOR UPDATE) via executarComLock, mesmo motivo do lock em
+// marcarComoPaga/cancelar: impede que um PUT concorrente com um PATCH
+// /:id/pagar (ou /cancelar) passem ambos pela checagem de status antes de
+// qualquer um gravar. Não usa transicionarStatus porque o SET é dinâmico
+// (monta a partir dos campos informados), não uma string fixa.
 async function atualizar(id, dados, empresa_id) {
     const campos = ['descricao', 'fornecedor', 'valor', 'data_vencimento', 'categoria', 'observacao'];
-    const client = await db.connect();
 
-    try {
-        await client.query('BEGIN');
-
-        const { rows: contaRows } = await client.query(
-            'SELECT * FROM contas_pagar WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
-            [id, empresa_id]
-        );
-
-        if (!contaRows.length) {
+    return executarComLock('contas_pagar', { coluna: 'id', valor: id }, empresa_id, undefined, async (conta, client) => {
+        if (!conta) {
             throw new AppError('Conta a pagar não encontrada', 404);
         }
 
-        if (contaRows[0].status !== 'pendente') {
+        if (conta.status !== 'pendente') {
             throw new AppError('Contas pagas ou canceladas não podem ser editadas', 409);
         }
 
@@ -109,69 +104,23 @@ async function atualizar(id, dados, empresa_id) {
             valores
         );
 
-        await client.query('COMMIT');
-
         return rows[0];
-
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
-    }
-}
-
-// Lock de linha (FOR UPDATE) dentro de uma transação, no mesmo espírito de
-// vendasRepository.cancelar: evita que duas requisições concorrentes (ex:
-// dois cliques em "marcar como paga") passem ambas pela checagem de status
-// antes de qualquer uma delas gravar a mudança.
-async function transicionarStatus(id, empresa_id, { statusEsperado, mensagemStatusInvalido, sets }) {
-    const client = await db.connect();
-
-    try {
-        await client.query('BEGIN');
-
-        const { rows: contaRows } = await client.query(
-            'SELECT * FROM contas_pagar WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
-            [id, empresa_id]
-        );
-
-        if (!contaRows.length) {
-            throw new AppError('Conta a pagar não encontrada', 404);
-        }
-
-        if (contaRows[0].status !== statusEsperado) {
-            throw new AppError(mensagemStatusInvalido, 409);
-        }
-
-        const { rows: atualizadaRows } = await client.query(
-            `UPDATE contas_pagar SET ${sets}, atualizado_em = NOW() WHERE id = $1 RETURNING *`,
-            [id]
-        );
-
-        await client.query('COMMIT');
-
-        return atualizadaRows[0];
-
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
-    }
+    });
 }
 
 async function marcarComoPaga(id, empresa_id) {
-    return transicionarStatus(id, empresa_id, {
+    return transicionarStatus('contas_pagar', id, empresa_id, {
         statusEsperado: 'pendente',
+        mensagemNaoEncontrado: 'Conta a pagar não encontrada',
         mensagemStatusInvalido: 'Somente contas pendentes podem ser marcadas como pagas',
         sets: `status = 'pago', data_pagamento = CURRENT_DATE`
     });
 }
 
 async function cancelar(id, empresa_id) {
-    return transicionarStatus(id, empresa_id, {
+    return transicionarStatus('contas_pagar', id, empresa_id, {
         statusEsperado: 'pendente',
+        mensagemNaoEncontrado: 'Conta a pagar não encontrada',
         mensagemStatusInvalido: 'Somente contas pendentes podem ser canceladas',
         sets: `status = 'cancelado'`
     });

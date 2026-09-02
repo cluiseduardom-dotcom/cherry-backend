@@ -2,6 +2,7 @@ const db = require('../config/db');
 const estoqueRepository = require('./estoqueRepository');
 const precosRepository = require('./precosRepository');
 const contasReceberRepository = require('./contasReceberRepository');
+const { executarComLock } = require('./shared/transacoes');
 const AppError = require('../errors/AppError');
 
 // Usa os getters LOCAIS do Date (não toISOString/UTC) de propósito: a mesma
@@ -259,23 +260,14 @@ async function buscarPorId(id, empresa_id) {
 // e marca a venda como cancelada, na mesma transação. Não reaproveita o
 // bloqueio de "produto inativo" do módulo de estoque aqui de propósito: uma
 // venda precisa poder ser cancelada mesmo que o produto tenha sido desativado
-// depois da venda original.
+// depois da venda original. Usa executarComLock direto (não transicionarStatus)
+// porque há efeitos colaterais (contasReceberRepository, estoque) entre o
+// lock e a escrita final, não um SET estático.
 async function cancelar(id, usuario_id, empresa_id) {
-    const client = await db.connect();
-
-    try {
-        await client.query('BEGIN');
-
-        const { rows: vendaRows } = await client.query(
-            'SELECT * FROM vendas WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
-            [id, empresa_id]
-        );
-
-        if (!vendaRows.length) {
+    return executarComLock('vendas', { coluna: 'id', valor: id }, empresa_id, undefined, async (venda, client) => {
+        if (!venda) {
             throw new AppError('Venda não encontrada', 404);
         }
-
-        const venda = vendaRows[0];
 
         if (venda.status !== 'finalizada') {
             throw new AppError('Somente vendas finalizadas podem ser canceladas', 409);
@@ -313,16 +305,8 @@ async function cancelar(id, usuario_id, empresa_id) {
             [id]
         );
 
-        await client.query('COMMIT');
-
         return atualizadaRows[0];
-
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
-    }
+    });
 }
 
 module.exports = {
