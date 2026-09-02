@@ -2,14 +2,16 @@ jest.mock('../../src/config/db');
 jest.mock('../../src/repositories/estoqueRepository');
 jest.mock('../../src/repositories/precosRepository');
 jest.mock('../../src/repositories/contasReceberRepository');
+jest.mock('../../src/repositories/shared/transacoes');
 
 const db = require('../../src/config/db');
 const estoqueRepository = require('../../src/repositories/estoqueRepository');
 const precosRepository = require('../../src/repositories/precosRepository');
 const contasReceberRepository = require('../../src/repositories/contasReceberRepository');
+const { executarComLock } = require('../../src/repositories/shared/transacoes');
 const vendasRepository = require('../../src/repositories/vendasRepository');
 
-function makeFakeClient({ produtos = {}, venda = {}, clienteExiste = true } = {}) {
+function makeFakeClient({ produtos = {}, clienteExiste = true } = {}) {
   const client = {
     query: jest.fn(),
     release: jest.fn()
@@ -49,18 +51,6 @@ function makeFakeClient({ produtos = {}, venda = {}, clienteExiste = true } = {}
         itens.push({ id: itens.length + 1, venda_id: params[i], produto_id: params[i + 1], quantidade: params[i + 2], preco_unitario: params[i + 3] });
       }
       return Promise.resolve({ rows: itens });
-    }
-
-    if (sql.includes('SELECT * FROM vendas WHERE id = $1 AND empresa_id = $2 FOR UPDATE')) {
-      return Promise.resolve({ rows: venda.existe === false ? [] : [{ id: params[0], status: venda.status ?? 'finalizada' }] });
-    }
-
-    if (sql.includes('SELECT produto_id, quantidade FROM itens_venda')) {
-      return Promise.resolve({ rows: venda.itens ?? [] });
-    }
-
-    if (sql.includes("UPDATE vendas SET status = 'cancelada'")) {
-      return Promise.resolve({ rows: [{ id: params[0], status: 'cancelada' }] });
     }
 
     return Promise.resolve({ rows: [] });
@@ -199,7 +189,7 @@ describe('criar', () => {
       usuario_id: 2,
       empresa_id: 9,
       forma_pagamento: 'prazo',
-      dias_prazo: 30,
+      meses_prazo: 3,
       itens: [{ produto_id: 1, quantidade: 1 }]
     });
 
@@ -237,39 +227,61 @@ describe('criar', () => {
   });
 });
 
+// cancelar usa executarComLock direto (efeitos colaterais entre o lock e a
+// escrita final: contasReceberRepository, estoque) — mecânica de
+// lock/commit/rollback já coberta em tests/repositories/shared/transacoes.test.js.
+// Aqui só o wiring e a ramificação própria da callback.
 describe('cancelar', () => {
-  test('reverses stock for every item (entrada, motivo cancelamento_venda) and marks the venda cancelada', async () => {
-    const fakeClient = makeFakeClient({
-      venda: { status: 'finalizada', itens: [{ produto_id: 1, quantidade: 3 }, { produto_id: 2, quantidade: 1 }] }
+  function fakeClientDeCancelamento({ itens = [] } = {}) {
+    const client = { query: jest.fn() };
+    client.query.mockImplementation((sql, params = []) => {
+      if (sql.includes('SELECT produto_id, quantidade FROM itens_venda')) {
+        return Promise.resolve({ rows: itens });
+      }
+      if (sql.includes("UPDATE vendas SET status = 'cancelada'")) {
+        return Promise.resolve({ rows: [{ id: params[0], status: 'cancelada' }] });
+      }
+      return Promise.resolve({ rows: [] });
     });
-    db.connect = jest.fn().mockResolvedValue(fakeClient);
+    return client;
+  }
+
+  test('wires executarComLock with vendas/id, reverses stock for every item and marks the venda cancelada', async () => {
+    const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 3 }, { produto_id: 2, quantidade: 1 }] });
+    executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
+      callback({ id: 1, status: 'finalizada' }, client)
+    );
     estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 } });
 
     const resultado = await vendasRepository.cancelar(1, 9, 5);
 
+    expect(executarComLock).toHaveBeenCalledWith('vendas', { coluna: 'id', valor: 1 }, 5, undefined, expect.any(Function));
     expect(resultado.status).toBe('cancelada');
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
       { produto_id: 1, tipo: 'entrada', quantidade: 3, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5 },
-      fakeClient
+      client
     );
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
       { produto_id: 2, tipo: 'entrada', quantidade: 1, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5 },
-      fakeClient
+      client
     );
-    expect(fakeClient.query).toHaveBeenCalledWith('COMMIT');
   });
 
-  test('throws 404 when the venda does not exist', async () => {
-    const fakeClient = makeFakeClient({ venda: { existe: false } });
-    db.connect = jest.fn().mockResolvedValue(fakeClient);
+  test('throws 404 when the venda does not exist, without touching stock', async () => {
+    const client = fakeClientDeCancelamento();
+    executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
+      callback(null, client)
+    );
 
-    await expect(vendasRepository.cancelar(999, 9, 5)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(vendasRepository.cancelar(999, 9, 5)).rejects.toMatchObject({ statusCode: 404, message: 'Venda não encontrada' });
     expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
   });
 
-  test('throws 409 when the venda is not finalizada', async () => {
-    const fakeClient = makeFakeClient({ venda: { status: 'cancelada', itens: [] } });
-    db.connect = jest.fn().mockResolvedValue(fakeClient);
+  test('throws 409 when the venda is not finalizada, without touching stock', async () => {
+    const client = fakeClientDeCancelamento();
+    executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
+      callback({ id: 1, status: 'cancelada' }, client)
+    );
 
     await expect(vendasRepository.cancelar(1, 9, 5)).rejects.toMatchObject({
       statusCode: 409,
@@ -278,20 +290,22 @@ describe('cancelar', () => {
     expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
   });
 
-  test('cancels the linked conta a receber (if any) in the same transaction', async () => {
-    const fakeClient = makeFakeClient({ venda: { status: 'finalizada', itens: [] } });
-    db.connect = jest.fn().mockResolvedValue(fakeClient);
+  test('cancels the linked conta a receber (if any), reusing the same locked client', async () => {
+    const client = fakeClientDeCancelamento();
+    executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
+      callback({ id: 1, status: 'finalizada' }, client)
+    );
 
     await vendasRepository.cancelar(1, 9, 5);
 
-    expect(contasReceberRepository.cancelarPorVendaId).toHaveBeenCalledWith(1, 5, fakeClient);
+    expect(contasReceberRepository.cancelarPorVendaId).toHaveBeenCalledWith(1, 5, client);
   });
 
-  test('blocks cancellation (409) and rolls back without touching stock or venda status when the linked conta a receber is already recebida', async () => {
-    const fakeClient = makeFakeClient({
-      venda: { status: 'finalizada', itens: [{ produto_id: 1, quantidade: 3 }] }
-    });
-    db.connect = jest.fn().mockResolvedValue(fakeClient);
+  test('blocks cancellation (409) without touching stock or venda status when the linked conta a receber is already recebida', async () => {
+    const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 3 }] });
+    executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
+      callback({ id: 1, status: 'finalizada' }, client)
+    );
 
     const AppError = require('../../src/errors/AppError');
     contasReceberRepository.cancelarPorVendaId.mockRejectedValue(
@@ -304,10 +318,7 @@ describe('cancelar', () => {
     });
 
     expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
-
-    const sqlChamados = fakeClient.query.mock.calls.map(([sql]) => sql);
+    const sqlChamados = client.query.mock.calls.map(([sql]) => sql);
     expect(sqlChamados.some((sql) => sql.includes("UPDATE vendas SET status = 'cancelada'"))).toBe(false);
-    expect(sqlChamados).toContain('ROLLBACK');
-    expect(sqlChamados).not.toContain('COMMIT');
   });
 });

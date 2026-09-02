@@ -79,20 +79,20 @@ describe('criarVendaSchema', () => {
     expect(criarVendaSchema.safeParse(valid).success).toBe(true);
   });
 
-  test('accepts forma_pagamento a_vista without dias_prazo', () => {
+  test('accepts forma_pagamento a_vista without meses_prazo', () => {
     const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'a_vista' });
     expect(result.success).toBe(true);
   });
 
-  test('accepts forma_pagamento prazo with dias_prazo', () => {
-    const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'prazo', dias_prazo: 30 });
+  test('accepts forma_pagamento prazo with meses_prazo', () => {
+    const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'prazo', meses_prazo: 3 });
     expect(result.success).toBe(true);
   });
 
-  test('rejects forma_pagamento prazo without dias_prazo', () => {
+  test('rejects forma_pagamento prazo without meses_prazo', () => {
     const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'prazo' });
     expect(result.success).toBe(false);
-    expect(result.error.issues[0].message).toBe('Informe dias_prazo para vendas a prazo');
+    expect(result.error.issues[0].message).toBe('Informe meses_prazo para vendas a prazo');
   });
 
   test('rejects an invalid forma_pagamento', () => {
@@ -100,8 +100,8 @@ describe('criarVendaSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  test('rejects dias_prazo <= 0', () => {
-    const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'prazo', dias_prazo: 0 });
+  test('rejects meses_prazo <= 0', () => {
+    const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'prazo', meses_prazo: 0 });
     expect(result.success).toBe(false);
   });
 });

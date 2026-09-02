@@ -153,6 +153,25 @@ CREATE TABLE compras (
     atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE despesas_fixas (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    categoria VARCHAR(20) NOT NULL CHECK (categoria IN ('estrutural', 'pessoal', 'administrativa')),
+    descricao VARCHAR(255) NOT NULL,
+    valor NUMERIC(12,2) NOT NULL CHECK (valor >= 0),
+    ativo BOOLEAN NOT NULL DEFAULT true,
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    deletado_em TIMESTAMP
+);
+
+CREATE TABLE configuracoes_financeiras (
+    empresa_id INTEGER PRIMARY KEY REFERENCES empresas(id),
+    aliquota_imposto NUMERIC(5,4) NOT NULL DEFAULT 0 CHECK (aliquota_imposto >= 0 AND aliquota_imposto <= 1),
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE itens_compra (
     id SERIAL PRIMARY KEY,
     compra_id INTEGER NOT NULL REFERENCES compras(id),
@@ -194,3 +213,4 @@ CREATE INDEX idx_itens_compra_compra_id ON itens_compra(compra_id);
 CREATE INDEX idx_itens_compra_produto_id ON itens_compra(produto_id);
 CREATE INDEX idx_itens_compra_empresa_id ON itens_compra(empresa_id);
 CREATE INDEX idx_contas_pagar_compra_id ON contas_pagar(compra_id);
+CREATE INDEX idx_despesas_fixas_empresa_id ON despesas_fixas(empresa_id);

@@ -54,6 +54,7 @@ Prontos:
 - **Financeiro: contas a pagar** — primeira etapa do módulo financeiro, lançamento manual, sem vínculo com vendas. CRUD completo em `/contas-pagar`.
 - **Financeiro: contas a receber** — segunda etapa, com vínculo automático a vendas (migration `009_contas_receber.sql`). Sem CRUD manual: nasce de `POST /vendas` com `forma_pagamento: 'prazo'`, é cancelada junto com a venda. `/contas-receber` só lê e marca como recebida.
 - **Fornecedores** — Fase A do módulo de Produção (migration `010_fornecedores.sql`): cadastro simples, CRUD completo em `/fornecedores`, acesso admin+estoquista. Compras (Fase B) e Produção própria com ficha técnica (Fase C) ainda não implementadas.
+- **Relatórios (frontend, `cherry-frontend`)** — módulo completo: relatórios de Vendas, Estoque e Financeiro com dados reais e exportação em PDF (jsPDF + html2canvas). Sem rota nova no backend — reaproveita os endpoints analíticos já existentes. Mergeado em PR #6 do `cherry-frontend`.
 
 Regras já decididas no estoque (não reabrir):
 - `tipo`: `entrada` soma, `saida` subtrai, `ajuste` fixa valor absoluto (correção de contagem física).
@@ -93,6 +94,22 @@ Regras já decididas em contas a receber (não reabrir):
 - `PATCH /vendas/:id/cancelar` cancela a conta a receber vinculada automaticamente, mas **só se ainda estiver `pendente`**. Se já foi `recebido`, o dinheiro já entrou: o cancelamento da **venda inteira** é bloqueado com 409 (`Venda com conta a receber já recebida não pode ser cancelada`), mesmo padrão de mensagem/status code do bloqueio de edição em `contasPagarRepository.atualizar`. Essa checagem roda logo após validar que a venda está `finalizada` e antes de estornar estoque ou atualizar o status da venda (`contasReceberRepository.cancelarPorVendaId`, dentro da mesma transação, reaproveitando o client externo, mesmo padrão de `estoqueRepository.criarMovimentacao`) — se bloquear, a transação inteira roda `ROLLBACK` e nada (estoque, status da venda) fica parcialmente alterado. Venda à vista nunca gerou conta, então é no-op.
 - `status` segue o mesmo padrão de contas a pagar: só 3 valores persistidos (`pendente`, `recebido`, `cancelado`); `atrasado` é campo calculado na leitura, nunca gravado.
 - `PATCH /contas-receber/:id/receber` marca como recebida, só a partir de `pendente`, com `FOR UPDATE` — mesmo padrão de `contasPagarRepository.marcarComoPaga`. Não existe cancelamento manual de conta a receber fora do cancelamento da venda: se for necessário no futuro (ex: perdão de dívida), é decisão de negócio a confirmar antes de implementar.
+- **Bug encontrado e corrigido (29/08/2026, fora deste repo)**: a função `criarVenda` em `cherry-frontend/src/services/vendas.js` desestruturava só `canal`, `cliente_id` e `itens` — `forma_pagamento` e `dias_prazo`, já capturados pelo toggle "À vista/A prazo" da tela de Venda, nunca chegavam no payload enviado ao backend. Como `criarVendaSchema` trata `forma_pagamento` como opcional, toda venda feita pelo PDV caía no default `'a_vista'` sem erro visível na tela, e nenhuma conta a receber era gerada mesmo quando o usuário selecionava "A prazo". O backend estava correto — as regras desta seção sempre foram respeitadas; o bug era só no frontend, silenciosamente descartando os dois campos. Corrigido incluindo-os no payload; validado manualmente pelo PDV (venda a prazo grava `forma_pagamento: 'prazo'` e gera a linha em `contas_receber` com o vencimento esperado). Mergeado em PR #6 do `cherry-frontend`. Vale lembrar disso ao investigar qualquer caso futuro de "conta a receber não foi gerada" — checar primeiro se o payload do frontend está repassando os dois campos antes de suspeitar do backend.
+
+Regras já decididas em fornecedores (não reabrir):
+- Acesso: **admin e estoquista** (`authMiddleware` + `requireEstoquista` no mount da rota em `app.js` — o mesmo middleware já usado em `POST /produtos/:id/movimentacoes`). Vendedor recebe 403 em toda rota do módulo, inclusive leitura. Diferente de contas a pagar/receber (admin apenas): fornecedor é dado operacional de estoque/compras, não financeiro.
+- CRUD completo em `/fornecedores`: `GET /` (paginado, filtro opcional `nome` via `ILIKE`), `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`. `DELETE` **não apaga a linha** — faz soft delete via `ativo = false`, mesma filosofia do soft delete de produtos (não a de contas a pagar/receber, que usam `status = 'cancelado'` em vez de uma flag `ativo`).
+- Único campo obrigatório é `nome`; `contato`, `telefone`, `email`, `cnpj_cpf`, `observacoes` são opcionais. `cnpj_cpf` valida só quantidade de dígitos (11 = CPF, 14 = CNPJ, ignorando pontuação) — sem checar dígito verificador, decisão explícita pra não sobre-engenhar validação de documento nesta fase.
+- Multi-tenancy: `fornecedoresRepository` filtra `id AND empresa_id` na mesma query em toda leitura/escrita (listar, buscar por id, atualizar, desativar), mesmo padrão do resto do sistema. Fornecedor de outra empresa responde 404 (nunca 403) em `GET/PUT/DELETE /:id`.
+- **Nomenclatura de timestamp**: `criado_em`/`atualizado_em` (português), não `created_at`/`updated_at` — mesma convenção já usada em `contas_pagar`/`contas_receber` (ver `## Convenções de API`). A tarefa original pedia `created_at`/`updated_at`; segui o padrão do projeto e avisei a divergência em vez de assumir. **Vale pra qualquer tabela nova daqui pra frente, não é específico de fornecedores — não reabrir esta discussão.**
+- `produtos.fornecedor` (texto livre, `VARCHAR`) **não foi tocado** — continua existindo em paralelo à nova tabela `fornecedores`. Hoje um produto não tem `fornecedor_id`; a migração de dados (ligar produto ao fornecedor por FK) fica pra uma sessão futura, depois de validação manual do cadastro.
+- Esta é só a Fase A do módulo de Produção (cadastro). Compras (Fase B) e Produção própria com ficha técnica (Fase C) ainda não existem — ver `MAPA_CHERRY_ERP.md` §7/§8 pra decisões de design já tomadas pra quando forem implementadas.
+
+Regras já decididas na transação compartilhada (não reabrir):
+- `src/repositories/shared/transacoes.js` concentra o esqueleto `BEGIN → SELECT ... FOR UPDATE → callback → COMMIT/ROLLBACK/release` que antes era reimplementado à mão em cada repository. Duas funções: `executarComLock(tabela, { coluna, valor }, empresa_id, clienteExterno, callback)` trava a linha e devolve a decisão inteira (o que fazer com not-found, com status errado, com efeitos colaterais) pra callback — o primitivo não sabe nada sobre status ou regra de negócio, só sobre lock/transação; `transicionarStatus(tabela, id, empresa_id, { statusEsperado, mensagemNaoEncontrado, mensagemStatusInvalido, sets })` é um wrapper fino sobre ele pro caso uniforme (existe → status bate → escreve `sets` fixo, senão 404/409).
+- **Toda função nova que precise de `SELECT ... FOR UPDATE` dentro de uma transação usa `executarComLock`, nunca reimplementa BEGIN/COMMIT/ROLLBACK/release à mão.** Se a ramificação for o caso uniforme (um status esperado, um SET fixo), usa `transicionarStatus` direto. Se for irregular (no-op silencioso, efeitos colaterais entre o lock e a escrita, múltiplos status possíveis com comportamentos diferentes — como `contasReceberRepository.cancelarPorVendaId` ou `vendasRepository.cancelar`), chama `executarComLock` e escreve a ramificação própria na callback. Não force um caso irregular a caber em `transicionarStatus` — foi tentado deixar tudo num único helper genérico e rejeitado de propósito: a interface incharia até ficar tão complexa quanto os chamadores.
+- `criarMovimentacao` (estoque) e `contasReceberRepository.criar` (INSERT puro, sem lock) **não** usam `executarComLock` — a dança `clienteExterno || await db.connect()` pra participar de transação externa em INSERTs sem lock continua ad hoc por enquanto. Unificar isso é um refactor separado (candidato 2 do `/improve-codebase-architecture`, ainda não feito), fora do escopo desta decisão.
+- Migrado de `contasPagarRepository` (`marcarComoPaga`, `cancelar`, `atualizar`), `contasReceberRepository` (`marcarComoRecebida`, `cancelarPorVendaId`) e `vendasRepository` (`cancelar`) em 2026-09-01, sem mudança de comportamento. Testes: mecânica de lock/not-found/rollback é coberta uma vez em `tests/repositories/shared/transacoes.test.js`; os testes de cada repository encolheram pra wiring (mockam `executarComLock`/`transicionarStatus` e checam tabela/coluna/status/mensagem corretos), não fakeiam mais `pg.Client` sniffando SQL por string.
 
 Regras já decididas em fornecedores (não reabrir):
 - Acesso: **admin e estoquista** (`authMiddleware` + `requireEstoquista` no mount da rota em `app.js` — o mesmo middleware já usado em `POST /produtos/:id/movimentacoes`). Vendedor recebe 403 em toda rota do módulo, inclusive leitura. Diferente de contas a pagar/receber (admin apenas): fornecedor é dado operacional de estoque/compras, não financeiro.
@@ -134,3 +151,17 @@ Regras já decididas em fornecedores (não reabrir):
 - Todo trabalho começa com `git checkout -b feat/<modulo>` a partir de `master` atualizado.
 - Push e abertura de PR são feitos manualmente por mim, no terminal.
 - Merge só depois do CI verde.
+
+## Agent skills
+
+### Issue tracker
+
+Issues vivem no GitHub Issues deste repo (via CLI `gh`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Vocabulário padrão das 5 roles canônicas (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — `CONTEXT.md` + `docs/adr/` na raiz do repo. See `docs/agents/domain.md`.
