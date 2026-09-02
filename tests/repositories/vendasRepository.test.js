@@ -199,7 +199,7 @@ describe('criar', () => {
       usuario_id: 2,
       empresa_id: 9,
       forma_pagamento: 'prazo',
-      dias_prazo: 30,
+      meses_prazo: 3,
       itens: [{ produto_id: 1, quantidade: 1 }]
     });
 

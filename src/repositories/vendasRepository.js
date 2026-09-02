@@ -7,11 +7,13 @@ const AppError = require('../errors/AppError');
 // Usa os getters LOCAIS do Date (não toISOString/UTC) de propósito: a mesma
 // armadilha de fuso horário documentada em 006_contas_pagar.sql — o driver pg
 // grava uma coluna DATE a partir dos métodos de fuso horário local do Node, e
-// dias_prazo é "dias corridos a partir de hoje", não de um instante UTC.
-// new Date(ano, mes, dia + diasPrazo) rola mês/ano corretamente.
-function calcularDataVencimento(diasPrazo) {
+// meses_prazo é "meses de calendário a partir de hoje", não um intervalo fixo
+// de dias. new Date(ano, mes + mesesPrazo, dia) rola o ano corretamente e usa
+// o mês calendário real (ex: 31/01 + 1 mês vira 03/03 em ano não bissexto,
+// mesmo comportamento de overflow que o JS já aplica em soma de dias).
+function calcularDataVencimento(mesesPrazo) {
     const hoje = new Date();
-    const vencimento = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + diasPrazo);
+    const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + mesesPrazo, hoje.getDate());
 
     const ano = vencimento.getFullYear();
     const mes = String(vencimento.getMonth() + 1).padStart(2, '0');
@@ -81,7 +83,7 @@ async function getMaisVendidosPeriodo(empresa_id) {
 // (reaproveitando estoqueRepository.criarMovimentacao nesta mesma transação).
 // Qualquer falha em qualquer item reverte a venda inteira — nada fica
 // parcialmente criado.
-async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, forma_pagamento, dias_prazo }) {
+async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, forma_pagamento, meses_prazo }) {
     const client = await db.connect();
 
     try {
@@ -183,7 +185,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, form
                     venda_id: venda.id,
                     descricao: `Venda #${venda.id}`,
                     valor: total,
-                    data_vencimento: calcularDataVencimento(dias_prazo),
+                    data_vencimento: calcularDataVencimento(meses_prazo),
                     empresa_id
                 },
                 client
