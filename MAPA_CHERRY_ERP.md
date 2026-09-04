@@ -214,3 +214,33 @@ Nenhum código foi alterado nesta tarefa (auditoria/documentação apenas) — o
 - **Compras** (módulo ainda não implementado) vai nascer como entrada direta simples (uma compra = uma movimentação de estoque imediata), mas com campo `status` desde o schema inicial (default `'recebido'`), para permitir evoluir para fluxo de pedido formal (`pendente`→`recebido`) sem reescrever a tabela depois.
 - **Produção própria** (módulo ainda não implementado) vai usar ficha técnica — consumo de insumos/matéria-prima do estoque ao registrar produção, não só uma entrada simples com custo manual.
 - **Rate limiting em `POST /auth/login`** (item 6 do roteiro de profissionalização): 5 tentativas por 15 minutos, chave padrão da lib (`express-rate-limit`) = **IP**, não conta/email. Limitação conhecida e aceita: um ataque de força bruta distribuído por vários IPs diferentes mirando a mesma conta não é pego por esse limite. Rate limit por conta/email ficou fora do escopo por decisão consciente, não esquecimento. Em `NODE_ENV=test` o limite sobe pra 1000 (efetivamente desabilitado) pra não quebrar a suíte, que faz login repetidamente — ver `src/middlewares/loginRateLimiter.js`.
+
+---
+
+## 11. Roteiro de profissionalização (GiroOne) — status
+
+Decisão tomada: o Cherry ERP vai virar produto vendável a outras empresas (GiroOne), não só uso interno. Isso motivou a priorização abaixo antes de continuar com módulos de negócio (Relatórios, Produção/Fornecedores).
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Multi-tenancy | ✅ Completo e validado |
+| 2 | Ambiente de staging | ❌ Não iniciado — banco de teste dedicado no Neon (`ci-test`) já existe e pode servir de base |
+| 3 | CI (GitHub Actions) | ✅ Completo — branch protection em `master` exigindo check "build" |
+| 4 | Observabilidade (logs, alerta de uptime) | ❌ Não iniciado |
+| 5 | Backup/DR confirmado | ✅ Completo e confirmado — ver 11.3 |
+| 6 | Rate limiting no login | ✅ Completo |
+| 7 | LGPD documentado | ❌ Não iniciado |
+
+### 11.3. Detalhe do item 5 (Backup/DR) — confirmação
+
+**Mecanismo:** Point-in-Time Recovery (PITR) do Neon via branch — não é backup tradicional, é a capacidade de criar um branch novo a partir de um timestamp passado do branch de produção, sem risco (nunca sobrescreve o original).
+
+**Teste realizado em 03/09/2026:**
+- Confirmado em "Postgres settings" (nível de projeto, não por branch): **History retention = 6 horas** (`history_retention_seconds: 21600`). Vale para todos os branches, incluindo `production` — é limite do plano gratuito, não decisão do projeto.
+- Criado branch `teste-restore-dr-v2` a partir de `production` (`br-ancient-sea-achht904`), restaurando de um ponto específico no passado (não do estado atual/"Head") — ponto de restauração: `2026-09-03T00:52:31Z`.
+- Validado com `SELECT COUNT(*) FROM produtos;` no branch restaurado: **9 produtos**, batendo com o esperado.
+- Branch de teste tinha auto-delete configurado (~24h) — não precisa limpeza manual.
+
+**Limitação conhecida:** janela de recuperação é de apenas 6 horas (plano gratuito) — não serve como backup de longo prazo (ex: recuperar de 3 dias atrás não é possível). Se isso virar um requisito real (ex: cliente pagante exigindo retenção maior), é upgrade de plano no Neon, não mudança de arquitetura.
+
+**Decisão registrada:** mecanismo funciona e está confirmado; trade-off aceito (retenção curta em troca de custo zero) enquanto o produto não tem clientes pagantes.
