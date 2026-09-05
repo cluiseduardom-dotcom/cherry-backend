@@ -133,9 +133,9 @@ async function buscarVigentePorProduto(produto_id, empresa_id) {
         `SELECT itf.id, itf.insumo_produto_id, itf.quantidade_necessaria, p.custo AS custo_unitario, p.nome AS insumo_nome
          FROM itens_ficha_tecnica itf
          JOIN produtos p ON p.id = itf.insumo_produto_id
-         WHERE itf.ficha_tecnica_id = $1
+         WHERE itf.ficha_tecnica_id = $1 AND itf.empresa_id = $2
          ORDER BY itf.id`,
-        [ficha.id]
+        [ficha.id, empresa_id]
     );
 
     return montarResposta(ficha, itensRows);
@@ -154,9 +154,9 @@ async function buscarHistoricoPorProduto(produto_id, empresa_id) {
             `SELECT itf.id, itf.insumo_produto_id, itf.quantidade_necessaria, p.custo AS custo_unitario, p.nome AS insumo_nome
              FROM itens_ficha_tecnica itf
              JOIN produtos p ON p.id = itf.insumo_produto_id
-             WHERE itf.ficha_tecnica_id = $1
+             WHERE itf.ficha_tecnica_id = $1 AND itf.empresa_id = $2
              ORDER BY itf.id`,
-            [ficha.id]
+            [ficha.id, empresa_id]
         );
 
         fichas.push(montarResposta(ficha, itensRows));

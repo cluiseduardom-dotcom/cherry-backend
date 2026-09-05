@@ -50,24 +50,29 @@ async function criar({ produto_id, quantidade_solicitada, usuario_id, empresa_id
         const ficha_tecnica_id = fichaRows[0].id;
 
         const { rows: itensFicha } = await client.query(
-            'SELECT insumo_produto_id, quantidade_necessaria FROM itens_ficha_tecnica WHERE ficha_tecnica_id = $1 ORDER BY id',
-            [ficha_tecnica_id]
+            'SELECT insumo_produto_id, quantidade_necessaria FROM itens_ficha_tecnica WHERE ficha_tecnica_id = $1 AND empresa_id = $2 ORDER BY id',
+            [ficha_tecnica_id, empresa_id]
         );
 
         const insumoIds = itensFicha.map((item) => item.insumo_produto_id);
 
         const { rows: estoqueRows } = await client.query(
-            'SELECT id, estoque_atual FROM produtos WHERE id = ANY($1::int[]) AND empresa_id = $2 FOR UPDATE',
+            'SELECT id, estoque_atual, ativo FROM produtos WHERE id = ANY($1::int[]) AND empresa_id = $2 FOR UPDATE',
             [insumoIds, empresa_id]
         );
 
-        const estoquePorInsumo = new Map(estoqueRows.map((row) => [row.id, row.estoque_atual]));
+        const estoquePorInsumo = new Map(estoqueRows.map((row) => [row.id, row]));
 
         let quantidade_produzida = quantidade_solicitada;
 
         for (const item of itensFicha) {
-            const estoqueAtual = estoquePorInsumo.get(item.insumo_produto_id) ?? 0;
-            const possivel = Math.floor(estoqueAtual / item.quantidade_necessaria);
+            const insumoRow = estoquePorInsumo.get(item.insumo_produto_id);
+
+            if (!insumoRow?.ativo) {
+                throw new AppError('Produto inativo não pode receber movimentações de estoque', 400);
+            }
+
+            const possivel = Math.floor(insumoRow.estoque_atual / item.quantidade_necessaria);
             quantidade_produzida = Math.min(quantidade_produzida, possivel);
         }
 
@@ -87,7 +92,7 @@ async function criar({ produto_id, quantidade_solicitada, usuario_id, empresa_id
         const producao = producaoRows[0];
 
         for (const item of itensFicha) {
-            await estoqueRepository.criarMovimentacao(
+            const resultadoInsumo = await estoqueRepository.criarMovimentacao(
                 {
                     produto_id: item.insumo_produto_id,
                     tipo: 'saida',
@@ -98,9 +103,17 @@ async function criar({ produto_id, quantidade_solicitada, usuario_id, empresa_id
                 },
                 client
             );
+
+            if (resultadoInsumo.erro === 'PRODUTO_NAO_ENCONTRADO') {
+                throw new AppError('Produto não encontrado', 404);
+            }
+
+            if (resultadoInsumo.erro === 'ESTOQUE_INSUFICIENTE') {
+                throw new AppError('Estoque insuficiente para produzir ao menos uma unidade', 409);
+            }
         }
 
-        await estoqueRepository.criarMovimentacao(
+        const resultadoAcabado = await estoqueRepository.criarMovimentacao(
             {
                 produto_id,
                 tipo: 'entrada',
@@ -111,6 +124,10 @@ async function criar({ produto_id, quantidade_solicitada, usuario_id, empresa_id
             },
             client
         );
+
+        if (resultadoAcabado.erro === 'PRODUTO_NAO_ENCONTRADO') {
+            throw new AppError('Produto não encontrado', 404);
+        }
 
         await client.query('COMMIT');
 
@@ -181,9 +198,9 @@ async function buscarPorId(id, empresa_id) {
         `SELECT itf.insumo_produto_id, itf.quantidade_necessaria, p.nome AS insumo_nome, p.custo AS custo_unitario
          FROM itens_ficha_tecnica itf
          JOIN produtos p ON p.id = itf.insumo_produto_id
-         WHERE itf.ficha_tecnica_id = $1
+         WHERE itf.ficha_tecnica_id = $1 AND itf.empresa_id = $2
          ORDER BY itf.id`,
-        [producao.ficha_tecnica_id]
+        [producao.ficha_tecnica_id, empresa_id]
     );
 
     let custo_total = 0;

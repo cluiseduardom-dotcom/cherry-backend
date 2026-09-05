@@ -13,6 +13,7 @@ function makeFakeClient({
   ficha = { existe: true, id: 20 },
   itensFicha = [],
   estoqueInsumos = {},
+  insumosInativos = [],
   producaoInsert = { id: 100 }
 } = {}) {
   const client = { query: jest.fn(), release: jest.fn() };
@@ -34,7 +35,7 @@ function makeFakeClient({
 
     if (sql.includes('FOR UPDATE') && sql.includes('WHERE id = ANY(')) {
       const ids = params[0];
-      return Promise.resolve({ rows: ids.map((id) => ({ id, estoque_atual: estoqueInsumos[id] ?? 0 })) });
+      return Promise.resolve({ rows: ids.map((id) => ({ id, estoque_atual: estoqueInsumos[id] ?? 0, ativo: !insumosInativos.includes(id) })) });
     }
 
     if (sql.includes('INSERT INTO producoes')) {
@@ -108,6 +109,32 @@ describe('criar', () => {
     expect(fakeClient.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO producoes'), expect.anything());
     expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
   });
+
+  test('throws 409 and does not swallow a mid-loop ESTOQUE_INSUFICIENTE from criarMovimentacao', async () => {
+    const fakeClient = makeFakeClient({
+      itensFicha: [{ insumo_produto_id: 2, quantidade_necessaria: 2 }, { insumo_produto_id: 3, quantidade_necessaria: 1 }],
+      estoqueInsumos: { 2: 100, 3: 100 }
+    });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+    estoqueRepository.criarMovimentacao
+      .mockResolvedValueOnce({ movimentacao: { id: 1 } })
+      .mockResolvedValueOnce({ erro: 'ESTOQUE_INSUFICIENTE' });
+
+    await expect(producoesRepository.criar({ produto_id: 1, quantidade_solicitada: 10, usuario_id: 1, empresa_id: 1 }))
+      .rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  test('throws 400 when an insumo is inativo', async () => {
+    db.connect = jest.fn().mockResolvedValue(makeFakeClient({
+      itensFicha: [{ insumo_produto_id: 2, quantidade_necessaria: 2 }],
+      estoqueInsumos: { 2: 100 },
+      insumosInativos: [2]
+    }));
+
+    await expect(producoesRepository.criar({ produto_id: 1, quantidade_solicitada: 10, usuario_id: 1, empresa_id: 1 }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
+  });
 });
 
 describe('cancelar', () => {
@@ -167,5 +194,40 @@ describe('cancelar', () => {
     expect(estoqueRepository.criarMovimentacao).toHaveBeenNthCalledWith(2,
       expect.objectContaining({ produto_id: 2, tipo: 'entrada', quantidade: 10 }), client // 2 * 5
     );
+  });
+});
+
+describe('listarPaginado', () => {
+  test('forwards filters and pagination, and returns items + total', async () => {
+    db.query = jest.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 1, produto_id: 5, produto_nome: 'Anel' }] })
+      .mockResolvedValueOnce({ rows: [{ count: '1' }] });
+
+    const result = await producoesRepository.listarPaginado({
+      limit: 20, offset: 0, produto_id: 5, dataDe: '2026-01-01', dataAte: '2026-12-31', empresa_id: 1
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.total).toBe(1);
+  });
+});
+
+describe('buscarPorId', () => {
+  test('returns null when the producao does not exist', async () => {
+    db.query = jest.fn().mockResolvedValue({ rows: [] });
+    const result = await producoesRepository.buscarPorId(999, 1);
+    expect(result).toBeNull();
+  });
+
+  test('computes custo_total and per-item quantidade_consumida/subtotal_custo', async () => {
+    db.query = jest.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 1, produto_id: 5, ficha_tecnica_id: 20, quantidade_produzida: 6 }] })
+      .mockResolvedValueOnce({ rows: [{ insumo_produto_id: 2, quantidade_necessaria: 2, insumo_nome: 'Prata', custo_unitario: '10.00' }] });
+
+    const result = await producoesRepository.buscarPorId(1, 1);
+
+    expect(result.custo_total).toBe(120); // 2 necessária * 6 produzida = 12 consumido; 12 * 10 custo = 120
+    expect(result.itens[0].quantidade_consumida).toBe(12);
+    expect(result.itens[0].subtotal_custo).toBe(120);
   });
 });
