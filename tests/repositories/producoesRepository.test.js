@@ -136,6 +136,17 @@ describe('cancelar', () => {
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledTimes(1); // só tentou o acabado, nunca chegou nos insumos
   });
 
+  test('returns 404 without touching insumos when acabado produto is not found', async () => {
+    const client = { query: jest.fn().mockResolvedValue({ rows: [{ insumo_produto_id: 2, quantidade_necessaria: 2 }] }) };
+    executarComLock.mockImplementation(async (tabela, filtro, empresaId, clienteExterno, callback) =>
+      callback({ id: 1, status: 'concluida', produto_id: 1, quantidade_produzida: 5, ficha_tecnica_id: 20 }, client)
+    );
+    estoqueRepository.criarMovimentacao.mockResolvedValueOnce({ erro: 'PRODUTO_NAO_ENCONTRADO' });
+
+    await expect(producoesRepository.cancelar(1, 1, 1)).rejects.toMatchObject({ statusCode: 404 });
+    expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledTimes(1); // só tentou o acabado, nunca chegou nos insumos
+  });
+
   test('estorna saída do acabado e entrada de cada insumo, então marca cancelada', async () => {
     const client = {
       query: jest.fn()

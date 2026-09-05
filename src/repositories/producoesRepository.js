@@ -237,6 +237,10 @@ async function cancelar(id, usuario_id, empresa_id) {
             client
         );
 
+        if (resultadoAcabado.erro === 'PRODUTO_NAO_ENCONTRADO') {
+            throw new AppError('Produto não encontrado', 404);
+        }
+
         if (resultadoAcabado.erro === 'ESTOQUE_INSUFICIENTE') {
             throw new AppError('Estoque insuficiente para estornar esta produção', 409);
         }
