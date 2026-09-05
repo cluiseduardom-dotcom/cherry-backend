@@ -35,6 +35,16 @@ describe('listar', () => {
     });
     expect(result).toMatchObject({ page: 1, pageSize: 20, total: 1, totalPages: 1 });
   });
+
+  test('computes the correct offset for page > 1', async () => {
+    producoesRepository.listarPaginado.mockResolvedValue({ items: [], total: 50 });
+
+    await producoesService.listar({ page: 2, pageSize: 20 }, 9);
+
+    expect(producoesRepository.listarPaginado).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 20, offset: 20, empresa_id: 9 })
+    );
+  });
 });
 
 describe('buscarPorId', () => {
