@@ -121,6 +121,7 @@ describe('GET /producoes/:id', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.custo_total).toBeUndefined();
     expect(res.body.data.itens[0].custo_unitario).toBeUndefined();
+    expect(res.body.data.itens[0].subtotal_custo).toBeUndefined();
     expect(res.body.data.itens[0].insumo_produto_id).toBe(2);
   });
 });
