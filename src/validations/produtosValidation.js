@@ -9,7 +9,8 @@ const criarProdutoSchema = z.object({
     custo: z.coerce.number({ error: 'Custo é obrigatório' }).positive('Custo é obrigatório'),
     estoque_atual: z.coerce.number({ error: 'Estoque atual inválido' }).int('Estoque atual inválido').nonnegative('Estoque atual inválido').optional(),
     estoque_minimo: z.coerce.number({ error: 'Estoque mínimo inválido' }).int('Estoque mínimo inválido').nonnegative('Estoque mínimo inválido').optional(),
-    ativo: z.boolean().optional()
+    ativo: z.boolean().optional(),
+    tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional()
 });
 
 // estoque_atual is intentionally not editable here: once movimentacoes_estoque
@@ -22,7 +23,8 @@ const atualizarProdutoSchema = z.object({
     preco_venda: z.coerce.number().positive('Preço de venda deve ser maior que zero').optional(),
     custo: z.coerce.number().positive('Custo deve ser maior que zero').optional(),
     estoque_minimo: z.coerce.number().int('Estoque mínimo inválido').nonnegative('Estoque mínimo inválido').optional(),
-    ativo: z.boolean().optional()
+    ativo: z.boolean().optional(),
+    tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional()
 }).refine((data) => Object.keys(data).length > 0, { message: 'Informe ao menos um campo para atualizar' });
 
 const ajustarPrecoSchema = z.object({

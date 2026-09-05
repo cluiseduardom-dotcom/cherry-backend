@@ -183,6 +183,49 @@ CREATE TABLE itens_compra (
 
 ALTER TABLE contas_pagar ADD COLUMN compra_id INTEGER UNIQUE REFERENCES compras(id);
 
+ALTER TABLE produtos ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'acabado' CHECK (tipo IN ('acabado', 'insumo'));
+
+CREATE TABLE fichas_tecnicas (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    produto_id INTEGER NOT NULL REFERENCES produtos(id),
+    vigente BOOLEAN NOT NULL DEFAULT true,
+    criado_por INTEGER REFERENCES usuarios(id),
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_fichas_tecnicas_vigente_unica ON fichas_tecnicas(empresa_id, produto_id) WHERE vigente = true;
+
+CREATE TABLE itens_ficha_tecnica (
+    id SERIAL PRIMARY KEY,
+    ficha_tecnica_id INTEGER NOT NULL REFERENCES fichas_tecnicas(id),
+    insumo_produto_id INTEGER NOT NULL REFERENCES produtos(id),
+    quantidade_necessaria INTEGER NOT NULL CHECK (quantidade_necessaria > 0),
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id)
+);
+
+CREATE TABLE producoes (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    produto_id INTEGER NOT NULL REFERENCES produtos(id),
+    ficha_tecnica_id INTEGER NOT NULL REFERENCES fichas_tecnicas(id),
+    quantidade_solicitada INTEGER NOT NULL CHECK (quantidade_solicitada > 0),
+    quantidade_produzida INTEGER NOT NULL CHECK (quantidade_produzida >= 0),
+    status VARCHAR(20) NOT NULL DEFAULT 'concluida' CHECK (status IN ('concluida', 'cancelada')),
+    usuario_id INTEGER REFERENCES usuarios(id),
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_fichas_tecnicas_empresa_id ON fichas_tecnicas(empresa_id);
+CREATE INDEX idx_fichas_tecnicas_produto_id ON fichas_tecnicas(produto_id);
+CREATE INDEX idx_itens_ficha_tecnica_ficha_tecnica_id ON itens_ficha_tecnica(ficha_tecnica_id);
+CREATE INDEX idx_itens_ficha_tecnica_insumo_produto_id ON itens_ficha_tecnica(insumo_produto_id);
+CREATE INDEX idx_itens_ficha_tecnica_empresa_id ON itens_ficha_tecnica(empresa_id);
+CREATE INDEX idx_producoes_empresa_id ON producoes(empresa_id);
+CREATE INDEX idx_producoes_produto_id ON producoes(produto_id);
+CREATE INDEX idx_producoes_ficha_tecnica_id ON producoes(ficha_tecnica_id);
+
 CREATE INDEX idx_vendas_cliente_id ON vendas(cliente_id);
 CREATE INDEX idx_vendas_canal_id ON vendas(canal_id);
 CREATE INDEX idx_vendas_usuario_id ON vendas(usuario_id);

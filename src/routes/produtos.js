@@ -3,6 +3,7 @@ const router = express.Router();
 const controller = require('../controllers/produtosController');
 const estoqueController = require('../controllers/estoqueController');
 const precosController = require('../controllers/precosController');
+const fichasTecnicasController = require('../controllers/fichasTecnicasController');
 const requireAdmin = require('../middlewares/requireAdmin');
 const requireEstoquista = require('../middlewares/requireEstoquista');
 
@@ -32,5 +33,9 @@ router.post('/:id/movimentacoes', requireEstoquista, estoqueController.registrar
 router.get('/:id/precos', precosController.listarVigentes);
 router.get('/:id/precos/historico', requireAdmin, precosController.historico);
 router.put('/:id/precos/:canalId', requireAdmin, precosController.definirPreco);
+
+router.post('/:id/ficha-tecnica', requireEstoquista, fichasTecnicasController.criar);
+router.get('/:id/ficha-tecnica', requireEstoquista, fichasTecnicasController.buscarVigente);
+router.get('/:id/ficha-tecnica/historico', requireAdmin, fichasTecnicasController.historico);
 
 module.exports = router;

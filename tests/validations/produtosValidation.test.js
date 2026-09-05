@@ -56,6 +56,16 @@ describe('criarProdutoSchema', () => {
     expect(result.success).toBe(true);
     expect(result.data.preco_venda).toBe(10.5);
   });
+
+  test('accepts an optional tipo of acabado or insumo', () => {
+    expect(criarProdutoSchema.safeParse({ ...valid, tipo: 'insumo' }).success).toBe(true);
+    expect(criarProdutoSchema.safeParse({ ...valid, tipo: 'acabado' }).success).toBe(true);
+  });
+
+  test('rejects an invalid tipo', () => {
+    const result = criarProdutoSchema.safeParse({ ...valid, tipo: 'outro' });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('atualizarProdutoSchema', () => {
@@ -72,6 +82,10 @@ describe('atualizarProdutoSchema', () => {
   test('rejects an invalid preco_venda when provided', () => {
     const result = atualizarProdutoSchema.safeParse({ preco_venda: -1 });
     expect(result.success).toBe(false);
+  });
+
+  test('accepts an optional tipo update', () => {
+    expect(atualizarProdutoSchema.safeParse({ tipo: 'insumo' }).success).toBe(true);
   });
 });
 
