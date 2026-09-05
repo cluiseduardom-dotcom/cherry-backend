@@ -134,27 +134,34 @@ Não existe nenhum módulo do backend hoje totalmente "ausente" no sentido de ze
 
 ---
 
-## 4. Contagem de testes (suíte rodada em 2026-08-18 — `npm test`, com banco real acessível)
+## 4. Contagem de testes (suíte rodada em 2026-09-05 — `npm test`, com banco real acessível)
 
-**Total: 564 testes, 39 suítes, todos passando.**
+**Total: 824 testes, 66 suítes, todos passando.**
 
-Nota de correção: a contagem anterior deste documento (auditoria de 2026-08-01) mostrava 453 testes, mas o commit `8c3902b` (correção de RBAC do PR #4) já tinha elevado o total real para 501 sem que esta tabela fosse atualizada — os testes por papel adicionados em `produtos.test.js` e `vendas.test.js` não estavam refletidos aqui. Corrigido nesta atualização junto com a adição de Fornecedores.
+Nota de correção: a contagem anterior deste documento (2026-08-18) mostrava 564 testes, mas não refletia nem o refactor de transação compartilhada (`src/repositories/shared/transacoes.js`, que centralizou testes de lock/rollback antes espalhados pelos repositories), nem os módulos de Compras e Produção mergeados desde então (PR #12). Corrigido nesta atualização.
 
 | Módulo | Arquivos | Testes |
 |---|---|---|
 | Auth | `middlewares/authMiddleware`, `requireAdmin`, `requireEstoquista`, `routes/auth`, `services/authService`, `validations/authValidation` | 34 |
-| Produtos | `routes/produtos`, `services/produtosService`, `validations/produtosValidation` | 107 |
+| Rate limiting (login) | `middlewares/loginRateLimiter`, `routes/authLoginRateLimit` | 4 |
+| Produtos | `routes/produtos`, `services/produtosService`, `validations/produtosValidation`, `repositories/produtosRepository` | 113 |
 | Estoque | `repositories/estoqueRepository`, `routes/estoque`, `services/estoqueService`, `validations/estoqueValidation` | 32 |
 | Precificação (+ canais de venda) | `routes/precos`, `routes/canaisVenda`, `services/precosService`, `validations/precosValidation` | 46 |
 | Vendas/PDV | `repositories/vendasRepository`, `routes/vendas`, `services/vendasService`, `validations/vendasValidation` | 82 |
 | Clientes | `routes/clientes`, `services/clientesService`, `validations/clientesValidation` | 20 |
 | Dashboard | `routes/dashboard`, `services/dashboardService` | 29 |
-| Contas a pagar | `repositories/contasPagarRepository`, `routes/contasPagar`, `services/contasPagarService`, `validations/contasPagarValidation` | 87 |
-| Contas a receber | `repositories/contasReceberRepository`, `routes/contasReceber`, `services/contasReceberService`, `validations/contasReceberValidation` | 48 |
+| Contas a pagar | `repositories/contasPagarRepository`, `routes/contasPagar`, `services/contasPagarService`, `validations/contasPagarValidation` | 89 |
+| Contas a receber | `repositories/contasReceberRepository`, `routes/contasReceber`, `services/contasReceberService`, `validations/contasReceberValidation` | 45 |
 | Fornecedores | `repositories/fornecedoresRepository`, `routes/fornecedores`, `services/fornecedoresService`, `validations/fornecedoresValidation` | 63 |
+| Compras | `repositories/comprasRepository`, `routes/compras`, `services/comprasService`, `validations/comprasValidation` | 69 |
+| Produção (fichas técnicas + produções) | `repositories/fichasTecnicasRepository`, `repositories/producoesRepository`, `routes/fichasTecnicas`, `routes/producoes`, `services/fichasTecnicasService`, `services/producoesService`, `validations/fichasTecnicasValidation`, `validations/producoesValidation` | 75 |
+| Transação compartilhada (shared) | `repositories/shared/transacoes` | 9 |
 | Isolamento multi-tenant (cross-módulo, banco real) | `routes/multiTenantIsolation` | 16 |
+| **Não auditados neste mapa** (módulos existentes no código mas fora do escopo de auditoria até agora) | `routes/despesasFixas`, `routes/configuracoesFinanceiras`, `routes/financeiro`, `repositories/despesasFixasRepository`, `repositories/configuracoesFinanceirasRepository`, `repositories/pontoEquilibrioRepository`, `services/despesasFixasService`, `services/configuracoesFinanceirasService`, `services/pontoEquilibrioService`, `validations/despesasFixasValidation`, `validations/configuracoesFinanceirasValidation`, `validations/pontoEquilibrioValidation` | 98 |
 
-(Soma: 34+107+32+46+82+20+29+87+48+63+16 = 564.)
+(Soma: 34+4+113+32+46+82+20+29+89+45+63+69+75+9+16+98 = 824.)
+
+A última linha (despesas fixas, configurações financeiras, ponto de equilíbrio) existe em código e passa na suíte, mas não foi lida linha a linha nem tem RBAC/isolamento verificados neste documento — mergeada em outra frente de trabalho (`feat/ponto-equilibrio`, `feat/despesas-fixas`) fora do escopo desta atualização. Marcar como "a verificar" se precisar da mesma garantia dada aos módulos acima.
 
 ---
 
@@ -174,10 +181,12 @@ Todos os repositories foram lidos linha a linha; toda query de leitura/escrita f
 | Contas a pagar | Sim | `contasPagarRepository` filtra em listagem, busca por id e nas transições de status (`FOR UPDATE`). |
 | Contas a receber | Sim | `contasReceberRepository` filtra em todas as queries, inclusive `cancelarPorVendaId`. |
 | Fornecedores | Sim | `fornecedoresRepository` filtra `empresa_id` em todas as queries (listagem paginada, busca por id, criar, atualizar, soft delete). Confirmado por testes de repository/service/rotas com mock e, adicionalmente, validado manualmente via API contra o banco de dev (login como admin e como estoquista, criação e listagem funcionando; vendedor bloqueado com 403). |
+| Compras | Sim | `comprasRepository` filtra `empresa_id` em todas as queries, inclusive a validação de `fornecedor_id`/`produto_id` dentro da transação de criação e no `FOR UPDATE` de `cancelar`. |
+| Produção (fichas técnicas + produções) | Sim | `fichasTecnicasRepository` filtra `empresa_id` em toda query (criar versão, buscar vigente, histórico), inclusive na validação de tipo do produto/insumo dentro da transação. `producoesRepository` filtra `empresa_id` em toda query, inclusive no `SELECT ... FOR UPDATE` dos insumos ao registrar produção e no lock de `cancelar`. |
 
 **Teste de isolamento ponta a ponta com banco real** (`tests/routes/multiTenantIsolation.test.js`, 16 testes) cobre: produtos, clientes, vendas, contas a pagar, movimentações de estoque — confirma que a empresa 1 não vê dados da empresa 2 e vice-versa, inclusive em busca por id (404, não 403).
 
-**Não coberto por teste de isolamento ponta a ponta com banco real** (a filtragem foi confirmada lendo o código e por testes unitários com mock, mas não por um teste de integração com duas empresas reais, como existe para os módulos acima): contas a receber, canais de venda, preços/precificação, dashboard, fornecedores. Marcar como "a verificar com teste de integração" se isolamento multi-tenant nesses módulos precisar de garantia mais forte que leitura de código.
+**Não coberto por teste de isolamento ponta a ponta com banco real** (a filtragem foi confirmada lendo o código e por testes unitários com mock, mas não por um teste de integração com duas empresas reais, como existe para os módulos acima): contas a receber, canais de venda, preços/precificação, dashboard, fornecedores, compras, produção. Marcar como "a verificar com teste de integração" se isolamento multi-tenant nesses módulos precisar de garantia mais forte que leitura de código.
 
 ---
 
