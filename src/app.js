@@ -7,6 +7,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Health-check público pra monitoramento de uptime: sem auth, sem tocar no
+// banco — só confirma que o processo Node está de pé.
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok' });
+});
+
 // ROTAS
 const produtosRoutes = require('./routes/produtos');
 const vendasRoutes = require('./routes/vendas');
