@@ -57,6 +57,7 @@ Prontos:
 - **Compras** — Fase B do módulo de Produção (migration `012_compras.sql`): entrada de mercadoria vinculada a fornecedor, CRUD em `/compras`, acesso admin+estoquista.
 - **Produção própria (ficha técnica)** — Fase C do módulo de Produção (migration `013_producao.sql`): ficha técnica versionada em `/produtos/:id/ficha-tecnica`, registro de produção com consumo automático de insumos em `/producoes`, acesso admin+estoquista.
 - **Relatórios (frontend, `cherry-frontend`)** — módulo completo: relatórios de Vendas, Estoque e Financeiro com dados reais e exportação em PDF (jsPDF + html2canvas). Sem rota nova no backend — reaproveita os endpoints analíticos já existentes. Mergeado em PR #6 do `cherry-frontend`.
+- **Anonimização de clientes (LGPD)** — migration `014_clientes_anonimizacao.sql`: `PATCH /clientes/:id/anonimizar` remove nome/telefone/email e marca `ativo = false`, preservando `vendas.cliente_id`. Admin-only.
 
 Regras já decididas no estoque (não reabrir):
 - `tipo`: `entrada` soma, `saida` subtrai, `ajuste` fixa valor absoluto (correção de contagem física).
@@ -128,6 +129,14 @@ Regras já decididas em produção própria (ficha técnica) — Fase C do módu
 - **RBAC de custo aqui é decisão de negócio adicional, não extensão direta da regra inviolável**: a regra inviolável protege `vendedor`, que nem acessa este módulo (403). Quem perde `custo_sugerido`/`custo_total`/`custo_unitario`/`subtotal_custo` nas respostas é a `estoquista` (`filtrarCustoParaRole` em `fichasTecnicasController` e `producoesController`, mesmo padrão de `produtosController.filtrarParaRole`).
 - `quantidade_necessaria` é `INTEGER`, igual a `produtos.estoque_atual`/`movimentacoes_estoque.quantidade` — consumo fracionário de insumo não é suportado (decisão consciente, exigiria repensar o ledger de estoque inteiro).
 - Ver `MAPA_CHERRY_ERP.md` §8 pra decisões de schema mais detalhadas.
+
+Regras já decididas em anonimização de clientes (LGPD) — migration `014_clientes_anonimizacao.sql` (não reabrir):
+- Acesso: **admin apenas** (`requireAdmin` só na rota `PATCH /clientes/:id/anonimizar`, não no mount de `/clientes` em `app.js` — as outras rotas do módulo continuam abertas a todos os papéis autenticados). Ação irreversível e sensível.
+- **Divergência de schema encontrada e corrigida**: a tarefa pedia `ativo → false (mesmo padrão de soft delete já usado no projeto)`, mas `clientes` não tinha coluna `ativo` (nem `criado_em`/`atualizado_em`) — só `id, empresa_id, nome, telefone, email`. Adicionada `ativo BOOLEAN NOT NULL DEFAULT true` na mesma migration que adiciona `anonimizado`/`anonimizado_em`, já que a operação depende dela. `criado_em`/`atualizado_em` não foram adicionados — fora do pedido desta tarefa.
+- **`GET /clientes` não filtra por `ativo`** — mesmo padrão observado hoje em `produtos` (soft delete marca a flag, mas a listagem simples não filtra; só consultas analíticas específicas como `dashboardRepository`/`precosRepository` filtram `ativo = true`). Um cliente anonimizado continua aparecendo em `GET /clientes` (com `nome = 'Cliente removido'`) até essa decisão ser confirmada — não implementado por ser mudança de comportamento em endpoint existente, fora do escopo pedido.
+- Checagem `anonimizado = true` → 409 é um caso **irregular** (não é `status` batendo um valor esperado): usa `executarComLock` direto, não `transicionarStatus` (que hardcoda a coluna `status`), mesmo critério documentado em `shared/transacoes.js`.
+- Resposta é deliberadamente estreita (`{ id, anonimizado, anonimizado_em }`), montada no service, não a linha inteira do repository — evita qualquer chance de vazar campo pessoal residual na resposta, mesmo que já nulo/false no banco.
+- `vendas.cliente_id` nunca é tocado — histórico de vendas e relatórios continuam intactos após a anonimização.
 
 ## Banco
 

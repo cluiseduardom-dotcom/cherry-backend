@@ -71,10 +71,23 @@ async function totalGasto(req, res, next) {
     }
 }
 
+async function anonimizar(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+
+        const resultado = await clientesService.anonimizar(id, req.usuario.empresa_id);
+
+        return response.success(res, resultado);
+    } catch (error) {
+        next(error);
+    }
+}
+
 module.exports = {
     listar,
     criar,
     historico,
     ranking,
-    totalGasto
+    totalGasto,
+    anonimizar
 };
