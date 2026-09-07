@@ -1,4 +1,6 @@
 const db = require('../config/db');
+const AppError = require('../errors/AppError');
+const { executarComLock } = require('./shared/transacoes');
 
 async function listar(empresa_id) {
     const { rows } = await db.query('SELECT * FROM clientes WHERE empresa_id = $1', [empresa_id]);
@@ -70,10 +72,41 @@ async function getTotalGasto(id, empresa_id) {
     return rows.length ? rows[0] : null;
 }
 
+// Caso irregular (checa `anonimizado`, não `status`): usa executarComLock
+// direto em vez de transicionarStatus, mesmo critério documentado em
+// shared/transacoes.js.
+async function anonimizar(id, empresa_id) {
+    return executarComLock('clientes', { coluna: 'id', valor: id }, empresa_id, undefined, async (cliente, client) => {
+        if (!cliente) {
+            throw new AppError('Cliente não encontrado', 404);
+        }
+
+        if (cliente.anonimizado) {
+            throw new AppError('Cliente já foi anonimizado', 409);
+        }
+
+        const { rows } = await client.query(
+            `UPDATE clientes SET
+                nome = 'Cliente removido',
+                telefone = NULL,
+                email = NULL,
+                ativo = false,
+                anonimizado = true,
+                anonimizado_em = NOW()
+             WHERE id = $1
+             RETURNING *`,
+            [id]
+        );
+
+        return rows[0];
+    });
+}
+
 module.exports = {
     listar,
     criar,
     getHistorico,
     getRanking,
-    getTotalGasto
+    getTotalGasto,
+    anonimizar
 };

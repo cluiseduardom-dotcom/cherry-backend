@@ -21,7 +21,10 @@ CREATE TABLE clientes (
     empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     nome VARCHAR(255) NOT NULL,
     telefone VARCHAR(20),
-    email VARCHAR(255)
+    email VARCHAR(255),
+    ativo BOOLEAN NOT NULL DEFAULT true,
+    anonimizado BOOLEAN NOT NULL DEFAULT false,
+    anonimizado_em TIMESTAMP
 );
 
 CREATE TABLE produtos (

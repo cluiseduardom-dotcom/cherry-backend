@@ -33,10 +33,21 @@ async function totalGasto(id, empresaId) {
     return dados;
 }
 
+async function anonimizar(id, empresaId) {
+    const cliente = await clientesRepository.anonimizar(id, empresaId);
+
+    return {
+        id: cliente.id,
+        anonimizado: cliente.anonimizado,
+        anonimizado_em: cliente.anonimizado_em
+    };
+}
+
 module.exports = {
     listar,
     criar,
     historico,
     ranking,
-    totalGasto
+    totalGasto,
+    anonimizar
 };
