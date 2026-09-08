@@ -235,7 +235,7 @@ Nenhum código foi alterado nesta tarefa (auditoria/documentação apenas) — o
     | Função | Fonte de custo | Por quê |
     |---|---|---|
     | `pontoEquilibrioRepository.somarCustoVariavelProdutos` | convertido → `iv.custo_unitario` | margem histórica (vendas já fechadas) |
-    | `produtosRepository.getLucroPorProduto` (`GET /produtos/lucro`) | convertido → `iv.custo_unitario` | margem histórica; `faturamento` continua com `p.preco_venda` (pendência separada, ver CLAUDE.md) |
+    | `produtosRepository.getLucroPorProduto` (`GET /produtos/lucro`) | convertido → `iv.custo_unitario` **e** `iv.preco_unitario` | margem histórica; `faturamento`/`lucro`/`margem_percentual` agora usam preço e custo travados na venda, não `produtos.preco_venda`/`custo` atuais |
     | `precosRepository.listarMargemPorProdutoECanal` (`GET /dashboard/margem`) | mantido `produtos.custo` | margem prospectiva — não junta `itens_venda`, é custo×preço vigente pra todo produto×canal ativo, existindo venda ou não |
     | `produtosRepository.getPricingProfissional`, `getSugestaoPreco`, `getInteligencia` | mantido `produtos.custo` | sugestão de preço futuro a partir do custo atual, não análise de venda fechada |
     | `produtosRepository.getAlertaPrejuizo` | mantido `produtos.custo` | alerta prospectivo (preço vigente < custo vigente *hoje*), sem join a `itens_venda` — congelar cegaria o alerta |
