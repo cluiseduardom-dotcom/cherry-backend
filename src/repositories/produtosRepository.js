@@ -161,6 +161,11 @@ async function getPricingProfissional(empresa_id) {
     return rows;
 }
 
+// Margem HISTÓRICA (o que já foi vendido) — custo_total/lucro/margem_percentual
+// usam iv.custo_unitario (congelado na venda, migration 015), não produtos.custo
+// atual. faturamento continua em p.preco_venda (preço atual, não iv.preco_unitario
+// travado) — mesma mutabilidade histórica do lado do preço, fora do escopo desta
+// correção (só custo foi pedido), registrado em MAPA_CHERRY_ERP.md.
 async function getLucroPorProduto(empresa_id) {
     const { rows } = await db.query(`
         SELECT
@@ -168,11 +173,11 @@ async function getLucroPorProduto(empresa_id) {
           p.nome,
           COALESCE(SUM(iv.quantidade), 0) AS total_vendido,
           COALESCE(SUM(iv.quantidade * p.preco_venda), 0) AS faturamento,
-          COALESCE(SUM(iv.quantidade * p.custo), 0) AS custo_total,
-          COALESCE(SUM(iv.quantidade * (p.preco_venda - p.custo)), 0) AS lucro,
+          COALESCE(SUM(iv.quantidade * iv.custo_unitario), 0) AS custo_total,
+          COALESCE(SUM(iv.quantidade * (p.preco_venda - iv.custo_unitario)), 0) AS lucro,
           ROUND(
             COALESCE(
-              (SUM(iv.quantidade * (p.preco_venda - p.custo)) /
+              (SUM(iv.quantidade * (p.preco_venda - iv.custo_unitario)) /
               NULLIF(SUM(iv.quantidade * p.preco_venda), 0)) * 100,
             0), 2
           ) AS margem_percentual
@@ -185,6 +190,10 @@ async function getLucroPorProduto(empresa_id) {
     return rows;
 }
 
+// Margem PROSPECTIVA (se eu vender hoje) de propósito: não junta itens_venda,
+// só compara p.preco_venda x p.custo atuais pra alertar produto cujo preço
+// vigente já não cobre o custo vigente. Congelar isso em iv.custo_unitario
+// cegaria o alerta (ele existe pra reagir a mudança de custo/preço hoje).
 async function getAlertaPrejuizo(empresa_id) {
     const { rows } = await db.query(`
         SELECT
