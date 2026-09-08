@@ -162,23 +162,25 @@ async function getPricingProfissional(empresa_id) {
 }
 
 // Margem HISTÓRICA (o que já foi vendido) — custo_total/lucro/margem_percentual
-// usam iv.custo_unitario (congelado na venda, migration 015), não produtos.custo
-// atual. faturamento continua em p.preco_venda (preço atual, não iv.preco_unitario
-// travado) — mesma mutabilidade histórica do lado do preço, fora do escopo desta
-// correção (só custo foi pedido), registrado em MAPA_CHERRY_ERP.md.
+// usam iv.custo_unitario, e faturamento/lucro/margem_percentual usam
+// iv.preco_unitario, ambos congelados na venda (migration 015; preco_unitario
+// já existia e já era gravado desde a criação de vendas — não precisou de
+// migration nova). Nenhum dos dois é recalculado a partir de produtos.*
+// atual, senão o resultado de vendas já fechadas mudaria toda vez que preço
+// ou custo do produto mudassem.
 async function getLucroPorProduto(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
           p.nome,
           COALESCE(SUM(iv.quantidade), 0) AS total_vendido,
-          COALESCE(SUM(iv.quantidade * p.preco_venda), 0) AS faturamento,
+          COALESCE(SUM(iv.quantidade * iv.preco_unitario), 0) AS faturamento,
           COALESCE(SUM(iv.quantidade * iv.custo_unitario), 0) AS custo_total,
-          COALESCE(SUM(iv.quantidade * (p.preco_venda - iv.custo_unitario)), 0) AS lucro,
+          COALESCE(SUM(iv.quantidade * (iv.preco_unitario - iv.custo_unitario)), 0) AS lucro,
           ROUND(
             COALESCE(
-              (SUM(iv.quantidade * (p.preco_venda - iv.custo_unitario)) /
-              NULLIF(SUM(iv.quantidade * p.preco_venda), 0)) * 100,
+              (SUM(iv.quantidade * (iv.preco_unitario - iv.custo_unitario)) /
+              NULLIF(SUM(iv.quantidade * iv.preco_unitario), 0)) * 100,
             0), 2
           ) AS margem_percentual
         FROM produtos p
