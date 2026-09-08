@@ -82,8 +82,12 @@ async function getMaisVendidosPeriodo(empresa_id) {
 // Uma única transação cobre a venda inteira: preço de cada item (vindo do
 // preço vigente em precos_produto) e a baixa de estoque correspondente
 // (reaproveitando estoqueRepository.criarMovimentacao nesta mesma transação).
-// Qualquer falha em qualquer item reverte a venda inteira — nada fica
-// parcialmente criado.
+// custo_unitario também é congelado aqui: vem do mesmo SELECT ... FOR UPDATE
+// que já trava o produto pra validar/baixar estoque (estoqueRepository
+// retorna `custo` no resultado), não de uma query separada — evita janela
+// de inconsistência entre o custo lido e o custo efetivamente vigente no
+// instante da baixa. Qualquer falha em qualquer item reverte a venda
+// inteira — nada fica parcialmente criado.
 async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, forma_pagamento, meses_prazo }) {
     const client = await db.connect();
 
@@ -155,7 +159,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, form
                 throw new AppError('Produto não encontrado', 404);
             }
 
-            itensProcessados.push({ produto_id: item.produto_id, quantidade: item.quantidade, preco_unitario });
+            itensProcessados.push({ produto_id: item.produto_id, quantidade: item.quantidade, preco_unitario, custo_unitario: Number(resultado.custo) });
             total += item.quantidade * preco_unitario;
         }
 
@@ -163,16 +167,16 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, form
 
         await client.query('UPDATE vendas SET total = $1 WHERE id = $2', [total, venda.id]);
 
-        const valores = itensProcessados.map((item) => [venda.id, item.produto_id, item.quantidade, item.preco_unitario, empresa_id]);
+        const valores = itensProcessados.map((item) => [venda.id, item.produto_id, item.quantidade, item.preco_unitario, item.custo_unitario, empresa_id]);
         const placeholders = valores
             .map((_, i) => {
-                const base = i * 5;
-                return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
+                const base = i * 6;
+                return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
             })
             .join(', ');
 
         const { rows: itensRows } = await client.query(
-            `INSERT INTO itens_venda (venda_id, produto_id, quantidade, preco_unitario, empresa_id)
+            `INSERT INTO itens_venda (venda_id, produto_id, quantidade, preco_unitario, custo_unitario, empresa_id)
              VALUES ${placeholders}
              RETURNING *`,
             valores.flat()
@@ -249,7 +253,7 @@ async function buscarPorId(id, empresa_id) {
     const venda = rows[0];
 
     const { rows: itensRows } = await db.query(
-        'SELECT id, produto_id, quantidade, preco_unitario FROM itens_venda WHERE venda_id = $1 ORDER BY id',
+        'SELECT id, produto_id, quantidade, preco_unitario, custo_unitario FROM itens_venda WHERE venda_id = $1 ORDER BY id',
         [id]
     );
 

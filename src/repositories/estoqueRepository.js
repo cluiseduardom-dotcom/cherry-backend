@@ -12,7 +12,7 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
         if (gerenciaTransacao) await client.query('BEGIN');
 
         const { rows: produtoRows } = await client.query(
-            'SELECT id, estoque_atual FROM produtos WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
+            'SELECT id, estoque_atual, custo FROM produtos WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
             [produto_id, empresa_id]
         );
 
@@ -48,7 +48,7 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
 
         if (gerenciaTransacao) await client.query('COMMIT');
 
-        return { movimentacao: rows[0] };
+        return { movimentacao: rows[0], custo: produtoRows[0].custo };
 
     } catch (error) {
         if (gerenciaTransacao) await client.query('ROLLBACK');
