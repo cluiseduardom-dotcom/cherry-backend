@@ -85,3 +85,19 @@ describe('atualizar', () => {
     expect(params).toEqual(['insumo', 1, 1]);
   });
 });
+
+// getLucroPorProduto é margem HISTÓRICA (o que já foi vendido) — usa
+// iv.custo_unitario congelado, não produtos.custo atual (ver migration 015).
+describe('getLucroPorProduto', () => {
+  test('uses iv.custo_unitario (frozen) instead of p.custo (current) to compute custo_total/lucro/margem_percentual', async () => {
+    db.query = jest.fn().mockResolvedValue({ rows: [] });
+
+    await produtosRepository.getLucroPorProduto(1);
+
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('iv.quantidade * iv.custo_unitario');
+    expect(sql).not.toContain('p.custo');
+    expect(sql).toContain('p.preco_venda - iv.custo_unitario');
+    expect(params).toEqual([1]);
+  });
+});
