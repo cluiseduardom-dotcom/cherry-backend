@@ -53,7 +53,7 @@ describe('GET /despesas-fixas', () => {
 });
 
 describe('POST /despesas-fixas', () => {
-  const validBody = { categoria: 'pessoal', descricao: 'Salários', valor: 5000 };
+  const validBody = { categoria: 'pessoal', descricao: 'Salários', valor: 5000, vigencia_inicio: '2026-08-01' };
 
   test('returns 400 for an invalid body', async () => {
     const res = await request(app)
