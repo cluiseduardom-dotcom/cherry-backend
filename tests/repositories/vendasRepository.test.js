@@ -47,8 +47,11 @@ function makeFakeClient({ produtos = {}, clienteExiste = true } = {}) {
 
     if (sql.includes('INSERT INTO itens_venda')) {
       const itens = [];
-      for (let i = 0; i < params.length; i += 5) {
-        itens.push({ id: itens.length + 1, venda_id: params[i], produto_id: params[i + 1], quantidade: params[i + 2], preco_unitario: params[i + 3] });
+      for (let i = 0; i < params.length; i += 6) {
+        itens.push({
+          id: itens.length + 1, venda_id: params[i], produto_id: params[i + 1], quantidade: params[i + 2],
+          preco_unitario: params[i + 3], custo_unitario: params[i + 4]
+        });
       }
       return Promise.resolve({ rows: itens });
     }
@@ -64,7 +67,7 @@ beforeEach(() => {
 });
 
 describe('criar', () => {
-  test('locks in the preço vigente at creation time for each item and computes the total', async () => {
+  test('locks in the preço vigente and the produto custo (custo_unitario) at creation time for each item, and computes the total', async () => {
     const fakeClient = makeFakeClient({ produtos: { 1: { ativo: true }, 2: { ativo: true } } });
     db.connect = jest.fn().mockResolvedValue(fakeClient);
 
@@ -74,7 +77,10 @@ describe('criar', () => {
       return Promise.resolve(null);
     });
 
-    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 } });
+    estoqueRepository.criarMovimentacao.mockImplementation(({ produto_id }) => {
+      if (produto_id === 1) return Promise.resolve({ movimentacao: { id: 1 }, custo: '4.00' });
+      return Promise.resolve({ movimentacao: { id: 2 }, custo: '2.20' });
+    });
 
     const resultado = await vendasRepository.criar({
       cliente_id: 7,
@@ -91,6 +97,8 @@ describe('criar', () => {
     expect(resultado.itens).toHaveLength(2);
     expect(resultado.itens[0].preco_unitario).toBe(10);
     expect(resultado.itens[1].preco_unitario).toBe(5.5);
+    expect(resultado.itens[0].custo_unitario).toBe(4);
+    expect(resultado.itens[1].custo_unitario).toBe(2.2);
 
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
       expect.objectContaining({ produto_id: 1, tipo: 'saida', quantidade: 3, empresa_id: 9 }),
@@ -126,7 +134,7 @@ describe('criar', () => {
     precosRepository.buscarPrecoVigente.mockResolvedValue({ preco_venda: '10.00' });
 
     estoqueRepository.criarMovimentacao
-      .mockResolvedValueOnce({ movimentacao: { id: 1 } })
+      .mockResolvedValueOnce({ movimentacao: { id: 1 }, custo: '4.00' })
       .mockResolvedValueOnce({ erro: 'ESTOQUE_INSUFICIENTE' });
 
     await expect(
@@ -180,7 +188,7 @@ describe('criar', () => {
     db.connect = jest.fn().mockResolvedValue(fakeClient);
 
     precosRepository.buscarPrecoVigente.mockResolvedValue({ preco_venda: '10.00' });
-    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 } });
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
     contasReceberRepository.criar.mockResolvedValue({ id: 1, venda_id: 1, valor: 10, status: 'pendente' });
 
     const resultado = await vendasRepository.criar({
@@ -212,7 +220,7 @@ describe('criar', () => {
     db.connect = jest.fn().mockResolvedValue(fakeClient);
 
     precosRepository.buscarPrecoVigente.mockResolvedValue({ preco_venda: '10.00' });
-    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 } });
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
 
     const resultado = await vendasRepository.criar({
       cliente_id: null,
@@ -224,6 +232,33 @@ describe('criar', () => {
 
     expect(contasReceberRepository.criar).not.toHaveBeenCalled();
     expect(resultado.conta_receber).toBeNull();
+  });
+});
+
+// buscarPorId lê custo_unitario direto de itens_venda, sem join com produtos
+// — por isso o valor devolvido é sempre o congelado na venda, nunca
+// recalculado a partir de produtos.custo (que pode ter mudado depois).
+describe('buscarPorId', () => {
+  test('returns custo_unitario as stored on itens_venda, never re-reading produtos.custo', async () => {
+    db.query = jest.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 1, empresa_id: 9, canal: 'loja_fisica', status: 'finalizada', total: '30.00' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 1, produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00' }] });
+
+    const resultado = await vendasRepository.buscarPorId(1, 9);
+
+    expect(resultado.itens[0].custo_unitario).toBe('4.00');
+
+    const itensSql = db.query.mock.calls[1][0];
+    expect(itensSql).toContain('custo_unitario');
+    expect(itensSql).not.toMatch(/produtos|JOIN/i);
+  });
+
+  test('returns null when the venda does not exist', async () => {
+    db.query = jest.fn().mockResolvedValueOnce({ rows: [] });
+
+    const resultado = await vendasRepository.buscarPorId(999, 9);
+
+    expect(resultado).toBeNull();
   });
 });
 
@@ -251,7 +286,7 @@ describe('cancelar', () => {
     executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
       callback({ id: 1, status: 'finalizada' }, client)
     );
-    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 } });
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
 
     const resultado = await vendasRepository.cancelar(1, 9, 5);
 

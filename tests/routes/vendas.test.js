@@ -123,6 +123,34 @@ describe('POST /vendas (admin and vendedor only)', () => {
     expect(res.status).toBe(201);
   });
 
+  test('POST /vendas — admin recebe custo_unitario dos itens criados', async () => {
+    vendasService.criar.mockResolvedValue({
+      id: 1, total: '30.00', itens: [{ produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00' }]
+    });
+
+    const res = await request(app)
+      .post('/vendas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ itens: [{ produto_id: 1, quantidade: 3 }] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.itens[0].custo_unitario).toBe('4.00');
+  });
+
+  test('POST /vendas — vendedor NÃO recebe custo_unitario dos itens criados (vazamento)', async () => {
+    vendasService.criar.mockResolvedValue({
+      id: 1, total: '30.00', itens: [{ produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00' }]
+    });
+
+    const res = await request(app)
+      .post('/vendas')
+      .set('Authorization', `Bearer ${vendedorToken}`)
+      .send({ itens: [{ produto_id: 1, quantidade: 3 }] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.itens[0]).not.toHaveProperty('custo_unitario');
+  });
+
   test('maps a 409 (insufficient stock) from the service, atomically — nothing is created', async () => {
     vendasService.criar.mockRejectedValue(new AppError('Estoque insuficiente para essa venda', 409));
 
@@ -207,9 +235,9 @@ describe('GET /vendas (admin and vendedor only, paginated)', () => {
     expect(vendasService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5 }, { id: 2, role: 'vendedor', empresa_id: 1 });
   });
 
-  test('never exposes custo or margem_percentual for an admin or vendedor', async () => {
+  test('never exposes margem_percentual for an admin or vendedor (não há esse campo em itens de venda)', async () => {
     vendasService.listar.mockResolvedValue({
-      items: [{ id: 1, total: '30.00', itens: [{ produto_id: 1, quantidade: 3, preco_unitario: '10.00' }] }],
+      items: [{ id: 1, total: '30.00', itens: [{ produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00' }] }],
       page: 1, pageSize: 20, total: 1, totalPages: 1
     });
 
@@ -218,9 +246,33 @@ describe('GET /vendas (admin and vendedor only, paginated)', () => {
 
     for (const res of [resAdmin, resVendedor]) {
       expect(res.status).toBe(200);
-      const json = JSON.stringify(res.body);
-      expect(json).not.toMatch(/custo|preco_custo|margem_percentual/);
+      expect(JSON.stringify(res.body)).not.toMatch(/margem_percentual/);
     }
+  });
+
+  test('GET /vendas — admin recebe custo_unitario dos itens', async () => {
+    vendasService.listar.mockResolvedValue({
+      items: [{ id: 1, total: '30.00', itens: [{ produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00' }] }],
+      page: 1, pageSize: 20, total: 1, totalPages: 1
+    });
+
+    const res = await request(app).get('/vendas').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.items[0].itens[0].custo_unitario).toBe('4.00');
+  });
+
+  test('GET /vendas — vendedor NÃO recebe custo_unitario dos itens (vazamento)', async () => {
+    vendasService.listar.mockResolvedValue({
+      items: [{ id: 1, total: '30.00', itens: [{ produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00' }] }],
+      page: 1, pageSize: 20, total: 1, totalPages: 1
+    });
+
+    const res = await request(app).get('/vendas').set('Authorization', `Bearer ${vendedorToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.items[0].itens[0]).not.toHaveProperty('custo_unitario');
+    expect(JSON.stringify(res.body)).not.toMatch(/custo/);
   });
 });
 
@@ -243,18 +295,41 @@ describe('GET /vendas/:id (admin and vendedor only)', () => {
     expect(res.status).toBe(404);
   });
 
-  test('returns the venda with itens and never exposes custo/margem_percentual', async () => {
+  test('returns the venda with itens and never exposes margem_percentual', async () => {
     vendasService.buscarPorId.mockResolvedValue({
       id: 1, cliente_id: null, canal: 'loja_fisica', usuario_id: 2, status: 'finalizada', total: '30.00',
-      itens: [{ id: 1, produto_id: 1, quantidade: 3, preco_unitario: '10.00' }]
+      itens: [{ id: 1, produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00' }]
     });
 
     const res = await request(app).get('/vendas/1').set('Authorization', `Bearer ${vendedorToken}`);
 
     expect(res.status).toBe(200);
     expect(vendasService.buscarPorId).toHaveBeenCalledWith(1, { id: 2, role: 'vendedor', empresa_id: 1 });
-    const json = JSON.stringify(res.body);
-    expect(json).not.toMatch(/custo|preco_custo|margem_percentual/);
+    expect(JSON.stringify(res.body)).not.toMatch(/margem_percentual/);
+  });
+
+  test('GET /vendas/:id — admin recebe custo_unitario dos itens', async () => {
+    vendasService.buscarPorId.mockResolvedValue({
+      id: 1, cliente_id: null, canal: 'loja_fisica', usuario_id: 2, status: 'finalizada', total: '30.00',
+      itens: [{ id: 1, produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00' }]
+    });
+
+    const res = await request(app).get('/vendas/1').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.itens[0].custo_unitario).toBe('4.00');
+  });
+
+  test('GET /vendas/:id — vendedor NÃO recebe custo_unitario dos itens (vazamento)', async () => {
+    vendasService.buscarPorId.mockResolvedValue({
+      id: 1, cliente_id: null, canal: 'loja_fisica', usuario_id: 2, status: 'finalizada', total: '30.00',
+      itens: [{ id: 1, produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00' }]
+    });
+
+    const res = await request(app).get('/vendas/1').set('Authorization', `Bearer ${vendedorToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.itens[0]).not.toHaveProperty('custo_unitario');
   });
 });
 

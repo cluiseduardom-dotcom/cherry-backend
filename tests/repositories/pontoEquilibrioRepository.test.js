@@ -22,14 +22,16 @@ describe('somarReceita', () => {
 });
 
 describe('somarCustoVariavelProdutos', () => {
-  test('sums quantidade * custo for itens de vendas finalizada in the periodo', async () => {
+  test('sums quantidade * custo_unitario CONGELADO (not produtos.custo atual) for itens de vendas finalizada in the periodo', async () => {
     db.query = jest.fn().mockResolvedValue({ rows: [{ total: '11623.63' }] });
 
     const resultado = await pontoEquilibrioRepository.somarCustoVariavelProdutos(9, '2026-08-01', '2026-08-19');
 
     expect(resultado).toBe('11623.63');
     const [sql, params] = db.query.mock.calls[0];
-    expect(sql).toContain('iv.quantidade * p.custo');
+    expect(sql).toContain('iv.quantidade * iv.custo_unitario');
+    expect(sql).not.toContain('p.custo');
+    expect(sql).not.toContain('JOIN produtos');
     expect(sql).toContain("v.status = 'finalizada'");
     expect(sql).toContain('v.empresa_id = $1');
     expect(params).toEqual([9, '2026-08-01', '2026-08-19']);
