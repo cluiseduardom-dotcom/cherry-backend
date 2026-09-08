@@ -80,7 +80,8 @@ CREATE TABLE itens_venda (
     venda_id INTEGER NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
     produto_id INTEGER NOT NULL REFERENCES produtos(id),
     quantidade INTEGER NOT NULL,
-    preco_unitario NUMERIC(10, 2) NOT NULL
+    preco_unitario NUMERIC(10, 2) NOT NULL,
+    custo_unitario NUMERIC(10, 2) NOT NULL CHECK (custo_unitario >= 0)
 );
 
 CREATE TABLE movimentacoes_estoque (
