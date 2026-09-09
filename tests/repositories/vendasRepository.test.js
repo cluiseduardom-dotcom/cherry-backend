@@ -47,10 +47,10 @@ function makeFakeClient({ produtos = {}, clienteExiste = true } = {}) {
 
     if (sql.includes('INSERT INTO itens_venda')) {
       const itens = [];
-      for (let i = 0; i < params.length; i += 6) {
+      for (let i = 0; i < params.length; i += 7) {
         itens.push({
           id: itens.length + 1, venda_id: params[i], produto_id: params[i + 1], quantidade: params[i + 2],
-          preco_unitario: params[i + 3], custo_unitario: params[i + 4]
+          preco_unitario: params[i + 3], custo_unitario: params[i + 4], kit_id: params[i + 6]
         });
       }
       return Promise.resolve({ rows: itens });
@@ -233,6 +233,94 @@ describe('criar', () => {
     expect(contasReceberRepository.criar).not.toHaveBeenCalled();
     expect(resultado.conta_receber).toBeNull();
   });
+
+  // Kit é montado do zero a cada venda (sem cadastro prévio): cada componente
+  // é só mais uma linha de itens_venda, com kit_id gravado — não existe
+  // produto virtual de kit nem tratamento especial de estoque/preço/custo.
+  test('records the matching kit_id on every component of a kit and debits stock for each one', async () => {
+    const fakeClient = makeFakeClient({ produtos: { 1: { ativo: true }, 2: { ativo: true } } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    precosRepository.buscarPrecoVigente.mockImplementation((produtoId) => {
+      if (produtoId === 1) return Promise.resolve({ preco_venda: '10.00' });
+      if (produtoId === 2) return Promise.resolve({ preco_venda: '5.00' });
+      return Promise.resolve(null);
+    });
+
+    estoqueRepository.criarMovimentacao.mockImplementation(({ produto_id }) => {
+      if (produto_id === 1) return Promise.resolve({ movimentacao: { id: 1 }, custo: '4.00' });
+      return Promise.resolve({ movimentacao: { id: 2 }, custo: '2.00' });
+    });
+
+    const resultado = await vendasRepository.criar({
+      cliente_id: null,
+      canal_id: 1,
+      usuario_id: 2,
+      empresa_id: 9,
+      itens: [
+        { produto_id: 1, quantidade: 1, kit_id: 1 },
+        { produto_id: 2, quantidade: 1, kit_id: 1 }
+      ]
+    });
+
+    expect(resultado.total).toBe(15); // 1*10.00 + 1*5.00
+    expect(resultado.itens).toHaveLength(2);
+    expect(resultado.itens[0].kit_id).toBe(1);
+    expect(resultado.itens[1].kit_id).toBe(1);
+    expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
+      expect.objectContaining({ produto_id: 1, tipo: 'saida', quantidade: 1 }),
+      fakeClient
+    );
+    expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
+      expect.objectContaining({ produto_id: 2, tipo: 'saida', quantidade: 1 }),
+      fakeClient
+    );
+  });
+
+  test('keeps distinct kit_ids for two kits alongside a NULL kit_id for an avulso item in the same venda', async () => {
+    const fakeClient = makeFakeClient({ produtos: { 1: { ativo: true }, 2: { ativo: true }, 3: { ativo: true } } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    precosRepository.buscarPrecoVigente.mockResolvedValue({ preco_venda: '10.00' });
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
+
+    const resultado = await vendasRepository.criar({
+      cliente_id: null,
+      canal_id: 1,
+      usuario_id: 2,
+      empresa_id: 9,
+      itens: [
+        { produto_id: 1, quantidade: 1, kit_id: 1 },
+        { produto_id: 2, quantidade: 1, kit_id: 1 },
+        { produto_id: 1, quantidade: 1, kit_id: 2 },
+        { produto_id: 2, quantidade: 1, kit_id: 2 },
+        { produto_id: 3, quantidade: 1 }
+      ]
+    });
+
+    const kitIds = resultado.itens.map((item) => item.kit_id);
+    expect(kitIds.filter((kit_id) => kit_id === 1)).toHaveLength(2);
+    expect(kitIds.filter((kit_id) => kit_id === 2)).toHaveLength(2);
+    expect(kitIds.filter((kit_id) => kit_id == null)).toHaveLength(1);
+  });
+
+  test('stores kit_id as NULL when the item carries no kit_id (unchanged behaviour for avulso-only vendas)', async () => {
+    const fakeClient = makeFakeClient({ produtos: { 1: { ativo: true } } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    precosRepository.buscarPrecoVigente.mockResolvedValue({ preco_venda: '10.00' });
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
+
+    const resultado = await vendasRepository.criar({
+      cliente_id: null,
+      canal_id: 1,
+      usuario_id: 2,
+      empresa_id: 9,
+      itens: [{ produto_id: 1, quantidade: 1 }]
+    });
+
+    expect(resultado.itens[0].kit_id).toBeNull();
+  });
 });
 
 // buscarPorId lê custo_unitario direto de itens_venda, sem join com produtos
@@ -242,7 +330,7 @@ describe('buscarPorId', () => {
   test('returns custo_unitario as stored on itens_venda, never re-reading produtos.custo', async () => {
     db.query = jest.fn()
       .mockResolvedValueOnce({ rows: [{ id: 1, empresa_id: 9, canal: 'loja_fisica', status: 'finalizada', total: '30.00' }] })
-      .mockResolvedValueOnce({ rows: [{ id: 1, produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00' }] });
+      .mockResolvedValueOnce({ rows: [{ id: 1, produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00', kit_id: null }] });
 
     const resultado = await vendasRepository.buscarPorId(1, 9);
 
@@ -251,6 +339,23 @@ describe('buscarPorId', () => {
     const itensSql = db.query.mock.calls[1][0];
     expect(itensSql).toContain('custo_unitario');
     expect(itensSql).not.toMatch(/produtos|JOIN/i);
+  });
+
+  test('returns kit_id alongside each item, for both kit components and avulso items', async () => {
+    db.query = jest.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 1, empresa_id: 9, canal: 'loja_fisica', status: 'finalizada', total: '25.00' }] })
+      .mockResolvedValueOnce({ rows: [
+        { id: 1, produto_id: 1, quantidade: 1, preco_unitario: '10.00', custo_unitario: '4.00', kit_id: 1 },
+        { id: 2, produto_id: 2, quantidade: 1, preco_unitario: '5.00', custo_unitario: '2.00', kit_id: 1 },
+        { id: 3, produto_id: 3, quantidade: 1, preco_unitario: '10.00', custo_unitario: '4.00', kit_id: null }
+      ] });
+
+    const resultado = await vendasRepository.buscarPorId(1, 9);
+
+    expect(resultado.itens.map((item) => item.kit_id)).toEqual([1, 1, null]);
+
+    const itensSql = db.query.mock.calls[1][0];
+    expect(itensSql).toContain('kit_id');
   });
 
   test('returns null when the venda does not exist', async () => {
@@ -294,6 +399,30 @@ describe('cancelar', () => {
     expect(resultado.status).toBe('cancelada');
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
       { produto_id: 1, tipo: 'entrada', quantidade: 3, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5 },
+      client
+    );
+    expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
+      { produto_id: 2, tipo: 'entrada', quantidade: 1, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5 },
+      client
+    );
+  });
+
+  // Cancelamento não tem tratamento especial pra kit: a query de estorno já
+  // seleciona toda linha de itens_venda da venda (produto_id, quantidade),
+  // kit ou avulso, e reverte cada uma normalmente pelo fluxo existente.
+  test('reverses stock for every component of a kit on cancellation, same as an avulso item', async () => {
+    const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 2 }, { produto_id: 2, quantidade: 1 }] });
+    executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
+      callback({ id: 1, status: 'finalizada' }, client)
+    );
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
+
+    const resultado = await vendasRepository.cancelar(1, 9, 5);
+
+    expect(resultado.status).toBe('cancelada');
+    expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledTimes(2);
+    expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
+      { produto_id: 1, tipo: 'entrada', quantidade: 2, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5 },
       client
     );
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
