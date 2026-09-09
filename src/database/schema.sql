@@ -81,7 +81,8 @@ CREATE TABLE itens_venda (
     produto_id INTEGER NOT NULL REFERENCES produtos(id),
     quantidade INTEGER NOT NULL,
     preco_unitario NUMERIC(10, 2) NOT NULL,
-    custo_unitario NUMERIC(10, 2) NOT NULL CHECK (custo_unitario >= 0)
+    custo_unitario NUMERIC(10, 2) NOT NULL CHECK (custo_unitario >= 0),
+    kit_id INTEGER NULL
 );
 
 CREATE TABLE movimentacoes_estoque (

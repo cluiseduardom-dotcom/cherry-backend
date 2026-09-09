@@ -159,7 +159,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, form
                 throw new AppError('Produto não encontrado', 404);
             }
 
-            itensProcessados.push({ produto_id: item.produto_id, quantidade: item.quantidade, preco_unitario, custo_unitario: Number(resultado.custo) });
+            itensProcessados.push({ produto_id: item.produto_id, quantidade: item.quantidade, preco_unitario, custo_unitario: Number(resultado.custo), kit_id: item.kit_id ?? null });
             total += item.quantidade * preco_unitario;
         }
 
@@ -167,16 +167,16 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, form
 
         await client.query('UPDATE vendas SET total = $1 WHERE id = $2', [total, venda.id]);
 
-        const valores = itensProcessados.map((item) => [venda.id, item.produto_id, item.quantidade, item.preco_unitario, item.custo_unitario, empresa_id]);
+        const valores = itensProcessados.map((item) => [venda.id, item.produto_id, item.quantidade, item.preco_unitario, item.custo_unitario, empresa_id, item.kit_id]);
         const placeholders = valores
             .map((_, i) => {
-                const base = i * 6;
-                return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+                const base = i * 7;
+                return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
             })
             .join(', ');
 
         const { rows: itensRows } = await client.query(
-            `INSERT INTO itens_venda (venda_id, produto_id, quantidade, preco_unitario, custo_unitario, empresa_id)
+            `INSERT INTO itens_venda (venda_id, produto_id, quantidade, preco_unitario, custo_unitario, empresa_id, kit_id)
              VALUES ${placeholders}
              RETURNING *`,
             valores.flat()
@@ -253,7 +253,7 @@ async function buscarPorId(id, empresa_id) {
     const venda = rows[0];
 
     const { rows: itensRows } = await db.query(
-        'SELECT id, produto_id, quantidade, preco_unitario, custo_unitario FROM itens_venda WHERE venda_id = $1 ORDER BY id',
+        'SELECT id, produto_id, quantidade, preco_unitario, custo_unitario, kit_id FROM itens_venda WHERE venda_id = $1 ORDER BY id',
         [id]
     );
 
