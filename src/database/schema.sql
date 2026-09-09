@@ -164,9 +164,12 @@ CREATE TABLE despesas_fixas (
     descricao VARCHAR(255) NOT NULL,
     valor NUMERIC(12,2) NOT NULL CHECK (valor >= 0),
     ativo BOOLEAN NOT NULL DEFAULT true,
+    vigencia_inicio DATE NOT NULL,
+    vigencia_fim DATE,
     criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
     atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
-    deletado_em TIMESTAMP
+    deletado_em TIMESTAMP,
+    CHECK (vigencia_fim IS NULL OR vigencia_fim >= vigencia_inicio)
 );
 
 CREATE TABLE configuracoes_financeiras (
