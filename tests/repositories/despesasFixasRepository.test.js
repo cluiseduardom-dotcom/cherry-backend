@@ -62,6 +62,19 @@ describe('criar', () => {
     const [, params] = db.query.mock.calls[0];
     expect(params[4]).toBeNull();
   });
+
+  test('inserts vigencia_fim as null when explicitly passed null (same result as omitted)', async () => {
+    db.query = jest.fn().mockResolvedValue({
+      rows: [{ id: 1, vigencia_inicio: dataLocal(2026, 8, 1), vigencia_fim: null }]
+    });
+
+    await despesasFixasRepository.criar({
+      categoria: 'pessoal', descricao: 'Salários', valor: 5000, vigencia_inicio: '2026-08-01', vigencia_fim: null, empresa_id: 9
+    });
+
+    const [, params] = db.query.mock.calls[0];
+    expect(params[4]).toBeNull();
+  });
 });
 
 describe('atualizar', () => {
