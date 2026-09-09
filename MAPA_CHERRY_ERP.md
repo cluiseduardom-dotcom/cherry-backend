@@ -22,8 +22,9 @@ Auditoria feita em 2026-08-01, lendo o código-fonte (controllers/services/repos
 | `009_contas_receber.sql` | Adiciona `forma_pagamento` (`a_vista`/`prazo`) a `vendas`; cria `contas_receber` (vínculo automático via `venda_id UNIQUE`, `status` `pendente`/`recebido`/`cancelado`). |
 | `010_fornecedores.sql` | Cria `fornecedores` (`empresa_id`, `nome` obrigatório, `contato`/`telefone`/`email`/`cnpj_cpf`/`observacoes` opcionais, `ativo` para soft delete, `criado_em`/`atualizado_em`). |
 | `015_custo_congelado_itens_venda.sql` | Adiciona `itens_venda.custo_unitario` (`NUMERIC(10,2) NOT NULL CHECK >= 0`), congelando `produtos.custo` no momento da venda — mesmo padrão de `preco_unitario`. Backfill com o custo atual (seguro por construção nesta base, ver `## Regras já decididas em custo congelado` no CLAUDE.md). |
+| `016_vigencia_despesas_fixas.sql` | Adiciona `despesas_fixas.vigencia_inicio` (`DATE NOT NULL`) e `vigencia_fim` (`DATE`, `NULL` = em vigor), com `CHECK (vigencia_fim IS NULL OR vigencia_fim >= vigencia_inicio)`. Vigência passa a ser a fonte de verdade cronológica pro custo fixo do Ponto de Equilíbrio, rateado por dia — ver `## Regras já decididas em rateio e vigência de despesas fixas` no CLAUDE.md. Tabela vazia nos três ambientes no momento da migration; backfill no-op. |
 
-Tabela incompleta entre `010` e `015`: as migrations `011_ponto_equilibrio.sql`, `012_compras.sql`, `013_producao.sql` e `014_clientes_anonimizacao.sql` já existem no repo mas não foram registradas aqui quando implementadas — não preenchidas nesta tarefa por estar fora do escopo pedido (só a migration `015` foi adicionada). Ver os arquivos em `src/database/migrations/` pra conteúdo exato.
+Tabela incompleta entre `010` e `016`: as migrations `011_ponto_equilibrio.sql`, `012_compras.sql`, `013_producao.sql` e `014_clientes_anonimizacao.sql` já existem no repo mas não foram registradas aqui quando implementadas — não preenchidas nesta tarefa por estar fora do escopo pedido (só `015` e `016` foram adicionadas, nas respectivas tarefas que as criaram). Ver os arquivos em `src/database/migrations/` pra conteúdo exato.
 
 Não existe migration `001_*`: a tabela base (`empresas` já incluída, `usuarios`, `clientes`, `produtos`, `vendas`, `itens_venda`) está apenas em `src/database/schema.sql`, mantido como snapshot consolidado — `schema.sql` já reflete o schema pós-migration 009 (inclui `empresa_id` em tudo).
 
@@ -107,6 +108,20 @@ Mount inteiro atrás de `authMiddleware + requireAdmin` — admin-only.
 
 Sem `POST`/`PUT` manual, como já documentado — toda linha nasce de `POST /vendas` com `forma_pagamento: 'prazo'`.
 
+### Financeiro — despesas fixas e Ponto de Equilíbrio (`/despesas-fixas`, `/configuracoes-financeiras`, `/financeiro`)
+Todos os três mounts atrás de `authMiddleware + requireAdmin` em `app.js` — admin-only (confirmado 2026-09-08, ao mexer nesta área pra migration `016_vigencia_despesas_fixas.sql`; antes só constava como "a verificar" em §3).
+
+| Método | Rota | Observação |
+|---|---|---|
+| GET | `/despesas-fixas` | Lista todas não-deletadas (inclui `ativo = false`, pra tela conseguir reativar) |
+| POST | `/despesas-fixas` | `vigencia_inicio` obrigatório desde a migration 016 |
+| PUT | `/despesas-fixas/:id` | Parcial; não altera `ativo` (só o toggle abaixo altera) |
+| DELETE | `/despesas-fixas/:id` | Soft delete via `deletado_em`, não apaga a linha |
+| PATCH | `/despesas-fixas/:id/toggle` | Inverte `ativo` — pausa de exceção manual, ver CLAUDE.md |
+| GET | `/configuracoes-financeiras` | Alíquota de imposto usada no cálculo de impostos do PE |
+| PUT | `/configuracoes-financeiras` | — |
+| GET | `/financeiro/ponto-equilibrio` | `data_inicio`/`data_fim` opcionais (default: mês corrente); custo fixo rateado por dia, ver CLAUDE.md |
+
 ### Fornecedores (`/fornecedores`)
 Mount inteiro atrás de `authMiddleware + requireEstoquista` — admin ou estoquista (vendedor recebe 403 em toda rota do módulo, inclusive leitura).
 
@@ -164,7 +179,7 @@ Nota de correção: a contagem anterior deste documento (2026-08-18) mostrava 56
 
 (Soma: 34+4+113+32+46+82+20+29+89+45+63+69+75+9+16+98 = 824.)
 
-A última linha (despesas fixas, configurações financeiras, ponto de equilíbrio) existe em código e passa na suíte, mas não foi lida linha a linha nem tem RBAC/isolamento verificados neste documento — mergeada em outra frente de trabalho (`feat/ponto-equilibrio`, `feat/despesas-fixas`) fora do escopo desta atualização. Marcar como "a verificar" se precisar da mesma garantia dada aos módulos acima.
+A última linha (despesas fixas, configurações financeiras, ponto de equilíbrio) existe em código e passa na suíte, mas não foi lida linha a linha nem tem isolamento multi-tenant (banco real) verificado neste documento — mergeada em outra frente de trabalho (`feat/ponto-equilibrio`, `feat/despesas-fixas`) fora do escopo desta atualização. **RBAC de rota confirmado (2026-09-08)**, ao mexer nesta área pra migration `016_vigencia_despesas_fixas.sql`: os três mounts (`/despesas-fixas`, `/configuracoes-financeiras`, `/financeiro`) estão atrás de `authMiddleware + requireAdmin` (ver §2). Isolamento por `empresa_id` ainda não tem teste de banco real como os módulos do §5 — marcar como "a verificar" se precisar da mesma garantia.
 
 ---
 
