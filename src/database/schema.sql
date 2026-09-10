@@ -38,7 +38,8 @@ CREATE TABLE produtos (
     custo NUMERIC(10, 2) NOT NULL,
     estoque_atual INTEGER NOT NULL DEFAULT 0,
     estoque_minimo INTEGER NOT NULL DEFAULT 0,
-    ativo BOOLEAN NOT NULL DEFAULT true
+    ativo BOOLEAN NOT NULL DEFAULT true,
+    unidade VARCHAR(4) NOT NULL DEFAULT 'UN'
 );
 
 CREATE TABLE canais_venda (
