@@ -66,6 +66,18 @@ describe('criarProdutoSchema', () => {
     const result = criarProdutoSchema.safeParse({ ...valid, tipo: 'outro' });
     expect(result.success).toBe(false);
   });
+
+  test('accepts an optional unidade of UN, PAR, CX or PCT', () => {
+    for (const unidade of ['UN', 'PAR', 'CX', 'PCT']) {
+      expect(criarProdutoSchema.safeParse({ ...valid, unidade }).success).toBe(true);
+    }
+  });
+
+  test.each(['KG', 'XYZ', 'un'])('rejects an invalid unidade (%p)', (unidade) => {
+    const result = criarProdutoSchema.safeParse({ ...valid, unidade });
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('Unidade inválida');
+  });
 });
 
 describe('atualizarProdutoSchema', () => {
@@ -86,6 +98,16 @@ describe('atualizarProdutoSchema', () => {
 
   test('accepts an optional tipo update', () => {
     expect(atualizarProdutoSchema.safeParse({ tipo: 'insumo' }).success).toBe(true);
+  });
+
+  test('accepts an optional unidade update', () => {
+    expect(atualizarProdutoSchema.safeParse({ unidade: 'PAR' }).success).toBe(true);
+  });
+
+  test('rejects an invalid unidade update', () => {
+    const result = atualizarProdutoSchema.safeParse({ unidade: 'KG' });
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('Unidade inválida');
   });
 });
 

@@ -27,10 +27,10 @@ async function buscarPorSku(sku, empresa_id) {
     return rows.length ? rows[0] : null;
 }
 
-async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, empresa_id }) {
+async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id }) {
     const { rows } = await db.query(
-        `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, empresa_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
             sku,
@@ -43,6 +43,7 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
             estoque_minimo ?? 0,
             ativo ?? true,
             tipo ?? 'acabado',
+            unidade ?? 'UN',
             empresa_id
         ]
     );
@@ -52,7 +53,7 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
 
 async function atualizar(id, dados, empresa_id) {
     // estoque_atual is deliberately excluded: it's only ever changed via estoqueRepository.criarMovimentacao
-    const campos = ['sku', 'nome', 'descricao', 'categoria', 'preco_venda', 'custo', 'estoque_minimo', 'ativo', 'tipo'];
+    const campos = ['sku', 'nome', 'descricao', 'categoria', 'preco_venda', 'custo', 'estoque_minimo', 'ativo', 'tipo', 'unidade'];
 
     const sets = [];
     const valores = [];

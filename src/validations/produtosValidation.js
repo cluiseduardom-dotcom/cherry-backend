@@ -10,7 +10,8 @@ const criarProdutoSchema = z.object({
     estoque_atual: z.coerce.number({ error: 'Estoque atual inválido' }).int('Estoque atual inválido').nonnegative('Estoque atual inválido').optional(),
     estoque_minimo: z.coerce.number({ error: 'Estoque mínimo inválido' }).int('Estoque mínimo inválido').nonnegative('Estoque mínimo inválido').optional(),
     ativo: z.boolean().optional(),
-    tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional()
+    tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional(),
+    unidade: z.enum(['UN', 'PAR', 'CX', 'PCT'], { error: 'Unidade inválida' }).optional()
 });
 
 // estoque_atual is intentionally not editable here: once movimentacoes_estoque
@@ -24,7 +25,8 @@ const atualizarProdutoSchema = z.object({
     custo: z.coerce.number().positive('Custo deve ser maior que zero').optional(),
     estoque_minimo: z.coerce.number().int('Estoque mínimo inválido').nonnegative('Estoque mínimo inválido').optional(),
     ativo: z.boolean().optional(),
-    tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional()
+    tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional(),
+    unidade: z.enum(['UN', 'PAR', 'CX', 'PCT'], { error: 'Unidade inválida' }).optional()
 }).refine((data) => Object.keys(data).length > 0, { message: 'Informe ao menos um campo para atualizar' });
 
 const ajustarPrecoSchema = z.object({
