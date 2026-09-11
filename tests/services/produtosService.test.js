@@ -50,6 +50,22 @@ describe('listar', () => {
     });
   });
 
+  test('treats a matched-but-unpriced row as no price, not zero (LEFT JOIN LATERAL always returns one row per produto, with null columns when there is no price yet)', async () => {
+    produtosRepository.listarPaginado.mockResolvedValue({
+      items: [{ id: 1, preco_venda: '20.00', custo: '10.00' }],
+      total: 1
+    });
+    precosRepository.listarPrecosVigentesPorCanal.mockResolvedValue([
+      { produto_id: 1, preco_venda: null, markup_percentual: null, margem_percentual: null, vigente_desde: null }
+    ]);
+
+    const result = await produtosService.listar({ page: 1, pageSize: 20, canal: 'loja_fisica' });
+
+    expect(result.items[0].preco_canal).toEqual({
+      canal: 'loja_fisica', preco_venda: null, markup_percentual: null, margem_percentual: null, vigente_desde: null
+    });
+  });
+
   test('computes the correct offset for page > 1', async () => {
     produtosRepository.listarPaginado.mockResolvedValue({ items: [], total: 0 });
 
