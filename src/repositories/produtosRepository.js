@@ -330,6 +330,51 @@ async function getDashboard(empresa_id) {
     return rows[0];
 }
 
+async function buscarCategoriasDoProduto(produto_id, empresa_id) {
+    const { rows } = await db.query(
+        `SELECT c.id, c.nivel, c.codigo, c.nome
+         FROM produtos_categorias pc
+         JOIN categorias_produto c ON c.id = pc.categoria_id
+         WHERE pc.produto_id = $1 AND pc.empresa_id = $2
+         ORDER BY c.nivel ASC`,
+        [produto_id, empresa_id]
+    );
+    return rows;
+}
+
+async function buscarCategoriasPorProdutoIds(produtoIds, empresa_id) {
+    if (!produtoIds.length) return [];
+
+    const { rows } = await db.query(
+        `SELECT pc.produto_id, c.id, c.nivel, c.codigo, c.nome
+         FROM produtos_categorias pc
+         JOIN categorias_produto c ON c.id = pc.categoria_id
+         WHERE pc.produto_id = ANY($1::int[]) AND pc.empresa_id = $2
+         ORDER BY c.nivel ASC`,
+        [produtoIds, empresa_id]
+    );
+    return rows;
+}
+
+async function substituirCategorias(produto_id, categoriaIds, empresa_id, client) {
+    await client.query('DELETE FROM produtos_categorias WHERE produto_id = $1 AND empresa_id = $2', [produto_id, empresa_id]);
+
+    for (const categoria_id of categoriaIds) {
+        await client.query(
+            'INSERT INTO produtos_categorias (produto_id, categoria_id, empresa_id) VALUES ($1, $2, $3)',
+            [produto_id, categoria_id, empresa_id]
+        );
+    }
+}
+
+async function definirSkuSeNulo(produto_id, sku, empresa_id, client) {
+    const { rows } = await client.query(
+        'UPDATE produtos SET sku = $1 WHERE id = $2 AND empresa_id = $3 AND sku IS NULL RETURNING *',
+        [sku, produto_id, empresa_id]
+    );
+    return rows.length ? rows[0] : null;
+}
+
 module.exports = {
     listar,
     listarPaginado,
@@ -349,5 +394,9 @@ module.exports = {
     getSugestaoPreco,
     getInteligencia,
     getAcoes,
-    getDashboard
+    getDashboard,
+    buscarCategoriasDoProduto,
+    buscarCategoriasPorProdutoIds,
+    substituirCategorias,
+    definirSkuSeNulo
 };
