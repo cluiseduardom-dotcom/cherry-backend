@@ -1,5 +1,8 @@
 const produtosRepository = require('../repositories/produtosRepository');
 const precosRepository = require('../repositories/precosRepository');
+const categoriasRepository = require('../repositories/categoriasRepository');
+const skuService = require('./skuService');
+const db = require('../config/db');
 const AppError = require('../errors/AppError');
 
 function comMargem(produto) {
@@ -50,8 +53,18 @@ async function listar({ page, pageSize, canal }, empresaId) {
     const precos = await precosRepository.listarPrecosVigentesPorCanal(items.map((produto) => produto.id), canalRow.id, empresaId);
     const precosPorProduto = new Map(precos.map((preco) => [preco.produto_id, preco]));
 
+    const categoriaLinhas = await produtosRepository.buscarCategoriasPorProdutoIds(items.map((produto) => produto.id), empresaId);
+    const categoriasPorProduto = new Map();
+    for (const { produto_id, ...categoria } of categoriaLinhas) {
+        if (!categoriasPorProduto.has(produto_id)) categoriasPorProduto.set(produto_id, []);
+        categoriasPorProduto.get(produto_id).push(categoria);
+    }
+
     return {
-        items: items.map((produto) => comPrecoCanal(comMargem(produto), canalRow.nome, precosPorProduto.get(produto.id))),
+        items: items.map((produto) => ({
+            ...comPrecoCanal(comMargem(produto), canalRow.nome, precosPorProduto.get(produto.id)),
+            categorias: categoriasPorProduto.get(produto.id) || []
+        })),
         page,
         pageSize,
         total,
@@ -68,8 +81,9 @@ async function buscarPorId(id, canal, empresaId) {
 
     const canalRow = await resolverCanal(canal, empresaId);
     const precoRow = await precosRepository.buscarPrecoVigente(id, canalRow.id, empresaId);
+    const categorias = await produtosRepository.buscarCategoriasDoProduto(id, empresaId);
 
-    return comPrecoCanal(comMargem(produto), canalRow.nome, precoRow);
+    return { ...comPrecoCanal(comMargem(produto), canalRow.nome, precoRow), categorias };
 }
 
 async function criar(dados, empresaId) {
@@ -110,6 +124,64 @@ async function ajustarPreco(id, percentual, empresaId) {
     }
 
     return produtosRepository.ajustarPreco(id, percentual, empresaId);
+}
+
+async function categorizar(id, categoriaIds, empresaId) {
+    const produto = await produtosRepository.buscarPorId(id, empresaId);
+
+    if (!produto) {
+        throw new AppError('Produto não encontrado', 404);
+    }
+
+    let categorias = [];
+
+    if (categoriaIds.length > 0) {
+        categorias = await categoriasRepository.buscarPorIds(categoriaIds, empresaId);
+
+        if (categorias.length !== categoriaIds.length) {
+            throw new AppError('Categoria inválida', 400);
+        }
+
+        const niveis = categorias.map((c) => c.nivel);
+        if (new Set(niveis).size !== niveis.length) {
+            throw new AppError('Não é permitido mais de uma categoria do mesmo nível', 400);
+        }
+    }
+
+    const client = await db.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        await produtosRepository.substituirCategorias(id, categoriaIds, empresaId, client);
+
+        let produtoAtualizado = produto;
+
+        if (!produto.sku && categorias.length > 0) {
+            const sku = await skuService.gerar(categorias, empresaId, client);
+
+            try {
+                const atualizado = await produtosRepository.definirSkuSeNulo(id, sku, empresaId, client);
+                if (atualizado) produtoAtualizado = atualizado;
+            } catch (error) {
+                if (error.code === '23505') {
+                    throw new AppError('Erro ao gerar SKU, tente novamente', 409);
+                }
+                throw error;
+            }
+        }
+
+        await client.query('COMMIT');
+
+        const categoriasVinculadas = await produtosRepository.buscarCategoriasDoProduto(id, empresaId);
+
+        return { ...comMargem(produtoAtualizado), categorias: categoriasVinculadas };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
 }
 
 async function giro(empresaId) {
@@ -167,6 +239,7 @@ module.exports = {
     atualizar,
     remover,
     ajustarPreco,
+    categorizar,
     giro,
     parados,
     pricingProfissional,
