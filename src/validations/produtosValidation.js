@@ -32,8 +32,16 @@ const ajustarPrecoSchema = z.object({
     percentual: z.coerce.number({ error: 'Percentual fora do limite' }).min(-0.5, 'Percentual fora do limite').max(1, 'Percentual fora do limite')
 });
 
+const categorizarProdutoSchema = z.object({
+    categoria_ids: z.array(
+        z.coerce.number().int('categoria_ids deve conter apenas números inteiros').positive('categoria_ids deve conter apenas IDs positivos'),
+        { error: 'categoria_ids é obrigatório' }
+    )
+}).strict();
+
 module.exports = {
     criarProdutoSchema,
     atualizarProdutoSchema,
-    ajustarPrecoSchema
+    ajustarPrecoSchema,
+    categorizarProdutoSchema
 };

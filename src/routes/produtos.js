@@ -26,6 +26,7 @@ router.get('/estoque-baixo', estoqueController.alertas);
 router.get('/:id', controller.buscarPorId);
 router.put('/:id', requireAdmin, controller.atualizar);
 router.delete('/:id', requireAdmin, controller.remover);
+router.patch('/:id/categoria', requireEstoquista, controller.categorizar);
 
 router.get('/:id/movimentacoes', estoqueController.historico);
 router.post('/:id/movimentacoes', requireEstoquista, estoqueController.registrarMovimentacao);

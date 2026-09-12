@@ -8,6 +8,7 @@ const { makeToken } = require('../helpers/token');
 
 const vendedorToken = makeToken({ id: 1, role: 'vendedor', empresa_id: 1 });
 const adminToken = makeToken({ id: 2, role: 'admin', empresa_id: 1 });
+const estoquistaToken = makeToken({ id: 3, role: 'estoquista', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -165,7 +166,7 @@ describe('POST /produtos (admin only)', () => {
       .send({ nome: 'X' });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('SKU é obrigatório');
+    expect(res.body.message).toBe('Preço de venda é obrigatório');
   });
 
   test('returns 201 and the created produto for an admin', async () => {
@@ -369,5 +370,98 @@ describe('rotas analíticas de /produtos filtram custo/margem/lucro por papel (l
       expect(linha).not.toHaveProperty(campo);
     }
     expect(produtosService[metodo]).toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /produtos/:id/categoria', () => {
+  test('returns 401 without a token', async () => {
+    const res = await request(app).patch('/produtos/1/categoria').send({ categoria_ids: [1] });
+    expect(res.status).toBe(401);
+  });
+
+  test('returns 403 for a vendedor', async () => {
+    const res = await request(app)
+      .patch('/produtos/1/categoria')
+      .set('Authorization', `Bearer ${vendedorToken}`)
+      .send({ categoria_ids: [1] });
+    expect(res.status).toBe(403);
+  });
+
+  test('returns 200 for an admin', async () => {
+    produtosService.categorizar.mockResolvedValue({ id: 1, sku: 'BR001', categorias: [], custo: 5, margem_percentual: 50 });
+
+    const res = await request(app)
+      .patch('/produtos/1/categoria')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ categoria_ids: [1, 2] });
+
+    expect(res.status).toBe(200);
+    expect(produtosService.categorizar).toHaveBeenCalledWith(1, [1, 2], 1);
+  });
+
+  test('returns 200 for an estoquista', async () => {
+    produtosService.categorizar.mockResolvedValue({ id: 1, sku: 'BR001', categorias: [] });
+
+    const res = await request(app)
+      .patch('/produtos/1/categoria')
+      .set('Authorization', `Bearer ${estoquistaToken}`)
+      .send({ categoria_ids: [1] });
+
+    expect(res.status).toBe(200);
+  });
+
+  test('returns 400 for a non-array categoria_ids', async () => {
+    const res = await request(app)
+      .patch('/produtos/1/categoria')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ categoria_ids: 'x' });
+
+    expect(res.status).toBe(400);
+    expect(produtosService.categorizar).not.toHaveBeenCalled();
+  });
+
+  test('returns 400 for an extra field in the body (strict schema)', async () => {
+    const res = await request(app)
+      .patch('/produtos/1/categoria')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ categoria_ids: [1], nome: 'Tentando editar outro campo' });
+
+    expect(res.status).toBe(400);
+    expect(produtosService.categorizar).not.toHaveBeenCalled();
+  });
+
+  test('accepts an empty categoria_ids array', async () => {
+    produtosService.categorizar.mockResolvedValue({ id: 1, sku: null, categorias: [] });
+
+    const res = await request(app)
+      .patch('/produtos/1/categoria')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ categoria_ids: [] });
+
+    expect(res.status).toBe(200);
+    expect(produtosService.categorizar).toHaveBeenCalledWith(1, [], 1);
+  });
+
+  test('includes custo and margem_percentual in the response for an admin (filtrarParaRole keeps them)', async () => {
+    produtosService.categorizar.mockResolvedValue({ id: 1, sku: 'BR001', custo: 5, margem_percentual: 50, categorias: [] });
+
+    const res = await request(app)
+      .patch('/produtos/1/categoria')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ categoria_ids: [1] });
+
+    expect(res.body.data.custo).toBe(5);
+    expect(res.body.data.margem_percentual).toBe(50);
+  });
+
+  test('returns 404 when the produto does not belong to this empresa', async () => {
+    produtosService.categorizar.mockRejectedValue(new AppError('Produto não encontrado', 404));
+
+    const res = await request(app)
+      .patch('/produtos/1/categoria')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ categoria_ids: [1] });
+
+    expect(res.status).toBe(404);
   });
 });
