@@ -21,14 +21,21 @@ async function resolverCanal(nome, empresaId) {
 }
 
 function comPrecoCanal(produto, canalNome, precoRow) {
+    // listarPrecosVigentesPorCanal usa LEFT JOIN LATERAL ... ON true, que sempre
+    // devolve uma linha por produto (com colunas NULL quando não há preço) — por
+    // isso `precoRow` sozinho não indica que existe preço: é preciso checar o
+    // campo. Sem essa checagem, Number(null) vira 0 e o preço aparece como
+    // "R$ 0,00" em vez de "sem preço definido".
+    const temPreco = precoRow != null && precoRow.preco_venda != null;
+
     return {
         ...produto,
         preco_canal: {
             canal: canalNome,
-            preco_venda: precoRow ? Number(precoRow.preco_venda) : null,
-            markup_percentual: precoRow ? Number(precoRow.markup_percentual) : null,
-            margem_percentual: precoRow ? Number(precoRow.margem_percentual) : null,
-            vigente_desde: precoRow ? precoRow.vigente_desde : null
+            preco_venda: temPreco ? Number(precoRow.preco_venda) : null,
+            markup_percentual: temPreco ? Number(precoRow.markup_percentual) : null,
+            margem_percentual: temPreco ? Number(precoRow.margem_percentual) : null,
+            vigente_desde: temPreco ? precoRow.vigente_desde : null
         }
     };
 }
