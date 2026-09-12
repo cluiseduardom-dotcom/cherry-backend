@@ -30,7 +30,7 @@ CREATE TABLE clientes (
 CREATE TABLE produtos (
     id SERIAL PRIMARY KEY,
     empresa_id INTEGER NOT NULL REFERENCES empresas(id),
-    sku VARCHAR(50) UNIQUE,
+    sku VARCHAR(50),
     nome VARCHAR(255) NOT NULL,
     descricao TEXT,
     categoria VARCHAR(100),
@@ -40,6 +40,65 @@ CREATE TABLE produtos (
     estoque_minimo INTEGER NOT NULL DEFAULT 0,
     ativo BOOLEAN NOT NULL DEFAULT true,
     unidade VARCHAR(4) NOT NULL DEFAULT 'UN'
+);
+
+-- sku é único POR EMPRESA (nullable), não globalmente — ver migration
+-- 019_categorias_produto.sql para o motivo (SKU gerado por sequência
+-- isolada por empresa).
+CREATE UNIQUE INDEX idx_produtos_sku_unico
+    ON produtos (empresa_id, sku)
+    WHERE sku IS NOT NULL;
+
+COMMENT ON COLUMN produtos.categoria IS
+    'Deprecado: campo de texto livre substituído pela categorização estruturada (categorias_produto/produtos_categorias). Não ler nem escrever em código novo. Remoção planejada para uma etapa futura, antes do carregamento do catálogo real.';
+
+-- Categorias de produto configuráveis por empresa (nível = posição no SKU,
+-- ex.: nível 1 = família, nível 2 = material) + geração automática de SKU.
+-- Ver docs/superpowers/specs/2026-09-12-categorias-sku-design.md.
+CREATE TABLE categorias_produto (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    nivel INTEGER NOT NULL CHECK (nivel > 0),
+    codigo VARCHAR(3) NOT NULL,
+    nome VARCHAR(255) NOT NULL,
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    deletado_em TIMESTAMP
+);
+
+-- Único por (empresa, nível, código em maiúsculas) entre categorias ativas.
+-- Código PODE ser reaproveitado depois que a categoria antiga é soft-deletada
+-- — seguro porque a sequência de SKU (ver sequencias_sku) é ancorada no TEXTO
+-- do código, não no id: uma categoria nova com o mesmo código continua a
+-- mesma sequência em vez de reiniciar e colidir. codigo/nivel são imutáveis
+-- após a criação (aplicação, não constraint) — exatamente para não reabrir
+-- esse mesmo risco de colisão por edição.
+CREATE UNIQUE INDEX idx_categorias_produto_codigo_unico
+    ON categorias_produto (empresa_id, nivel, UPPER(codigo))
+    WHERE deletado_em IS NULL;
+
+-- Vínculo produto <-> categoria. Tabela de junção necessária porque o número
+-- de níveis é configurável por empresa (não fixo) — não dá pra representar
+-- isso com colunas fixas categoria_nivel1_id/categoria_nivel2_id em produtos.
+-- Deletar uma categoria (soft delete) NÃO apaga vínculos existentes nem afeta
+-- SKUs já gerados.
+CREATE TABLE produtos_categorias (
+    produto_id INTEGER NOT NULL REFERENCES produtos(id),
+    categoria_id INTEGER NOT NULL REFERENCES categorias_produto(id),
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    PRIMARY KEY (produto_id, categoria_id)
+);
+
+-- Contador atômico por combinação de códigos de categoria, isolado por
+-- empresa. chave_combinacao = códigos das categorias atribuídas (maiúsculo),
+-- ordenados por nível ascendente, unidos por "-" (ex.: "BR-01"). Upsert
+-- (INSERT ... ON CONFLICT DO UPDATE) garante atomicidade sem lock explícito.
+CREATE TABLE sequencias_sku (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    chave_combinacao VARCHAR(255) NOT NULL,
+    contador INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (empresa_id, chave_combinacao)
 );
 
 CREATE TABLE canais_venda (
@@ -266,3 +325,5 @@ CREATE INDEX idx_itens_compra_produto_id ON itens_compra(produto_id);
 CREATE INDEX idx_itens_compra_empresa_id ON itens_compra(empresa_id);
 CREATE INDEX idx_contas_pagar_compra_id ON contas_pagar(compra_id);
 CREATE INDEX idx_despesas_fixas_empresa_id ON despesas_fixas(empresa_id);
+CREATE INDEX idx_categorias_produto_empresa_id ON categorias_produto(empresa_id);
+CREATE INDEX idx_produtos_categorias_produto_id ON produtos_categorias(produto_id);
