@@ -327,3 +327,5 @@ CREATE INDEX idx_contas_pagar_compra_id ON contas_pagar(compra_id);
 CREATE INDEX idx_despesas_fixas_empresa_id ON despesas_fixas(empresa_id);
 CREATE INDEX idx_categorias_produto_empresa_id ON categorias_produto(empresa_id);
 CREATE INDEX idx_produtos_categorias_produto_id ON produtos_categorias(produto_id);
+CREATE INDEX idx_produtos_categorias_empresa_id ON produtos_categorias(empresa_id);
+CREATE INDEX idx_sequencias_sku_empresa_id ON sequencias_sku(empresa_id);

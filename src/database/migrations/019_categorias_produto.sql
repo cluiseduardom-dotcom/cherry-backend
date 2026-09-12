@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS produtos_categorias (
 );
 
 CREATE INDEX IF NOT EXISTS idx_produtos_categorias_produto_id ON produtos_categorias(produto_id);
+CREATE INDEX IF NOT EXISTS idx_produtos_categorias_empresa_id ON produtos_categorias(empresa_id);
 
 -- Contador atômico por combinação de códigos de categoria, isolado por
 -- empresa. chave_combinacao = códigos das categorias atribuídas (maiúsculo),
@@ -51,6 +52,8 @@ CREATE TABLE IF NOT EXISTS sequencias_sku (
     contador INTEGER NOT NULL DEFAULT 0,
     UNIQUE (empresa_id, chave_combinacao)
 );
+
+CREATE INDEX IF NOT EXISTS idx_sequencias_sku_empresa_id ON sequencias_sku(empresa_id);
 
 -- sku deixa de ser único GLOBALMENTE e vira único POR EMPRESA (nullable já
 -- era o caso — migration 002 nunca adicionou NOT NULL). Isso reverte,
