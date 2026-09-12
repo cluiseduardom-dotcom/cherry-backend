@@ -1,0 +1,3 @@
+## Transação compartilhada (não reabrir)
+
+- **`produtosService.categorizar` é a única transação que vive no service, não num repository** — abre `db.connect()`/`BEGIN`/`COMMIT`/`ROLLBACK` diretamente, em vez de usar `executarComLock` ou um repository dedicado. Decisão deliberada: a transação ali é um contador atômico (upsert em `sequencias_sku`) seguido de uma escrita condicional (`definirSkuSeNulo`, `WHERE sku IS NULL`), não o padrão "trava uma linha, ramifica por status" que `executarComLock` resolve — forçar esse caso no helper não encaixaria bem. Não mover essa transação pra um repository nem copiar o padrão "transação direta no service" pra outro lugar sem essa mesma justificativa; se um caso futuro parecido surgir, considere se cabe em `executarComLock` primeiro.

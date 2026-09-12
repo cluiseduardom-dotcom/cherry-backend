@@ -35,6 +35,10 @@ describe('criarCategoriaSchema', () => {
     expect(criarCategoriaSchema.safeParse({ ...valid, codigo: '' }).success).toBe(false);
   });
 
+  test('rejects a codigo with non-alphanumeric characters', () => {
+    expect(criarCategoriaSchema.safeParse({ ...valid, codigo: 'A-B' }).success).toBe(false);
+  });
+
   test('rejects a missing nome', () => {
     const { nome, ...semNome } = valid;
     expect(criarCategoriaSchema.safeParse(semNome).success).toBe(false);

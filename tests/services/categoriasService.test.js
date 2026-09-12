@@ -50,6 +50,17 @@ describe('criar', () => {
 
     expect(categoriasRepository.criar).not.toHaveBeenCalled();
   });
+
+  test('converts a unique-violation race on insert into a clean 409', async () => {
+    categoriasRepository.buscarPorCodigoNivel.mockResolvedValue(null);
+    const erroColisao = new Error('duplicate key value violates unique constraint "idx_categorias_produto_codigo_unico"');
+    erroColisao.code = '23505';
+    categoriasRepository.criar.mockRejectedValue(erroColisao);
+
+    await expect(
+      categoriasService.criar({ nivel: 1, codigo: 'BR', nome: 'Brinco' }, 9)
+    ).rejects.toMatchObject({ statusCode: 409, message: 'Já existe uma categoria com esse código neste nível' });
+  });
 });
 
 describe('atualizar', () => {

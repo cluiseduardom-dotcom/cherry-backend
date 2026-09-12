@@ -1,7 +1,7 @@
 const { criarProdutoSchema, atualizarProdutoSchema, ajustarPrecoSchema } = require('../../src/validations/produtosValidation');
 
 describe('criarProdutoSchema', () => {
-  const valid = { sku: 'CAM-001', nome: 'Camiseta', preco_venda: 49.9, custo: 20 };
+  const valid = { nome: 'Camiseta', preco_venda: 49.9, custo: 20 };
 
   test('accepts a valid produto payload', () => {
     expect(criarProdutoSchema.safeParse(valid).success).toBe(true);

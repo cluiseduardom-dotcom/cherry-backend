@@ -149,13 +149,12 @@ async function categorizar(id, categoriaIds, empresaId) {
     }
 
     const client = await db.connect();
+    let produtoAtualizado = produto;
 
     try {
         await client.query('BEGIN');
 
         await produtosRepository.substituirCategorias(id, categoriaIds, empresaId, client);
-
-        let produtoAtualizado = produto;
 
         if (!produto.sku && categorias.length > 0) {
             const sku = await skuService.gerar(categorias, empresaId, client);
@@ -172,16 +171,16 @@ async function categorizar(id, categoriaIds, empresaId) {
         }
 
         await client.query('COMMIT');
-
-        const categoriasVinculadas = await produtosRepository.buscarCategoriasDoProduto(id, empresaId);
-
-        return { ...comMargem(produtoAtualizado), categorias: categoriasVinculadas };
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;
     } finally {
         client.release();
     }
+
+    const categoriasVinculadas = await produtosRepository.buscarCategoriasDoProduto(id, empresaId);
+
+    return { ...comMargem(produtoAtualizado), categorias: categoriasVinculadas };
 }
 
 async function giro(empresaId) {

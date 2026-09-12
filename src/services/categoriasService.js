@@ -18,7 +18,14 @@ async function criar(dados, empresaId) {
         throw new AppError('Já existe uma categoria com esse código neste nível', 409);
     }
 
-    return categoriasRepository.criar({ nivel: dados.nivel, codigo, nome: dados.nome, empresa_id: empresaId });
+    try {
+        return await categoriasRepository.criar({ nivel: dados.nivel, codigo, nome: dados.nome, empresa_id: empresaId });
+    } catch (error) {
+        if (error.code === '23505') {
+            throw new AppError('Já existe uma categoria com esse código neste nível', 409);
+        }
+        throw error;
+    }
 }
 
 async function atualizar(id, dados, empresaId) {

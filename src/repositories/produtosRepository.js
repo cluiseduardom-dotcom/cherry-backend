@@ -45,7 +45,7 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
 
 async function atualizar(id, dados, empresa_id) {
     // estoque_atual is deliberately excluded: it's only ever changed via estoqueRepository.criarMovimentacao
-    const campos = ['sku', 'nome', 'descricao', 'categoria', 'preco_venda', 'custo', 'estoque_minimo', 'ativo', 'tipo', 'unidade'];
+    const campos = ['nome', 'descricao', 'categoria', 'preco_venda', 'custo', 'estoque_minimo', 'ativo', 'tipo', 'unidade'];
 
     const sets = [];
     const valores = [];
