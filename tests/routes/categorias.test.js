@@ -51,6 +51,22 @@ describe('GET /categorias', () => {
     const res = await request(app).get('/categorias').set('Authorization', `Bearer ${estoquistaToken}`);
     expect(res.status).toBe(200);
   });
+
+  test('falls back to defaults for invalid pagination params', async () => {
+    categoriasService.listar.mockResolvedValue(paginatedResult);
+
+    await request(app).get('/categorias?page=abc&pageSize=-1').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(categoriasService.listar).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 20 }), 1);
+  });
+
+  test('caps pageSize at 100', async () => {
+    categoriasService.listar.mockResolvedValue(paginatedResult);
+
+    await request(app).get('/categorias?pageSize=500').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(categoriasService.listar).toHaveBeenCalledWith(expect.objectContaining({ pageSize: 100 }), 1);
+  });
 });
 
 describe('POST /categorias', () => {
@@ -112,6 +128,17 @@ describe('PUT /categorias/:id', () => {
     expect(categoriasService.atualizar).toHaveBeenCalledWith(1, { nome: 'Novo Nome' }, 1);
   });
 
+  test('returns 200 with the updated categoria for an estoquista', async () => {
+    categoriasService.atualizar.mockResolvedValue({ id: 1, nome: 'Novo Nome' });
+
+    const res = await request(app)
+      .put('/categorias/1')
+      .set('Authorization', `Bearer ${estoquistaToken}`)
+      .send({ nome: 'Novo Nome' });
+
+    expect(res.status).toBe(200);
+  });
+
   test('returns 400 with an explicit message when codigo is in the body', async () => {
     const res = await request(app)
       .put('/categorias/1')
@@ -151,6 +178,15 @@ describe('DELETE /categorias/:id', () => {
     categoriasService.remover.mockResolvedValue({ id: 1, deletado_em: '2026-09-12T00:00:00.000Z' });
 
     const res = await request(app).delete('/categorias/1').set('Authorization', `Bearer ${estoquistaToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.deletado_em).toBeTruthy();
+  });
+
+  test('returns 200 and soft-deletes for an admin', async () => {
+    categoriasService.remover.mockResolvedValue({ id: 1, deletado_em: '2026-09-12T00:00:00.000Z' });
+
+    const res = await request(app).delete('/categorias/1').set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.deletado_em).toBeTruthy();
