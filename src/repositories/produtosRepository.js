@@ -19,21 +19,13 @@ async function listarPaginado({ limit, offset, empresa_id }) {
     return { items: rows, total: Number(countRows[0].count) };
 }
 
-async function buscarPorSku(sku, empresa_id) {
-    const { rows } = await db.query(
-        'SELECT * FROM produtos WHERE sku = $1 AND empresa_id = $2',
-        [sku, empresa_id]
-    );
-    return rows.length ? rows[0] : null;
-}
-
 async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id }) {
     const { rows } = await db.query(
         `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
-            sku,
+            sku ?? null,
             nome,
             descricao ?? null,
             categoria ?? null,
@@ -341,7 +333,6 @@ async function getDashboard(empresa_id) {
 module.exports = {
     listar,
     listarPaginado,
-    buscarPorSku,
     criar,
     atualizar,
     desativar,

@@ -19,13 +19,6 @@ describe('criarProdutoSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  test('rejects a missing sku', () => {
-    const { sku, ...rest } = valid;
-    const result = criarProdutoSchema.safeParse(rest);
-    expect(result.success).toBe(false);
-    expect(result.error.issues[0].message).toBe('SKU é obrigatório');
-  });
-
   test('rejects a missing nome', () => {
     const { nome, ...rest } = valid;
     const result = criarProdutoSchema.safeParse(rest);

@@ -1,7 +1,6 @@
 const { z } = require('zod');
 
 const criarProdutoSchema = z.object({
-    sku: z.string({ error: 'SKU é obrigatório' }).min(1, 'SKU é obrigatório'),
     nome: z.string({ error: 'Nome é obrigatório' }).min(1, 'Nome é obrigatório'),
     descricao: z.string().optional(),
     categoria: z.string().optional(),
@@ -17,7 +16,6 @@ const criarProdutoSchema = z.object({
 // estoque_atual is intentionally not editable here: once movimentacoes_estoque
 // exists, all stock changes must go through it so there's an audit trail.
 const atualizarProdutoSchema = z.object({
-    sku: z.string().min(1, 'SKU é obrigatório').optional(),
     nome: z.string().min(1, 'Nome é obrigatório').optional(),
     descricao: z.string().optional(),
     categoria: z.string().optional(),

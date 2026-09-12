@@ -117,19 +117,8 @@ describe('buscarPorId', () => {
 });
 
 describe('criar', () => {
-  test('throws 409 when the sku already exists', async () => {
-    produtosRepository.buscarPorSku.mockResolvedValue({ id: 1 });
-
-    await expect(
-      produtosService.criar({ sku: 'X-1', nome: 'X', preco_venda: 10, custo: 5 })
-    ).rejects.toMatchObject({ statusCode: 409, message: 'SKU já cadastrado' });
-
-    expect(produtosRepository.criar).not.toHaveBeenCalled();
-  });
-
-  test('creates the produto when the sku is free', async () => {
-    const dados = { sku: 'X-1', nome: 'X', preco_venda: 10, custo: 5 };
-    produtosRepository.buscarPorSku.mockResolvedValue(null);
+  test('creates the produto and attaches margem_percentual', async () => {
+    const dados = { nome: 'X', preco_venda: 10, custo: 5 };
     produtosRepository.criar.mockResolvedValue({ id: 1, ...dados });
 
     const result = await produtosService.criar(dados);
@@ -148,23 +137,12 @@ describe('atualizar', () => {
     });
   });
 
-  test('throws 409 when changing to a sku already taken by another produto', async () => {
-    produtosRepository.buscarPorId.mockResolvedValue({ id: 1, sku: 'OLD' });
-    produtosRepository.buscarPorSku.mockResolvedValue({ id: 2, sku: 'NEW' });
-
-    await expect(produtosService.atualizar(1, { sku: 'NEW' })).rejects.toMatchObject({
-      statusCode: 409,
-      message: 'SKU já cadastrado'
-    });
-  });
-
-  test('updates the produto when the sku is unchanged or free', async () => {
-    produtosRepository.buscarPorId.mockResolvedValue({ id: 1, sku: 'OLD' });
+  test('updates the produto', async () => {
+    produtosRepository.buscarPorId.mockResolvedValue({ id: 1 });
     produtosRepository.atualizar.mockResolvedValue({ id: 1, preco_venda: '20.00', custo: '10.00' });
 
     const result = await produtosService.atualizar(1, { preco_venda: 20 });
 
-    expect(produtosRepository.buscarPorSku).not.toHaveBeenCalled();
     expect(result.margem_percentual).toBe(50);
   });
 });

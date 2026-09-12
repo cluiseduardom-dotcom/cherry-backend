@@ -73,12 +73,6 @@ async function buscarPorId(id, canal, empresaId) {
 }
 
 async function criar(dados, empresaId) {
-    const existente = await produtosRepository.buscarPorSku(dados.sku, empresaId);
-
-    if (existente) {
-        throw new AppError('SKU já cadastrado', 409);
-    }
-
     const produto = await produtosRepository.criar({ ...dados, empresa_id: empresaId });
 
     return comMargem(produto);
@@ -89,14 +83,6 @@ async function atualizar(id, dados, empresaId) {
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
-    }
-
-    if (dados.sku && dados.sku !== produto.sku) {
-        const existente = await produtosRepository.buscarPorSku(dados.sku, empresaId);
-
-        if (existente) {
-            throw new AppError('SKU já cadastrado', 409);
-        }
     }
 
     const atualizado = await produtosRepository.atualizar(id, dados, empresaId);
