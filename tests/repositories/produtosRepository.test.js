@@ -207,3 +207,74 @@ describe('getLucroPorProduto', () => {
     expect(sql).not.toMatch(/p\.preco_venda/);
   });
 });
+
+describe('buscarCategoriasDoProduto', () => {
+  test('joins categorias_produto, scoped by produto_id and empresa_id, ordered by nivel', async () => {
+    db.query = jest.fn().mockResolvedValue({ rows: [{ id: 1, nivel: 1, codigo: 'BR', nome: 'Brinco' }] });
+
+    const resultado = await produtosRepository.buscarCategoriasDoProduto(5, 9);
+
+    expect(resultado).toEqual([{ id: 1, nivel: 1, codigo: 'BR', nome: 'Brinco' }]);
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('produtos_categorias');
+    expect(sql).toContain('ORDER BY c.nivel ASC');
+    expect(params).toEqual([5, 9]);
+  });
+});
+
+describe('buscarCategoriasPorProdutoIds', () => {
+  test('returns flat rows tagged with produto_id for batch grouping', async () => {
+    db.query = jest.fn().mockResolvedValue({ rows: [{ produto_id: 5, id: 1, nivel: 1, codigo: 'BR', nome: 'Brinco' }] });
+
+    const resultado = await produtosRepository.buscarCategoriasPorProdutoIds([5, 6], 9);
+
+    expect(resultado).toEqual([{ produto_id: 5, id: 1, nivel: 1, codigo: 'BR', nome: 'Brinco' }]);
+    const [, params] = db.query.mock.calls[0];
+    expect(params).toEqual([[5, 6], 9]);
+  });
+
+  test('returns an empty array without querying when produtoIds is empty', async () => {
+    db.query = jest.fn();
+    expect(await produtosRepository.buscarCategoriasPorProdutoIds([], 9)).toEqual([]);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+});
+
+describe('substituirCategorias', () => {
+  test('deletes existing links then inserts the new ones, using the given client', async () => {
+    const client = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+
+    await produtosRepository.substituirCategorias(5, [1, 2], 9, client);
+
+    expect(client.query).toHaveBeenNthCalledWith(1, expect.stringContaining('DELETE FROM produtos_categorias'), [5, 9]);
+    expect(client.query).toHaveBeenNthCalledWith(2, expect.stringContaining('INSERT INTO produtos_categorias'), [5, 1, 9]);
+    expect(client.query).toHaveBeenNthCalledWith(3, expect.stringContaining('INSERT INTO produtos_categorias'), [5, 2, 9]);
+  });
+
+  test('only deletes when categoriaIds is empty (clears the link)', async () => {
+    const client = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+
+    await produtosRepository.substituirCategorias(5, [], 9, client);
+
+    expect(client.query).toHaveBeenCalledTimes(1);
+    expect(client.query).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM produtos_categorias'), [5, 9]);
+  });
+});
+
+describe('definirSkuSeNulo', () => {
+  test('writes the sku only when it is currently null, using the given client', async () => {
+    const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 5, sku: 'BR001' }] }) };
+
+    const resultado = await produtosRepository.definirSkuSeNulo(5, 'BR001', 9, client);
+
+    expect(resultado).toEqual({ id: 5, sku: 'BR001' });
+    const [sql, params] = client.query.mock.calls[0];
+    expect(sql).toContain('AND sku IS NULL');
+    expect(params).toEqual(['BR001', 5, 9]);
+  });
+
+  test('returns null (no-op) when the produto already has a sku', async () => {
+    const client = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+    expect(await produtosRepository.definirSkuSeNulo(5, 'BR002', 9, client)).toBeNull();
+  });
+});

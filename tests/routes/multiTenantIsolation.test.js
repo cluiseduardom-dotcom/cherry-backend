@@ -94,7 +94,6 @@ beforeAll(async () => {
             .post('/produtos')
             .set('Authorization', `Bearer ${empresa2AdminToken}`)
             .send({
-                sku: `ISO-${SUFIXO}-${i + 1}`,
                 nome: `Produto Isolamento ${i + 1}`,
                 preco_venda: 100 + i,
                 custo: 50 + i,

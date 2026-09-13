@@ -1,7 +1,7 @@
 const produtosService = require('../services/produtosService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
-const { criarProdutoSchema, atualizarProdutoSchema, ajustarPrecoSchema } = require('../validations/produtosValidation');
+const { criarProdutoSchema, atualizarProdutoSchema, ajustarPrecoSchema, categorizarProdutoSchema } = require('../validations/produtosValidation');
 
 function parseId(value) {
     const id = Number(value);
@@ -248,6 +248,24 @@ async function ajustarPreco(req, res, next) {
     }
 }
 
+async function categorizar(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+
+        const parsed = categorizarProdutoSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        const produto = await produtosService.categorizar(id, parsed.data.categoria_ids, req.usuario.empresa_id);
+
+        return response.success(res, filtrarParaRole(produto, req.usuario.role));
+    } catch (error) {
+        next(error);
+    }
+}
+
 async function dashboard(req, res, next) {
     try {
         const dados = await produtosService.dashboard(req.usuario.empresa_id);
@@ -275,5 +293,6 @@ module.exports = {
     inteligencia,
     acoes,
     ajustarPreco,
-    dashboard
+    dashboard,
+    categorizar
 };
