@@ -62,6 +62,7 @@ Prontos:
 - **Relatórios (frontend, `cherry-frontend`)** — módulo completo: relatórios de Vendas, Estoque e Financeiro com dados reais e exportação em PDF (jsPDF + html2canvas). Sem rota nova no backend — reaproveita os endpoints analíticos já existentes. Mergeado em PR #6 do `cherry-frontend`.
 - **Anonimização de clientes (LGPD)** — migration `014_clientes_anonimizacao.sql`: `PATCH /clientes/:id/anonimizar` remove nome/telefone/email e marca `ativo = false`, preservando `vendas.cliente_id`. Admin-only.
 - **Categorias de produto + SKU automático** — migration `019_categorias_produto.sql`: CRUD de categorias em `/categorias` (admin+estoquista), geração automática e imutável de SKU via `PATCH /produtos/:id/categoria`. Ver `## Regras já decididas em categorias de produto + SKU automático` abaixo.
+- **Rótulos de nível de categoria** — migration `020_niveis_categoria.sql`: tabela `niveis_categoria` (`empresa_id`, `nivel`, `nome`, `UNIQUE(empresa_id, nivel)`) permite cada empresa nomear o que cada `categorias_produto.nivel` significa (ex.: Cherry usa 1=família, 2=material, 3=gênero). CRUD em `/niveis-categoria`, admin+estoquista (mesma permissão de `/categorias`). Ver `## Regras já decididas em rótulos de nível de categoria` abaixo.
 
 Regras já decididas no estoque (não reabrir):
 - `tipo`: `entrada` soma, `saida` subtrai, `ajuste` fixa valor absoluto (correção de contagem física).
@@ -190,6 +191,18 @@ Migration `019_categorias_produto.sql`: `categorias_produto` (configurável por 
 - **`GET /produtos`/`GET /produtos/:id` passam a incluir `categorias`** (`[{ id, nivel, codigo, nome }]`) por produto — necessário pra tela de edição mostrar o que já foi categorizado antes de uma nova chamada a `PATCH /:id/categoria`. Categoria soft-deletada continua aparecendo aqui se ainda vinculada a um produto (vínculo não cascade-deleta).
 - **Migration pendente de aplicação manual em `ci-test`, dev (fora desta sessão) e produção** — só foi aplicada no banco de dev local usado durante esta implementação. Aplicar antes do merge/deploy, como de costume neste projeto (não existe runner automático de migration).
 - Fora do escopo desta etapa: código de barras, geração de etiqueta, leitura de código de barras no PDV.
+
+## Regras já decididas em rótulos de nível de categoria — não reabrir
+
+Migration `020_niveis_categoria.sql`: `niveis_categoria` (`empresa_id`, `nivel`, `nome`, `UNIQUE(empresa_id, nivel)`) deixa cada empresa nomear o que um `categorias_produto.nivel` significa pra ela — Cherry usa 1=família, 2=material, 3=gênero; outra empresa do sistema (perfumes/eletrônicos) usa outros conceitos. Sem isso a UI só podia mostrar "Nível 1/2/3" ou cravar rótulos fixos no frontend, o que anularia a configurabilidade por empresa já construída em `categorias_produto`.
+
+- **`niveis_categoria` é uma tabela INDEPENDENTE de `categorias_produto` — sem FK entre `categorias_produto.nivel` e esta tabela.** Decisão tomada nesta sessão (não havia decisão prévia). Motivo: hoje é possível criar uma categoria em qualquer nível sem rótulo pré-cadastrado; uma FK passaria a exigir o rótulo antes da categoria — mudança de comportamento que quebraria fluxos e dados já existentes (toda empresa hoje tem `niveis_categoria` vazia). Se essa decisão for revisitada no futuro (ex.: exigir rótulo obrigatório), precisa de backfill explícito e de uma decisão de negócio sobre o que fazer com níveis já em uso sem rótulo — não é automático.
+- **Sem soft delete.** Diferente de `categorias_produto`, um rótulo de nível não tem histórico a preservar — `DELETE /niveis-categoria/:id` remove a linha de verdade. Não cascateia: categorias em `categorias_produto` naquele nível continuam funcionando normalmente, só voltam a aparecer sem nome (mesmo estado de hoje, antes de qualquer rótulo existir).
+- **Renomear (`PUT /niveis-categoria/:id`, só `{ nome }`, `.strict()`) nunca toca SKU nem `categorias_produto`.** O rótulo é puramente display — a `chave_combinacao` da sequência de SKU continua ancorada no texto de `categorias_produto.codigo` (decisão 7 do spec de categorias/SKU), nunca no nome do nível. Mandar `nivel` no body de `PUT` é 400 explícito (mesmo padrão de `PUT /categorias/:id` rejeitando `codigo`/`nivel`), não ignorado em silêncio.
+- **Acesso: admin+estoquista** (`requireEstoquista`, mesmo padrão de `/categorias`) — vendedor recebe 403 em toda rota do módulo, princípio de não divergir de um recurso irmão sem motivo.
+- **`GET /categorias` e a geração de SKU continuam funcionando para empresa sem nenhum rótulo cadastrado** — nível sem rótulo não é erro, é o estado padrão de toda empresa hoje (inclusive todas as que já usam categorias antes desta migration). Coberto por teste dedicado em `tests/repositories/categoriasRepository.test.js` e `tests/routes/categorias.test.js`.
+- Mesmo padrão de nomenclatura do projeto: `criado_em`/`atualizado_em`, não `created_at`/`updated_at`.
+- **Migration pendente de aplicação manual** em `ci-test`, dev e produção — mesma rotina de sempre (não existe runner automático de migration neste projeto).
 
 ## Banco
 
