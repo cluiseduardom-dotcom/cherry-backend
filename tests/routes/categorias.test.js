@@ -67,6 +67,18 @@ describe('GET /categorias', () => {
 
     expect(categoriasService.listar).toHaveBeenCalledWith(expect.objectContaining({ pageSize: 100 }), 1);
   });
+
+  test('returns 200 even for an empresa with nothing registered in niveis_categoria', async () => {
+    // categoriasService is mocked in this file regardless of niveis_categoria's
+    // existence — this test documents the contract: GET /categorias must never
+    // start requiring rows in niveis_categoria to succeed.
+    categoriasService.listar.mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 1 });
+
+    const res = await request(app).get('/categorias').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.items).toEqual([]);
+  });
 });
 
 describe('POST /categorias', () => {
