@@ -128,3 +128,17 @@ describe('softDelete', () => {
     expect(await categoriasRepository.softDelete(1, 9)).toBeNull();
   });
 });
+
+describe('no coupling with niveis_categoria', () => {
+  test('none of the categorias_produto queries reference niveis_categoria', async () => {
+    db.query = jest.fn().mockResolvedValue({ rows: [{ count: '0' }] });
+
+    await categoriasRepository.listarPaginado({ limit: 20, offset: 0, empresa_id: 9 });
+    await categoriasRepository.buscarPorId(1, 9);
+    await categoriasRepository.criar({ nivel: 1, codigo: 'BR', nome: 'Brinco', empresa_id: 9 });
+
+    for (const call of db.query.mock.calls) {
+      expect(call[0]).not.toContain('niveis_categoria');
+    }
+  });
+});
