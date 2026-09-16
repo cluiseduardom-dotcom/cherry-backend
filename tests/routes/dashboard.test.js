@@ -18,7 +18,8 @@ const endpoints = [
   ['/dashboard/curva-abc', 'curvaABC'],
   ['/dashboard/giro', 'giro'],
   ['/dashboard/cobertura', 'cobertura'],
-  ['/dashboard/margem', 'margem']
+  ['/dashboard/margem', 'margem'],
+  ['/dashboard/giro-cobertura', 'giroCoberturaAgregado']
 ];
 
 describe.each(endpoints)('GET %s', (path, serviceMethod) => {
@@ -80,5 +81,26 @@ describe('dias query param (giro, cobertura, resumo)', () => {
     await request(app).get('/dashboard?dias=9999').set('Authorization', `Bearer ${adminToken}`);
 
     expect(dashboardService.resumo).toHaveBeenCalledWith(365, 1);
+  });
+
+  test('giro-cobertura também respeita o parseDias (padrão 90)', async () => {
+    dashboardService.giroCoberturaAgregado.mockResolvedValue({});
+
+    await request(app).get('/dashboard/giro-cobertura').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(dashboardService.giroCoberturaAgregado).toHaveBeenCalledWith(90, 1);
+  });
+});
+
+describe('isolamento por empresa em /dashboard/giro-cobertura', () => {
+  test('usa o empresa_id do token de cada usuário, nunca um valor fixo', async () => {
+    dashboardService.giroCoberturaAgregado.mockResolvedValue({});
+    const outraEmpresaToken = makeToken({ id: 4, role: 'admin', empresa_id: 2 });
+
+    await request(app).get('/dashboard/giro-cobertura').set('Authorization', `Bearer ${adminToken}`);
+    expect(dashboardService.giroCoberturaAgregado).toHaveBeenLastCalledWith(90, 1);
+
+    await request(app).get('/dashboard/giro-cobertura').set('Authorization', `Bearer ${outraEmpresaToken}`);
+    expect(dashboardService.giroCoberturaAgregado).toHaveBeenLastCalledWith(90, 2);
   });
 });
