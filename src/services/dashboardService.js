@@ -1,7 +1,7 @@
 const dashboardRepository = require('../repositories/dashboardRepository');
 const precosRepository = require('../repositories/precosRepository');
 const niveisCategoriaRepository = require('../repositories/niveisCategoriaRepository');
-const { agregarGrupo, agregarPorNivel, montarRankings } = require('../utils/agregacaoGiroCobertura');
+const { agregarGrupo, agregarPorNivel, montarRankings, montarRupturas } = require('../utils/agregacaoGiroCobertura');
 
 async function curvaABC(empresaId) {
     return dashboardRepository.getCurvaABC(empresaId);
@@ -64,8 +64,9 @@ async function giroCoberturaAgregado(dias, empresaId) {
     const total = agregarGrupo(produtos, dias);
     const por_nivel = agregarPorNivel(produtos, vinculos, niveisExistentes, rotulosPorNivel, dias);
     const { topGiro, menorGiro } = montarRankings(produtos, dias);
+    const rupturas = montarRupturas(produtos);
 
-    return { total, por_nivel, top_giro: topGiro, menor_giro: menorGiro };
+    return { total, por_nivel, top_giro: topGiro, menor_giro: menorGiro, rupturas };
 }
 
 module.exports = {

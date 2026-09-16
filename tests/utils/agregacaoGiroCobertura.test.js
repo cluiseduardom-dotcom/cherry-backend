@@ -3,7 +3,8 @@ const {
   calcularCobertura,
   agregarGrupo,
   agregarPorNivel,
-  montarRankings
+  montarRankings,
+  montarRupturas
 } = require('../../src/utils/agregacaoGiroCobertura');
 
 describe('calcularGiro', () => {
@@ -196,5 +197,74 @@ describe('montarRankings', () => {
     const { topGiro } = montarRankings(produtos, 90);
 
     expect(topGiro.map((p) => p.id)).toEqual([1, 2]);
+  });
+});
+
+describe('montarRupturas', () => {
+  test('produto zerado com venda no período entra', () => {
+    const produtos = [
+      { id: 1, nome: 'Zerado com venda', sku: 'A1', estoque_atual: 0, quantidade_vendida_periodo: 8 }
+    ];
+
+    const resultado = montarRupturas(produtos);
+
+    expect(resultado).toEqual([
+      { id: 1, nome: 'Zerado com venda', sku: 'A1', quantidade_vendida_periodo: 8, estoque_atual: 0 }
+    ]);
+  });
+
+  test('produto zerado SEM venda no período não entra', () => {
+    const produtos = [
+      { id: 1, nome: 'Zerado sem venda', sku: 'A1', estoque_atual: 0, quantidade_vendida_periodo: 0 }
+    ];
+
+    expect(montarRupturas(produtos)).toEqual([]);
+  });
+
+  test('produto com estoque > 0 não entra, mesmo com venda alta', () => {
+    const produtos = [
+      { id: 1, nome: 'Com estoque', sku: 'A1', estoque_atual: 1, quantidade_vendida_periodo: 500 }
+    ];
+
+    expect(montarRupturas(produtos)).toEqual([]);
+  });
+
+  test('ordena por quantidade vendida no período, decrescente, sem limite de itens', () => {
+    const produtos = Array.from({ length: 15 }, (_, i) => ({
+      id: i + 1,
+      nome: `Produto ${i + 1}`,
+      sku: `SKU${i + 1}`,
+      estoque_atual: 0,
+      quantidade_vendida_periodo: i + 1
+    }));
+
+    const resultado = montarRupturas(produtos);
+
+    // todos os 15 aparecem — diferente de montarRankings, ruptura não corta em 10
+    expect(resultado).toHaveLength(15);
+    expect(resultado[0].id).toBe(15);
+    expect(resultado[14].id).toBe(1);
+  });
+
+  test('empate na quantidade vendida usa id como desempate estável', () => {
+    const produtos = [
+      { id: 2, nome: 'B', sku: 'B1', estoque_atual: 0, quantidade_vendida_periodo: 5 },
+      { id: 1, nome: 'A', sku: 'A1', estoque_atual: 0, quantidade_vendida_periodo: 5 }
+    ];
+
+    const resultado = montarRupturas(produtos);
+
+    expect(resultado.map((p) => p.id)).toEqual([1, 2]);
+  });
+
+  test('não calcula giro nem cobertura pra ruptura (linha não tem essas chaves)', () => {
+    const produtos = [
+      { id: 1, nome: 'Zerado', sku: 'A1', estoque_atual: 0, quantidade_vendida_periodo: 5 }
+    ];
+
+    const resultado = montarRupturas(produtos);
+
+    expect(resultado[0]).not.toHaveProperty('giro');
+    expect(resultado[0]).not.toHaveProperty('cobertura');
   });
 });

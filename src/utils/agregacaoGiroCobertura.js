@@ -108,10 +108,34 @@ function montarRankings(produtos, dias, limite = 10) {
     return { topGiro, menorGiro };
 }
 
+// Rupturas: produtos que venderam no período mas estão com estoque zerado —
+// o caso mais grave de venda perdida. Ficam de fora de top_giro/menor_giro
+// porque giro não é calculável com estoque zero (divisão por zero) — é
+// exatamente por isso que essa visão existe separada: aqui não se calcula
+// giro/cobertura nenhum, só se lista quem precisa de reposição urgente.
+//
+// SEM limite de itens (diferente de montarRankings, que corta em `limite`):
+// ruptura é uma lista de ação, não um ranking dos "N piores" — se houver 30
+// produtos zerados, o gestor precisa ver os 30. Não "corrigir" isso pra bater
+// com o padrão dos outros rankings — a ausência de corte é intencional.
+function montarRupturas(produtos) {
+    return produtos
+        .filter((produto) => produto.estoque_atual === 0 && produto.quantidade_vendida_periodo > 0)
+        .map((produto) => ({
+            id: produto.id,
+            nome: produto.nome,
+            sku: produto.sku,
+            quantidade_vendida_periodo: produto.quantidade_vendida_periodo,
+            estoque_atual: produto.estoque_atual
+        }))
+        .sort((a, b) => b.quantidade_vendida_periodo - a.quantidade_vendida_periodo || a.id - b.id);
+}
+
 module.exports = {
     calcularGiro,
     calcularCobertura,
     agregarGrupo,
     agregarPorNivel,
-    montarRankings
+    montarRankings,
+    montarRupturas
 };

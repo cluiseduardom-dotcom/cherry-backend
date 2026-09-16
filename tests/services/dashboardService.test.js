@@ -102,11 +102,23 @@ describe('giroCoberturaAgregado', () => {
     expect(resultado).toHaveProperty('por_nivel');
     expect(resultado).toHaveProperty('top_giro');
     expect(resultado).toHaveProperty('menor_giro');
+    expect(resultado).toHaveProperty('rupturas');
     expect(resultado.total.estoque_atual).toBe(10); // 10 + 0
     expect(resultado.total.quantidade_vendida_periodo).toBe(25); // 5 + 20
     expect(resultado.por_nivel).toEqual([
       expect.objectContaining({ nivel: 1, rotulo: 'família' })
     ]);
+  });
+
+  test('produto com estoque zerado e venda no período aparece em rupturas, mesmo fora dos rankings', async () => {
+    const resultado = await dashboardService.giroCoberturaAgregado(90, 9);
+
+    expect(resultado.rupturas).toEqual([
+      { id: 2, nome: 'Pingente Ouro', sku: null, quantidade_vendida_periodo: 20, estoque_atual: 0 }
+    ]);
+    // produto 2 não entra em nenhum ranking de giro (giro não calculável com estoque 0)
+    expect(resultado.top_giro.find((p) => p.id === 2)).toBeUndefined();
+    expect(resultado.menor_giro.find((p) => p.id === 2)).toBeUndefined();
   });
 
   test('converte quantidade_vendida_periodo (string do SUM) e estoque_atual pra número antes de agregar', async () => {
