@@ -82,7 +82,76 @@ async function getGiroECobertura(dias, empresa_id) {
     return rows;
 }
 
+// Mesma base de getGiroECobertura (produto ativo, vendas 'finalizada' no
+// período, escopado por empresa), mas devolve os valores CRUS — sem
+// giro/cobertura calculados em SQL — e inclui sku. O relatório agregado
+// (GET /dashboard/giro-cobertura) soma esses valores por grupo ANTES de
+// dividir (ver src/utils/agregacaoGiroCobertura.js); calcular giro/cobertura
+// aqui em SQL faria por produto individual, que é exatamente a média de
+// razões que a regra de agregação proíbe pro nível de grupo.
+async function getVendasEstoquePorProduto(dias, empresa_id) {
+    const { rows } = await db.query(
+        `WITH vendidos_periodo AS (
+            SELECT iv.produto_id, SUM(iv.quantidade) AS quantidade_vendida
+            FROM itens_venda iv
+            JOIN vendas v ON v.id = iv.venda_id
+            WHERE v.status = 'finalizada' AND v.data >= NOW() - ($1::text || ' days')::interval
+              AND v.empresa_id = $2
+            GROUP BY iv.produto_id
+        )
+        SELECT
+            p.id,
+            p.nome,
+            p.sku,
+            p.estoque_atual,
+            COALESCE(vp.quantidade_vendida, 0) AS quantidade_vendida_periodo
+        FROM produtos p
+        LEFT JOIN vendidos_periodo vp ON vp.produto_id = p.id
+        WHERE p.ativo = true AND p.empresa_id = $2
+        ORDER BY p.id`,
+        [dias, empresa_id]
+    );
+
+    return rows;
+}
+
+// Vínculos produto->categoria pra quebra por nível do relatório de giro e
+// cobertura. NÃO filtra categoria soft-deletada (deletado_em): o vínculo em
+// produtos_categorias não cascade-deleta (mesma regra já usada em GET
+// /produtos), então uma categoria removida continua contribuindo pro grupo
+// dela aqui até o produto ser recategorizado.
+async function getVinculosCategoriasProdutos(empresa_id) {
+    const { rows } = await db.query(
+        `SELECT pc.produto_id, cp.id AS categoria_id, cp.nivel, cp.nome AS categoria_nome
+         FROM produtos_categorias pc
+         JOIN categorias_produto cp ON cp.id = pc.categoria_id
+         WHERE pc.empresa_id = $1`,
+        [empresa_id]
+    );
+
+    return rows;
+}
+
+// Níveis "existentes" pra empresa = todo nível com pelo menos uma categoria
+// ATIVA cadastrada, independente de já ter produto vinculado a ele. Não vem
+// de niveis_categoria (tabela independente que só fornece o rótulo — pode
+// ter um nível "nomeado" sem nenhuma categoria criada ainda, o que não
+// deveria gerar uma quebra vazia no relatório).
+async function getNiveisExistentes(empresa_id) {
+    const { rows } = await db.query(
+        `SELECT DISTINCT nivel FROM categorias_produto
+         WHERE empresa_id = $1 AND deletado_em IS NULL
+         ORDER BY nivel ASC`,
+        [empresa_id]
+    );
+
+    return rows.map((row) => row.nivel);
+}
+
 module.exports = {
     getCurvaABC,
-    getGiroECobertura
+    getGiroECobertura,
+    getVendasEstoquePorProduto,
+    getVinculosCategoriasProdutos,
+    getNiveisExistentes
 };
