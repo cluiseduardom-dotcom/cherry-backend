@@ -62,12 +62,14 @@ const despesasFixasRoutes = require('./routes/despesasFixas');
 const configuracoesFinanceirasRoutes = require('./routes/configuracoesFinanceiras');
 const financeiroRoutes = require('./routes/financeiro');
 const authRoutes = require('./routes/authRoutes');
+const onboardingRoutes = require('./routes/onboarding');
 const authMiddleware = require('./middlewares/authMiddleware');
 const requireAdmin = require('./middlewares/requireAdmin');
 const requireEstoquista = require('./middlewares/requireEstoquista');
 const errorHandler = require('./middlewares/errorHandler');
 
 app.use('/auth', authRoutes);
+app.use('/onboarding', onboardingRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);
 app.use('/vendas', authMiddleware, vendasRoutes);
 app.use('/clientes', authMiddleware, clientesRoutes);
