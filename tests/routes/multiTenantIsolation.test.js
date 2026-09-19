@@ -100,7 +100,7 @@ beforeAll(async () => {
 
     empresa2AdminToken = await loginComo(emailAdminE2, SENHA_TESTE);
 
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
         const res = await request(app)
             .post('/produtos')
             .set('Authorization', `Bearer ${empresa2AdminToken}`)
@@ -109,7 +109,8 @@ beforeAll(async () => {
                 preco_venda: 100 + i,
                 custo: 50 + i,
                 estoque_atual: 20,
-                estoque_minimo: 2
+                estoque_minimo: 2,
+                tipo: i === 2 ? 'insumo' : 'acabado'
             });
 
         if (res.status !== 201) throw new Error(`Falha ao criar produto e2: ${res.status} ${JSON.stringify(res.body)}`);
@@ -198,7 +199,7 @@ beforeAll(async () => {
     const fichaRes = await request(app)
         .post(`/produtos/${produtosE2[1]}/ficha-tecnica`)
         .set('Authorization', `Bearer ${empresa2AdminToken}`)
-        .send({ itens: [{ insumo_produto_id: produtosE2[0], quantidade_necessaria: 1 }] });
+        .send({ itens: [{ insumo_produto_id: produtosE2[2], quantidade_necessaria: 1 }] });
 
     if (fichaRes.status !== 201) throw new Error(`Falha ao criar ficha técnica e2: ${fichaRes.status} ${JSON.stringify(fichaRes.body)}`);
 
@@ -377,7 +378,7 @@ describe('empresa 2 não vê dados da empresa 1', () => {
     test('GET /produtos só retorna produtos da própria empresa 2', async () => {
         const res = await request(app).get('/produtos?pageSize=100').set('Authorization', `Bearer ${empresa2AdminToken}`);
 
-        expect(res.body.data.total).toBe(2);
+        expect(res.body.data.total).toBe(3);
         expect(res.body.data.items.map((p) => p.id).sort()).toEqual([...produtosE2].sort());
     });
 
