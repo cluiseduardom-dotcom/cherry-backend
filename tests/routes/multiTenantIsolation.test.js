@@ -66,6 +66,7 @@ beforeAll(async () => {
         vendas: (await request(app).get('/vendas?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         contasPagar: (await request(app).get('/contas-pagar?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         fornecedores: (await request(app).get('/fornecedores?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+        canais: (await request(app).get('/canais').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
     };
 
@@ -180,6 +181,7 @@ describe('empresa 1 não é afetada pela existência da empresa 2', () => {
             vendas: (await request(app).get('/vendas?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             contasPagar: (await request(app).get('/contas-pagar?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             fornecedores: (await request(app).get('/fornecedores?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+            canais: (await request(app).get('/canais').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
         };
 
@@ -221,6 +223,13 @@ describe('empresa 1 não vê dados da empresa 2', () => {
         const ids = res.body.data.items.map((f) => f.id);
 
         expect(ids).not.toContain(fornecedorE2Id);
+    });
+
+    test('GET /canais não inclui canal da empresa 2', async () => {
+        const res = await request(app).get('/canais').set('Authorization', `Bearer ${empresa1AdminToken}`);
+        const ids = res.body.data.map((canal) => canal.id);
+
+        expect(ids).not.toContain(canalEmpresa2Id);
     });
 
     test('GET /produtos/:id/movimentacoes de um produto da empresa 2 retorna 404', async () => {
@@ -267,6 +276,13 @@ describe('empresa 2 não vê dados da empresa 1', () => {
 
         expect(res.body.data.total).toBe(1);
         expect(res.body.data.items[0].id).toBe(fornecedorE2Id);
+    });
+
+    test('GET /canais só retorna canal da própria empresa 2', async () => {
+        const res = await request(app).get('/canais').set('Authorization', `Bearer ${empresa2AdminToken}`);
+
+        expect(res.body.data).toHaveLength(1);
+        expect(res.body.data[0].id).toBe(canalEmpresa2Id);
     });
 
     test('GET /produtos/:id/movimentacoes só retorna movimentações da própria empresa 2', async () => {
