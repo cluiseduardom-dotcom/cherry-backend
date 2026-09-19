@@ -142,3 +142,41 @@ describe('GET /produtos/estoque-baixo', () => {
     expect(res.status).toBe(401);
   });
 });
+
+
+describe('GET /produtos/movimentacoes (relatório agregado)', () => {
+  test('é restrito a admin', async () => {
+    const res = await request(app)
+      .get('/produtos/movimentacoes')
+      .set('Authorization', `Bearer ${estoquistaToken}`);
+
+    expect(res.status).toBe(403);
+    expect(estoqueService.listarMovimentacoesRelatorio).not.toHaveBeenCalled();
+  });
+
+  test('aceita filtros de período e produto para admin', async () => {
+    estoqueService.listarMovimentacoesRelatorio.mockResolvedValue({
+      items: [{ id: 1, produto_id: 10, produto_nome: 'Produto', tipo: 'entrada' }],
+      page: 1, pageSize: 20, total: 1, totalPages: 1
+    });
+
+    const res = await request(app)
+      .get('/produtos/movimentacoes?produto_id=10&data_de=2026-09-01&data_ate=2026-09-30')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(estoqueService.listarMovimentacoesRelatorio).toHaveBeenCalledWith(
+      { page: 1, pageSize: 20, produto_id: 10, data_de: '2026-09-01', data_ate: '2026-09-30' },
+      1
+    );
+  });
+
+  test('rejeita período invertido', async () => {
+    const res = await request(app)
+      .get('/produtos/movimentacoes?data_de=2026-09-30&data_ate=2026-09-01')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
+    expect(estoqueService.listarMovimentacoesRelatorio).not.toHaveBeenCalled();
+  });
+});

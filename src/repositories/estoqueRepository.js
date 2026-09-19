@@ -88,8 +88,50 @@ async function getEstoqueBaixo(empresa_id) {
     return rows;
 }
 
+
+async function listarMovimentacoesRelatorio({ limit, offset, produto_id, data_de, data_ate, empresa_id }) {
+    const condicoes = ['m.empresa_id = $1'];
+    const valores = [empresa_id];
+
+    if (produto_id !== undefined) {
+        valores.push(produto_id);
+        condicoes.push('m.produto_id = $' + valores.length);
+    }
+
+    if (data_de !== undefined) {
+        valores.push(data_de);
+        condicoes.push('m.criado_em::date >= $' + valores.length);
+    }
+
+    if (data_ate !== undefined) {
+        valores.push(data_ate);
+        condicoes.push('m.criado_em::date <= $' + valores.length);
+    }
+
+    const where = 'WHERE ' + condicoes.join(' AND ');
+    const valoresListagem = [...valores, limit, offset];
+
+    const { rows } = await db.query(
+        `SELECT m.*, p.nome AS produto_nome, p.sku AS produto_sku
+         FROM movimentacoes_estoque m
+         JOIN produtos p ON p.id = m.produto_id AND p.empresa_id = m.empresa_id
+         ${where}
+         ORDER BY m.criado_em DESC, m.id DESC
+         LIMIT $${valoresListagem.length - 1} OFFSET $${valoresListagem.length}`,
+        valoresListagem
+    );
+
+    const { rows: countRows } = await db.query(
+        `SELECT COUNT(*) FROM movimentacoes_estoque m ${where}`,
+        valores
+    );
+
+    return { items: rows, total: Number(countRows[0].count) };
+}
+
 module.exports = {
     criarMovimentacao,
     listarPorProduto,
+    listarMovimentacoesRelatorio,
     getEstoqueBaixo
 };

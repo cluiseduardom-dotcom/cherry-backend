@@ -2,6 +2,7 @@ const estoqueService = require('../services/estoqueService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { registrarMovimentacaoSchema } = require('../validations/estoqueValidation');
+const { listarMovimentacoesRelatorioSchema } = require('../validations/listarMovimentacoesEstoqueValidation');
 
 function parseId(value) {
     const id = Number(value);
@@ -22,6 +23,31 @@ function parsePaginacao(query) {
     if (pageSize > 100) pageSize = 100;
 
     return { page, pageSize };
+}
+
+async function listarMovimentacoesRelatorio(req, res, next) {
+    try {
+        const paginacao = parsePaginacao(req.query);
+
+        const parsedFiltros = listarMovimentacoesRelatorioSchema.safeParse({
+            produto_id: req.query.produto_id,
+            data_de: req.query.data_de,
+            data_ate: req.query.data_ate
+        });
+
+        if (!parsedFiltros.success) {
+            throw new AppError(parsedFiltros.error.issues[0].message, 400);
+        }
+
+        const resultado = await estoqueService.listarMovimentacoesRelatorio({
+            ...paginacao,
+            ...parsedFiltros.data
+        }, req.usuario.empresa_id);
+
+        return response.success(res, resultado);
+    } catch (error) {
+        next(error);
+    }
 }
 
 async function registrarMovimentacao(req, res, next) {
@@ -72,5 +98,6 @@ async function alertas(req, res, next) {
 module.exports = {
     registrarMovimentacao,
     historico,
-    alertas
+    alertas,
+    listarMovimentacoesRelatorio
 };
