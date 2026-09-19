@@ -36,6 +36,7 @@ let fornecedorE2Id;
 let vendaPrazoE2Id;
 let contaReceberE2Id;
 let despesaFixaE2Id;
+let nivelCategoriaE2Id;
 let producaoE2Id;
 
 async function loginComo(email, senha) {
@@ -244,11 +245,20 @@ beforeAll(async () => {
 
     if (configFinanceiraRes.status !== 200) throw new Error(`Falha ao configurar financeira e2: ${configFinanceiraRes.status} ${JSON.stringify(configFinanceiraRes.body)}`);
     if (configFinanceiraRes.body.data.empresa_id !== empresa2Id) throw new Error('Configuração financeira da empresa 2 ficou vinculada à empresa errada');
+
+    const nivelCategoriaRes = await request(app)
+        .post('/niveis-categoria')
+        .set('Authorization', `Bearer ${empresa2AdminToken}`)
+        .send({ nivel: 9999, nome: `Nível Isolamento ${SUFIXO}` });
+
+    if (nivelCategoriaRes.status !== 201) throw new Error(`Falha ao criar nível de categoria e2: ${nivelCategoriaRes.status} ${JSON.stringify(nivelCategoriaRes.body)}`);
+    nivelCategoriaE2Id = nivelCategoriaRes.body.data.id;
 });
 
 afterAll(async () => {
     if (empresa2Id) {
         await db.query('DELETE FROM contas_receber WHERE empresa_id = $1', [empresa2Id]);
+        await db.query('DELETE FROM niveis_categoria WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM producoes WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM itens_ficha_tecnica WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM fichas_tecnicas WHERE empresa_id = $1', [empresa2Id]);
@@ -364,6 +374,15 @@ describe('empresa 1 não vê dados da empresa 2', () => {
         expect(ids).not.toContain(producaoE2Id);
     });
 
+    test('GET /niveis-categoria não inclui nível da empresa 2', async () => {
+        const res = await request(app)
+            .get('/niveis-categoria')
+            .set('Authorization', `Bearer ${empresa1AdminToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.map((nivel) => nivel.id)).not.toContain(nivelCategoriaE2Id);
+    });
+
     test('GET /categorias não inclui categoria da empresa 2', async () => {
         const res = await request(app)
             .get('/categorias?pageSize=100')
@@ -467,6 +486,15 @@ describe('empresa 2 não vê dados da empresa 1', () => {
         expect(res.status).toBe(200);
         expect(res.body.data.total).toBe(1);
         expect(res.body.data.items[0].id).toBe(producaoE2Id);
+    });
+
+    test('GET /niveis-categoria só retorna nível da própria empresa 2', async () => {
+        const res = await request(app)
+            .get('/niveis-categoria')
+            .set('Authorization', `Bearer ${empresa2AdminToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.map((nivel) => nivel.id)).toEqual([nivelCategoriaE2Id]);
     });
 
     test('GET /categorias só retorna categoria da própria empresa 2', async () => {
@@ -577,6 +605,23 @@ describe('acesso cruzado a um recurso específico por id não vaza existência',
     test('empresa 1 pedindo compra da empresa 2 por id recebe 404', async () => {
         const res = await request(app)
             .get(`/compras/${compraE2Id}`)
+            .set('Authorization', `Bearer ${empresa1AdminToken}`);
+
+        expect(res.status).toBe(404);
+    });
+
+    test('empresa 1 atualizando nível de categoria da empresa 2 por id recebe 404', async () => {
+        const res = await request(app)
+            .put(`/niveis-categoria/${nivelCategoriaE2Id}`)
+            .set('Authorization', `Bearer ${empresa1AdminToken}`)
+            .send({ nome: 'Alteração indevida' });
+
+        expect(res.status).toBe(404);
+    });
+
+    test('empresa 1 removendo nível de categoria da empresa 2 por id recebe 404', async () => {
+        const res = await request(app)
+            .delete(`/niveis-categoria/${nivelCategoriaE2Id}`)
             .set('Authorization', `Bearer ${empresa1AdminToken}`);
 
         expect(res.status).toBe(404);
