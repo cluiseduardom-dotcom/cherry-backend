@@ -466,10 +466,11 @@ describe('empresa 2 não vê dados da empresa 1', () => {
             .get(`/produtos/${produtosE2[0]}/movimentacoes`)
             .set('Authorization', `Bearer ${empresa2AdminToken}`);
 
-        // 5 esperadas: a entrada manual + uma entrada da compra + uma saída para cada venda + uma saída do insumo da produção.
+        // 4 esperadas para o produto0: a entrada manual + uma entrada da compra + uma saída para cada venda.
+        // A produção consome o produto2 (o insumo dedicado do fixture), não o produto0.
         expect(res.status).toBe(200);
-        expect(res.body.data.total).toBe(5);
-        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'entrada', 'saida', 'saida', 'saida']);
+        expect(res.body.data.total).toBe(4);
+        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'entrada', 'saida', 'saida']);
     });
 });
 
