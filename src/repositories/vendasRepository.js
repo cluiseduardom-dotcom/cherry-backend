@@ -215,27 +215,27 @@ async function listarPaginado({ limit, offset, usuario_id, empresa_id, status, c
 
     if (usuario_id !== undefined) {
         valores.push(usuario_id);
-        condicoes.push(`v.usuario_id = ${valores.length}`);
+        condicoes.push(`v.usuario_id = $${valores.length}`);
     }
 
     if (status !== undefined) {
         valores.push(status);
-        condicoes.push(`v.status = ${valores.length}`);
+        condicoes.push(`v.status = $${valores.length}`);
     }
 
     if (canal !== undefined) {
         valores.push(canal);
-        condicoes.push(`c.nome = ${valores.length}`);
+        condicoes.push(`c.nome = $${valores.length}`);
     }
 
     if (data_de !== undefined) {
         valores.push(data_de);
-        condicoes.push(`v.data::date >= ${valores.length}`);
+        condicoes.push(`v.data::date >= $${valores.length}`);
     }
 
     if (data_ate !== undefined) {
         valores.push(data_ate);
-        condicoes.push(`v.data::date <= ${valores.length}`);
+        condicoes.push(`v.data::date <= $${valores.length}`);
     }
 
     const where = `WHERE ${condicoes.join(' AND ')}`;
@@ -248,7 +248,7 @@ async function listarPaginado({ limit, offset, usuario_id, empresa_id, status, c
          JOIN canais_venda c ON c.id = v.canal_id
          ${where}
          ORDER BY v.data DESC, v.id DESC
-         LIMIT ${valoresListagem.length - 1} OFFSET ${valoresListagem.length}`,
+         LIMIT $${valoresListagem.length - 1} OFFSET $${valoresListagem.length}`,
         valoresListagem
     );
 
