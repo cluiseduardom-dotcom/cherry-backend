@@ -154,7 +154,7 @@ beforeAll(async () => {
         .set('Authorization', `Bearer ${empresa2AdminToken}`)
         .send({
             cliente_id: clienteE2Id,
-            itens: [{ produto_id: produtosE2[1], quantidade: 1 }],
+            itens: [{ produto_id: produtosE2[0], quantidade: 1 }],
             forma_pagamento: 'prazo',
             meses_prazo: 1
         });
