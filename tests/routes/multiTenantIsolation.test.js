@@ -32,6 +32,7 @@ const produtosE2 = [];
 let clienteE2Id;
 let vendaE2Id;
 let contaPagarE2Id;
+let fornecedorE2Id;
 
 async function loginComo(email, senha) {
     const res = await request(app).post('/auth/login').send({ email, senha });
@@ -64,6 +65,7 @@ beforeAll(async () => {
         clientes: (await request(app).get('/clientes').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         vendas: (await request(app).get('/vendas?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         contasPagar: (await request(app).get('/contas-pagar?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+        fornecedores: (await request(app).get('/fornecedores?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
     };
 
@@ -142,6 +144,14 @@ beforeAll(async () => {
 
     if (contaRes.status !== 201) throw new Error(`Falha ao criar conta a pagar e2: ${contaRes.status} ${JSON.stringify(contaRes.body)}`);
     contaPagarE2Id = contaRes.body.data.id;
+
+    const fornecedorRes = await request(app)
+        .post('/fornecedores')
+        .set('Authorization', `Bearer ${empresa2AdminToken}`)
+        .send({ nome: `Fornecedor Isolamento ${SUFIXO}`, contato: 'Teste Isolamento' });
+
+    if (fornecedorRes.status !== 201) throw new Error(`Falha ao criar fornecedor e2: ${fornecedorRes.status} ${JSON.stringify(fornecedorRes.body)}`);
+    fornecedorE2Id = fornecedorRes.body.data.id;
 });
 
 afterAll(async () => {
@@ -151,6 +161,7 @@ afterAll(async () => {
         await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM precos_produto WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM contas_pagar WHERE empresa_id = $1', [empresa2Id]);
+        await db.query('DELETE FROM fornecedores WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM produtos WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM clientes WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM canais_venda WHERE empresa_id = $1', [empresa2Id]);
@@ -168,6 +179,7 @@ describe('empresa 1 não é afetada pela existência da empresa 2', () => {
             clientes: (await request(app).get('/clientes').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             vendas: (await request(app).get('/vendas?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             contasPagar: (await request(app).get('/contas-pagar?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+            fornecedores: (await request(app).get('/fornecedores?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
         };
 
@@ -202,6 +214,13 @@ describe('empresa 1 não vê dados da empresa 2', () => {
         const ids = res.body.data.items.map((c) => c.id);
 
         expect(ids).not.toContain(contaPagarE2Id);
+    });
+
+    test('GET /fornecedores não inclui fornecedor da empresa 2', async () => {
+        const res = await request(app).get('/fornecedores?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`);
+        const ids = res.body.data.items.map((f) => f.id);
+
+        expect(ids).not.toContain(fornecedorE2Id);
     });
 
     test('GET /produtos/:id/movimentacoes de um produto da empresa 2 retorna 404', async () => {
@@ -241,6 +260,13 @@ describe('empresa 2 não vê dados da empresa 1', () => {
 
         expect(res.body.data.total).toBe(1);
         expect(res.body.data.items[0].id).toBe(contaPagarE2Id);
+    });
+
+    test('GET /fornecedores só retorna fornecedor da própria empresa 2', async () => {
+        const res = await request(app).get('/fornecedores?pageSize=100').set('Authorization', `Bearer ${empresa2AdminToken}`);
+
+        expect(res.body.data.total).toBe(1);
+        expect(res.body.data.items[0].id).toBe(fornecedorE2Id);
     });
 
     test('GET /produtos/:id/movimentacoes só retorna movimentações da própria empresa 2', async () => {
@@ -287,6 +313,12 @@ describe('acesso cruzado a um recurso específico por id não vaza existência',
 
     test('empresa 1 pedindo a venda da empresa 2 por id recebe 404', async () => {
         const res = await request(app).get(`/vendas/${vendaE2Id}`).set('Authorization', `Bearer ${empresa1AdminToken}`);
+
+        expect(res.status).toBe(404);
+    });
+
+    test('empresa 1 pedindo um fornecedor da empresa 2 por id recebe 404', async () => {
+        const res = await request(app).get(`/fornecedores/${fornecedorE2Id}`).set('Authorization', `Bearer ${empresa1AdminToken}`);
 
         expect(res.status).toBe(404);
     });
