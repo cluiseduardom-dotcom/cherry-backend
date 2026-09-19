@@ -209,25 +209,46 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, form
     }
 }
 
-async function listarPaginado({ limit, offset, usuario_id, empresa_id }) {
+async function listarPaginado({ limit, offset, usuario_id, empresa_id, status, canal, data_de, data_ate }) {
     const condicoes = ['v.empresa_id = $1'];
     const valores = [empresa_id];
 
     if (usuario_id !== undefined) {
         valores.push(usuario_id);
-        condicoes.push(`v.usuario_id = $${valores.length}`);
+        condicoes.push(`v.usuario_id = ${valores.length}`);
+    }
+
+    if (status !== undefined) {
+        valores.push(status);
+        condicoes.push(`v.status = ${valores.length}`);
+    }
+
+    if (canal !== undefined) {
+        valores.push(canal);
+        condicoes.push(`c.nome = ${valores.length}`);
+    }
+
+    if (data_de !== undefined) {
+        valores.push(data_de);
+        condicoes.push(`v.data::date >= ${valores.length}`);
+    }
+
+    if (data_ate !== undefined) {
+        valores.push(data_ate);
+        condicoes.push(`v.data::date <= ${valores.length}`);
     }
 
     const where = `WHERE ${condicoes.join(' AND ')}`;
 
     const valoresListagem = [...valores, limit, offset];
     const { rows } = await db.query(
-        `SELECT v.*, c.nome AS canal
+        `SELECT v.*, c.nome AS canal,
+                (SELECT COUNT(*)::int FROM itens_venda iv WHERE iv.venda_id = v.id AND iv.empresa_id = v.empresa_id) AS itens_count
          FROM vendas v
          JOIN canais_venda c ON c.id = v.canal_id
          ${where}
          ORDER BY v.data DESC, v.id DESC
-         LIMIT $${valoresListagem.length - 1} OFFSET $${valoresListagem.length}`,
+         LIMIT ${valoresListagem.length - 1} OFFSET ${valoresListagem.length}`,
         valoresListagem
     );
 
