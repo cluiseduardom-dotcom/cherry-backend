@@ -36,13 +36,22 @@ async function criar({ cliente_id, canal, forma_pagamento, meses_prazo, itens },
     });
 }
 
-async function listar({ page, pageSize }, usuario) {
+async function listar({ page, pageSize, status, canal, data_de, data_ate }, usuario) {
     const limit = pageSize;
     const offset = (page - 1) * pageSize;
 
     const usuario_id = usuario.role === 'vendedor' ? usuario.id : undefined;
 
-    const { items, total } = await vendasRepository.listarPaginado({ limit, offset, usuario_id, empresa_id: usuario.empresa_id });
+    const { items, total } = await vendasRepository.listarPaginado({
+        limit,
+        offset,
+        usuario_id,
+        empresa_id: usuario.empresa_id,
+        status,
+        canal,
+        data_de,
+        data_ate
+    });
 
     return {
         items,
