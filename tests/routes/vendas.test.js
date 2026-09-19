@@ -232,7 +232,37 @@ describe('GET /vendas (admin and vendedor only, paginated)', () => {
       .get('/vendas?page=2&pageSize=5')
       .set('Authorization', `Bearer ${vendedorToken}`);
 
-    expect(vendasService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5 }, { id: 2, role: 'vendedor', empresa_id: 1 });
+    expect(vendasService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5, status: undefined, canal: undefined, data_de: undefined, data_ate: undefined }, { id: 2, role: 'vendedor', empresa_id: 1 });
+  });
+
+  test('aceita filtros de status, canal e período', async () => {
+    vendasService.listar.mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 1 });
+
+    const res = await request(app)
+      .get('/vendas?status=finalizada&canal=loja_fisica&data_de=2026-09-01&data_ate=2026-09-30')
+      .set('Authorization', 'Bearer ' + adminToken);
+
+    expect(res.status).toBe(200);
+    expect(vendasService.listar).toHaveBeenCalledWith(
+      {
+        page: 1,
+        pageSize: 20,
+        status: 'finalizada',
+        canal: 'loja_fisica',
+        data_de: '2026-09-01',
+        data_ate: '2026-09-30'
+      },
+      { id: 1, role: 'admin', empresa_id: 1 }
+    );
+  });
+
+  test('rejeita período invertido', async () => {
+    const res = await request(app)
+      .get('/vendas?data_de=2026-09-30&data_ate=2026-09-01')
+      .set('Authorization', 'Bearer ' + adminToken);
+
+    expect(res.status).toBe(400);
+    expect(vendasService.listar).not.toHaveBeenCalled();
   });
 
   test('never exposes margem_percentual for an admin or vendedor (não há esse campo em itens de venda)', async () => {
