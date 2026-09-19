@@ -292,8 +292,8 @@ describe('empresa 2 não vê dados da empresa 1', () => {
     test('GET /vendas só retorna a venda da própria empresa 2', async () => {
         const res = await request(app).get('/vendas?pageSize=100').set('Authorization', `Bearer ${empresa2AdminToken}`);
 
-        expect(res.body.data.total).toBe(1);
-        expect(res.body.data.items[0].id).toBe(vendaE2Id);
+        expect(res.body.data.total).toBe(2);
+        expect(res.body.data.items.map((v) => v.id).sort()).toEqual([vendaE2Id, vendaPrazoE2Id].sort());
     });
 
     test('GET /contas-pagar só retorna a conta da própria empresa 2', async () => {
@@ -329,11 +329,10 @@ describe('empresa 2 não vê dados da empresa 1', () => {
             .get(`/produtos/${produtosE2[0]}/movimentacoes`)
             .set('Authorization', `Bearer ${empresa2AdminToken}`);
 
-        // 2 esperadas: a entrada manual do setup + a saída automática gerada
-        // pela venda criada logo depois (vendasRepository.criar também baixa estoque).
+        // 3 esperadas: a entrada manual + uma saída para cada uma das duas vendas.
         expect(res.status).toBe(200);
-        expect(res.body.data.total).toBe(2);
-        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'saida']);
+        expect(res.body.data.total).toBe(3);
+        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'saida', 'saida']);
     });
 });
 
