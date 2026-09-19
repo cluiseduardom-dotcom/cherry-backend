@@ -74,6 +74,7 @@ beforeAll(async () => {
         despesasFixas: (await request(app).get('/despesas-fixas').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         configuracaoFinanceira: (await request(app).get('/configuracoes-financeiras').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         compras: (await request(app).get('/compras?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+        categorias: (await request(app).get('/categorias?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
     };
 
@@ -194,6 +195,14 @@ beforeAll(async () => {
     if (compraRes.status !== 201) throw new Error(`Falha ao criar compra e2: ${compraRes.status} ${JSON.stringify(compraRes.body)}`);
     compraE2Id = compraRes.body.data.id;
 
+    const categoriaRes = await request(app)
+        .post('/categorias')
+        .set('Authorization', `Bearer ${empresa2AdminToken}`)
+        .send({ nivel: 1, codigo: `E2`, nome: `Categoria Isolamento ${SUFIXO}` });
+
+    if (categoriaRes.status !== 201) throw new Error(`Falha ao criar categoria e2: ${categoriaRes.status} ${JSON.stringify(categoriaRes.body)}`);
+    categoriaE2Id = categoriaRes.body.data.id;
+
     const despesaFixaRes = await request(app)
         .post('/despesas-fixas')
         .set('Authorization', `Bearer ${empresa2AdminToken}`)
@@ -222,6 +231,8 @@ afterAll(async () => {
         await db.query('DELETE FROM itens_compra WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM compras WHERE empresa_id = $1', [empresa2Id]);
+        await db.query('DELETE FROM produtos_categorias WHERE empresa_id = $1', [empresa2Id]);
+        await db.query('DELETE FROM categorias_produto WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM vendas WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM precos_produto WHERE empresa_id = $1', [empresa2Id]);
@@ -252,6 +263,7 @@ describe('empresa 1 não é afetada pela existência da empresa 2', () => {
             despesasFixas: (await request(app).get('/despesas-fixas').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             configuracaoFinanceira: (await request(app).get('/configuracoes-financeiras').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             compras: (await request(app).get('/compras?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+            categorias: (await request(app).get('/categorias?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
         };
 
@@ -316,6 +328,15 @@ describe('empresa 1 não vê dados da empresa 2', () => {
 
         const ids = res.body.data.items.map((c) => c.id);
         expect(ids).not.toContain(compraE2Id);
+    });
+
+    test('GET /categorias não inclui categoria da empresa 2', async () => {
+        const res = await request(app)
+            .get('/categorias?pageSize=100')
+            .set('Authorization', `Bearer ${empresa1AdminToken}`);
+
+        const ids = res.body.data.items.map((c) => c.id);
+        expect(ids).not.toContain(categoriaE2Id);
     });
 
     test('GET /configuracoes-financeiras mantém a configuração da empresa 1', async () => {
@@ -402,6 +423,16 @@ describe('empresa 2 não vê dados da empresa 1', () => {
         expect(res.status).toBe(200);
         expect(res.body.data.total).toBe(1);
         expect(res.body.data.items[0].id).toBe(compraE2Id);
+    });
+
+    test('GET /categorias só retorna categoria da própria empresa 2', async () => {
+        const res = await request(app)
+            .get('/categorias?pageSize=100')
+            .set('Authorization', `Bearer ${empresa2AdminToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.total).toBe(1);
+        expect(res.body.data.items[0].id).toBe(categoriaE2Id);
     });
 
     test('GET /configuracoes-financeiras retorna a configuração da empresa 2', async () => {
@@ -495,6 +526,15 @@ describe('acesso cruzado a um recurso específico por id não vaza existência',
         const res = await request(app)
             .get(`/compras/${compraE2Id}`)
             .set('Authorization', `Bearer ${empresa1AdminToken}`);
+
+        expect(res.status).toBe(404);
+    });
+
+    test('empresa 1 atualizando categoria da empresa 2 por id recebe 404', async () => {
+        const res = await request(app)
+            .put(`/categorias/${categoriaE2Id}`)
+            .set('Authorization', `Bearer ${empresa1AdminToken}`)
+            .send({ nome: 'Alteração indevida' });
 
         expect(res.status).toBe(404);
     });
