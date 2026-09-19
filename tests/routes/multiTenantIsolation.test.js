@@ -73,6 +73,7 @@ beforeAll(async () => {
         contasReceber: (await request(app).get('/contas-receber?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         despesasFixas: (await request(app).get('/despesas-fixas').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         configuracaoFinanceira: (await request(app).get('/configuracoes-financeiras').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+        compras: (await request(app).get('/compras?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
     };
 
@@ -180,6 +181,19 @@ beforeAll(async () => {
     if (fornecedorRes.status !== 201) throw new Error(`Falha ao criar fornecedor e2: ${fornecedorRes.status} ${JSON.stringify(fornecedorRes.body)}`);
     fornecedorE2Id = fornecedorRes.body.data.id;
 
+    const compraRes = await request(app)
+        .post('/compras')
+        .set('Authorization', `Bearer ${empresa2AdminToken}`)
+        .send({
+            fornecedor_id: fornecedorE2Id,
+            data_compra: '2026-09-01',
+            forma_pagamento: 'a_vista',
+            itens: [{ produto_id: produtosE2[0], quantidade: 1, custo_unitario: 10 }]
+        });
+
+    if (compraRes.status !== 201) throw new Error(`Falha ao criar compra e2: ${compraRes.status} ${JSON.stringify(compraRes.body)}`);
+    compraE2Id = compraRes.body.data.id;
+
     const despesaFixaRes = await request(app)
         .post('/despesas-fixas')
         .set('Authorization', `Bearer ${empresa2AdminToken}`)
@@ -237,6 +251,7 @@ describe('empresa 1 não é afetada pela existência da empresa 2', () => {
             contasReceber: (await request(app).get('/contas-receber?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             despesasFixas: (await request(app).get('/despesas-fixas').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             configuracaoFinanceira: (await request(app).get('/configuracoes-financeiras').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+            compras: (await request(app).get('/compras?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
         };
 
@@ -292,6 +307,15 @@ describe('empresa 1 não vê dados da empresa 2', () => {
         const ids = res.body.data.map((d) => d.id);
 
         expect(ids).not.toContain(despesaFixaE2Id);
+    });
+
+    test('GET /compras não inclui compra da empresa 2', async () => {
+        const res = await request(app)
+            .get('/compras?pageSize=100')
+            .set('Authorization', `Bearer ${empresa1AdminToken}`);
+
+        const ids = res.body.data.items.map((c) => c.id);
+        expect(ids).not.toContain(compraE2Id);
     });
 
     test('GET /configuracoes-financeiras mantém a configuração da empresa 1', async () => {
@@ -368,6 +392,16 @@ describe('empresa 2 não vê dados da empresa 1', () => {
 
         expect(res.body.data).toHaveLength(1);
         expect(res.body.data[0].id).toBe(despesaFixaE2Id);
+    });
+
+    test('GET /compras só retorna compra da própria empresa 2', async () => {
+        const res = await request(app)
+            .get('/compras?pageSize=100')
+            .set('Authorization', `Bearer ${empresa2AdminToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.total).toBe(1);
+        expect(res.body.data.items[0].id).toBe(compraE2Id);
     });
 
     test('GET /configuracoes-financeiras retorna a configuração da empresa 2', async () => {
@@ -453,6 +487,14 @@ describe('acesso cruzado a um recurso específico por id não vaza existência',
             .put(`/despesas-fixas/${despesaFixaE2Id}`)
             .set('Authorization', `Bearer ${empresa1AdminToken}`)
             .send({ valor: 999 });
+
+        expect(res.status).toBe(404);
+    });
+
+    test('empresa 1 pedindo compra da empresa 2 por id recebe 404', async () => {
+        const res = await request(app)
+            .get(`/compras/${compraE2Id}`)
+            .set('Authorization', `Bearer ${empresa1AdminToken}`);
 
         expect(res.status).toBe(404);
     });
