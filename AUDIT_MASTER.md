@@ -3,7 +3,7 @@
 > Auditoria consolidada do backend para o ciclo GPT + Claude + Gemini.
 > Estado verificado contra o código em `master`.
 > Última revisão: 2026-09-19
-> Master verificado: `a2ed2176e4f6f7c4f1a2b0ea75c7f6ffc0e28a8d`
+> Master verificado: `f996c886f69b0a86135bdee0bf12dc54ff3faa6f`
 
 ## Estado técnico confirmado
 
@@ -58,7 +58,7 @@ A cobertura real de `niveis_categoria` foi incorporada após a criação do runn
 
 O backend agora possui fluxo público de onboarding para criação de tenant e primeiro administrador, com validação e rate limit específicos.
 
-O fluxo precisa ser validado em staging antes de qualquer exposição comercial ampla, principalmente para unicidade, abuso de endpoint, CORS e política de e-mail/senha.
+O fluxo precisa ser validado operacionalmente em staging antes de qualquer exposição comercial ampla, principalmente para unicidade, abuso de endpoint, CORS e política de e-mail/senha. O backend agora falha cedo quando a configuração mínima de produção está incompleta.
 
 ## Pontos positivos
 
@@ -85,8 +85,8 @@ O fluxo precisa ser validado em staging antes de qualquer exposição comercial 
 
 ### P0 — antes de comercialização
 
-1. Validar onboarding em staging.
-2. Separar claramente staging e produção.
+1. Executar validação operacional de onboarding em staging.
+2. Criar/confirmar serviços e bancos Render separados para staging e produção.
 
 ### P1 — profissionalização
 
@@ -111,6 +111,7 @@ Cada alteração deve ser pequena, ter critério de aceite, testes automatizados
 Com a cobertura de isolamento e o versionamento básico do banco fechados, a próxima revisão deve concentrar-se em:
 
 - governança das migrations entre desenvolvimento, CI, staging e produção;
+- execução operacional do onboarding e separação dos serviços Render;
 - onboarding e segurança operacional;
 - observabilidade;
 - E2E dos fluxos críticos;
