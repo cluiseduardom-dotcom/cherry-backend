@@ -22,6 +22,7 @@ router.get('/alerta-prejuizo', controller.alertaPrejuizo);
 router.get('/inteligencia', controller.inteligencia);
 router.get('/dashboard', controller.dashboard);
 router.get('/estoque-baixo', estoqueController.alertas);
+router.get('/movimentacoes', requireAdmin, estoqueController.listarMovimentacoesRelatorio);
 
 router.get('/:id', controller.buscarPorId);
 router.put('/:id', requireAdmin, controller.atualizar);

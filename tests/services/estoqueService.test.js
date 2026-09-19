@@ -87,3 +87,37 @@ test('alertasEstoqueBaixo delegates to the repository', async () => {
   ]);
   expect(estoqueRepository.getEstoqueBaixo).toHaveBeenCalledWith(7);
 });
+
+
+describe('listarMovimentacoesRelatorio', () => {
+  test('calcula paginação e delega filtros ao repository', async () => {
+    estoqueRepository.listarMovimentacoesRelatorio.mockResolvedValue({ items: [{ id: 1 }], total: 1 });
+
+    const result = await estoqueService.listarMovimentacoesRelatorio({
+      page: 2,
+      pageSize: 10,
+      produto_id: 7,
+      data_de: '2026-09-01',
+      data_ate: '2026-09-30'
+    }, 9);
+
+    expect(estoqueRepository.listarMovimentacoesRelatorio).toHaveBeenCalledWith({
+      page: 2,
+      pageSize: 10,
+      produto_id: 7,
+      data_de: '2026-09-01',
+      data_ate: '2026-09-30',
+      limit: 10,
+      offset: 10,
+      empresa_id: 9
+    });
+
+    expect(result).toEqual({
+      items: [{ id: 1 }],
+      page: 2,
+      pageSize: 10,
+      total: 1,
+      totalPages: 1
+    });
+  });
+});
