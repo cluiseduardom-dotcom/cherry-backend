@@ -1,8 +1,9 @@
 # CHERRY BACKEND — AUDIT MASTER
 
-> Auditoria inicial do backend para o ciclo GPT + Claude + Gemini.
-> Base: cf31b8604dce7389af0b29e86af528a50dd4e320
-> Data: 2026-09-19
+> Auditoria consolidada do backend para o ciclo GPT + Claude + Gemini.
+> Estado verificado contra o código em `master`.
+> Última revisão: 2026-09-19
+> Master verificado: `13d6dadbb8dad0d35011ad1e1bc62715655c1f0a`
 
 ## Estado técnico confirmado
 
@@ -17,49 +18,80 @@
 - RBAC por middleware e filtragem de campos sensíveis
 - Ledger append-only para movimentações de estoque e preços
 
-## Achados
+## Estado atual dos achados
 
-| ID | Área | Achado | Prioridade | Ação |
+| ID | Área | Achado | Estado | Próxima ação |
 |---|---|---|---|---|
-| BE-AUD-001 | Segurança | `helmet` está instalado, mas não está aplicado em `app.js` | Alta | Avaliar e ativar com teste de integração |
-| BE-AUD-002 | CORS | `cors()` está aberto sem allowlist de origem | Alta | Definir origens por ambiente antes de produção multi-cliente |
-| BE-AUD-003 | Auth | JWT de 8h, sem refresh/revogação | Média | Decisão de produto/segurança antes de alterar |
-| BE-AUD-004 | Multi-tenant | Testes de isolamento real ainda não cobrem todos os módulos | Alta | Criar matriz de cobertura e testes de integração |
-| BE-AUD-005 | Onboarding | Não existe endpoint para criar empresa; seed é usado para a empresa inicial | Alta para GiroOne | Definir fluxo de criação de tenant antes de comercialização |
-| BE-AUD-006 | Canais | Não existe endpoint de criação/gestão de canais de venda | Média | Decidir se canais serão configuráveis pelo admin |
-| BE-AUD-007 | CI | Backend roda Node 20 no CI enquanto o frontend usa outra versão | Média | Padronizar runtime suportado e documentá-lo |
-| BE-AUD-008 | Documentação | `CLAUDE.md` ainda descreve frontend como TypeScript/Tailwind | Média | Corrigir referência para stack real |
-| BE-AUD-009 | Documentação | Há trechos históricos no MAPA que precisam ser conferidos contra o código atual | Média | Tratar documentação como artefato versionado e validar divergências |
-| BE-AUD-010 | Observabilidade | Há health-check, mas roteiro ainda não possui observabilidade/alertas completos | Média | Planejar logs estruturados, uptime e alertas |
+| BE-AUD-001 | Segurança | `helmet` instalado e não aplicado | **Resolvido** | Manter testes de headers |
+| BE-AUD-002 | CORS | CORS aberto sem allowlist | **Resolvido** | Configurar `CORS_ORIGINS` por ambiente em produção |
+| BE-AUD-003 | Auth | JWT de 8h, sem refresh/revogação | **Aberto** | Definir política de sessão antes de comercialização |
+| BE-AUD-004 | Multi-tenant | Testes reais não cobrem todos os módulos | **Parcialmente resolvido** | Produção já coberta; falta cobertura real de `niveis_categoria` |
+| BE-AUD-005 | Onboarding | Sem endpoint de criação de empresa | **Resolvido** | Validar fluxo comercial e controles de abuso em staging |
+| BE-AUD-006 | Canais | Sem endpoint de criação/gestão de canais | **Aberto** | Decidir se admin poderá criar/editar canais |
+| BE-AUD-007 | CI/runtime | Backend em Node 20 e frontend em Node 22 | **Aberto** | Padronizar runtime suportado |
+| BE-AUD-008 | Documentação | Referências históricas de stack ainda existem em docs | **Aberto** | Corrigir docs obsoletos |
+| BE-AUD-009 | Documentação | MAPA contém trechos históricos | **Aberto** | Atualizar mapa contra código real |
+| BE-AUD-010 | Observabilidade | Health-check sem observabilidade operacional completa | **Aberto** | Logs estruturados, métricas e alertas |
+| BE-AUD-011 | Banco/CI | Base persistente usada pelo CI não possui a tabela da migration 020 (`niveis_categoria`) | **Aberto — novo** | Definir estratégia de migração/versionamento e eliminar schema drift |
+
+## Cobertura real de isolamento
+
+A suíte `tests/routes/multiTenantIsolation.test.js` hoje cobre, por integração real:
+
+- produtos;
+- clientes;
+- vendas;
+- contas a pagar;
+- fornecedores;
+- canais de venda;
+- contas a receber;
+- despesas fixas;
+- configurações financeiras;
+- compras;
+- categorias de produto;
+- produção;
+- acesso cruzado por ID em módulos críticos.
+
+A cobertura real de `niveis_categoria` ainda não foi incorporada porque o banco persistente do CI não possui a tabela criada pela migration `020_niveis_categoria.sql`. A tentativa de esconder essa divergência criando a tabela dentro do teste foi deliberadamente descartada.
+
+## Onboarding
+
+O backend agora possui fluxo público de onboarding para criação de tenant e primeiro administrador, com validação e rate limit específicos.
+
+O fluxo precisa ser validado em staging antes de qualquer exposição comercial ampla, principalmente para unicidade, abuso de endpoint, CORS e política de e-mail/senha.
 
 ## Pontos positivos
 
 ### Segurança e isolamento
+
 - `empresa_id` vem do JWT, não do body/query.
-- Leituras por ID devem filtrar empresa na própria query.
+- Leituras por ID filtram a empresa na própria query nos módulos auditados.
 - Referências cruzadas são validadas dentro da empresa.
-- Vendedor não deve receber custo/margem/lucro sensíveis.
+- Vendedor não recebe custo/margem/lucro sensíveis.
 - Login possui rate limit.
 - Rotas financeiras sensíveis usam `requireAdmin`.
 - Estoque usa bloqueio contra saldo negativo e transações.
 
 ### Integridade histórica
+
 - Preço e custo da venda são congelados no item vendido.
 - Movimentação de estoque é ledger.
 - Cancelamento de venda estorna estoque.
 - Vigência de despesas fixas é tratada cronologicamente.
 - Categorias/SKU têm regras explícitas e testes.
+- Produção usa transação única e isolamento por empresa.
 
-## Matriz de risco para a próxima etapa
+## Matriz de prioridade atual
 
 ### P0 — antes de comercialização
-1. Multi-tenant com teste real para todos os módulos.
-2. CORS por ambiente.
-3. Helmet/headers de segurança.
-4. Onboarding de empresa/tenant.
-5. Staging separado de produção.
+
+1. Fechar cobertura real de multi-tenant com `niveis_categoria`.
+2. Resolver schema drift/migrações do CI e estabelecer estratégia de versionamento.
+3. Validar onboarding em staging.
+4. Separar claramente staging e produção.
 
 ### P1 — profissionalização
+
 1. Observabilidade.
 2. LGPD operacional/documental.
 3. Política de autenticação/token.
@@ -67,21 +99,21 @@
 5. Cobertura E2E dos fluxos críticos.
 
 ### P2 — evolução
+
 1. Configuração de canais.
 2. Módulos adicionais.
 3. Otimizações de escala orientadas por métricas.
 
 ## Regra de trabalho
 
-Não implementar nenhum item deste documento automaticamente. Cada alteração deve virar tarefa pequena, com critério de aceite, testes e PR.
+Cada alteração deve ser pequena, ter critério de aceite, testes automatizados e PR. Correções estruturais que revelarem problemas de ambiente ou dados compartilhados não devem ser mascaradas por fixtures artificiais.
 
 ## Próxima auditoria
 
-Comparar os contratos do backend com as telas e services do frontend, procurando:
-- payloads descartados;
-- campos obrigatórios divergentes;
-- status/erros inconsistentes;
-- permissões divergentes;
-- regras de preço/estoque/venda duplicadas no frontend;
-- endpoints existentes sem UX;
-- UX prometendo comportamento que o backend não suporta.
+Depois do fechamento do isolamento de `niveis_categoria`, a próxima revisão deve concentrar-se em:
+
+- schema/migration drift entre desenvolvimento, CI, staging e produção;
+- onboarding e segurança operacional;
+- observabilidade;
+- E2E dos fluxos críticos;
+- divergências restantes entre documentação e implementação.
