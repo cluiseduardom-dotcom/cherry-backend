@@ -33,6 +33,8 @@ let clienteE2Id;
 let vendaE2Id;
 let contaPagarE2Id;
 let fornecedorE2Id;
+let vendaPrazoE2Id;
+let contaReceberE2Id;
 
 async function loginComo(email, senha) {
     const res = await request(app).post('/auth/login').send({ email, senha });
@@ -67,6 +69,7 @@ beforeAll(async () => {
         contasPagar: (await request(app).get('/contas-pagar?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         fornecedores: (await request(app).get('/fornecedores?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         canais: (await request(app).get('/canais-venda').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+        contasReceber: (await request(app).get('/contas-receber?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
     };
 
@@ -146,6 +149,26 @@ beforeAll(async () => {
     if (contaRes.status !== 201) throw new Error(`Falha ao criar conta a pagar e2: ${contaRes.status} ${JSON.stringify(contaRes.body)}`);
     contaPagarE2Id = contaRes.body.data.id;
 
+    const vendaPrazoRes = await request(app)
+        .post('/vendas')
+        .set('Authorization', `Bearer ${empresa2AdminToken}`)
+        .send({
+            cliente_id: clienteE2Id,
+            itens: [{ produto_id: produtosE2[0], quantidade: 1 }],
+            forma_pagamento: 'prazo',
+            meses_prazo: 1
+        });
+
+    if (vendaPrazoRes.status !== 201) throw new Error(`Falha ao criar venda a prazo e2: ${vendaPrazoRes.status} ${JSON.stringify(vendaPrazoRes.body)}`);
+    vendaPrazoE2Id = vendaPrazoRes.body.data.id;
+
+    const contaReceberResult = await db.query(
+        'SELECT id FROM contas_receber WHERE venda_id = $1 AND empresa_id = $2',
+        [vendaPrazoE2Id, empresa2Id]
+    );
+    if (!contaReceberResult.rows.length) throw new Error('Falha ao criar conta a receber e2');
+    contaReceberE2Id = contaReceberResult.rows[0].id;
+
     const fornecedorRes = await request(app)
         .post('/fornecedores')
         .set('Authorization', `Bearer ${empresa2AdminToken}`)
@@ -157,6 +180,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
     if (empresa2Id) {
+        await db.query('DELETE FROM contas_receber WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM vendas WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [empresa2Id]);
@@ -182,6 +206,7 @@ describe('empresa 1 não é afetada pela existência da empresa 2', () => {
             contasPagar: (await request(app).get('/contas-pagar?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             fornecedores: (await request(app).get('/fornecedores?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             canais: (await request(app).get('/canais-venda').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+            contasReceber: (await request(app).get('/contas-receber?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
         };
 
@@ -216,6 +241,13 @@ describe('empresa 1 não vê dados da empresa 2', () => {
         const ids = res.body.data.items.map((c) => c.id);
 
         expect(ids).not.toContain(contaPagarE2Id);
+    });
+
+    test('GET /contas-receber não inclui a conta da empresa 2', async () => {
+        const res = await request(app).get('/contas-receber?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`);
+        const ids = res.body.data.items.map((c) => c.id);
+
+        expect(ids).not.toContain(contaReceberE2Id);
     });
 
     test('GET /fornecedores não inclui fornecedor da empresa 2', async () => {
@@ -260,8 +292,8 @@ describe('empresa 2 não vê dados da empresa 1', () => {
     test('GET /vendas só retorna a venda da própria empresa 2', async () => {
         const res = await request(app).get('/vendas?pageSize=100').set('Authorization', `Bearer ${empresa2AdminToken}`);
 
-        expect(res.body.data.total).toBe(1);
-        expect(res.body.data.items[0].id).toBe(vendaE2Id);
+        expect(res.body.data.total).toBe(2);
+        expect(res.body.data.items.map((v) => v.id).sort()).toEqual([vendaE2Id, vendaPrazoE2Id].sort());
     });
 
     test('GET /contas-pagar só retorna a conta da própria empresa 2', async () => {
@@ -269,6 +301,13 @@ describe('empresa 2 não vê dados da empresa 1', () => {
 
         expect(res.body.data.total).toBe(1);
         expect(res.body.data.items[0].id).toBe(contaPagarE2Id);
+    });
+
+    test('GET /contas-receber só retorna a conta da própria empresa 2', async () => {
+        const res = await request(app).get('/contas-receber?pageSize=100').set('Authorization', `Bearer ${empresa2AdminToken}`);
+
+        expect(res.body.data.total).toBe(1);
+        expect(res.body.data.items[0].id).toBe(contaReceberE2Id);
     });
 
     test('GET /fornecedores só retorna fornecedor da própria empresa 2', async () => {
@@ -290,11 +329,10 @@ describe('empresa 2 não vê dados da empresa 1', () => {
             .get(`/produtos/${produtosE2[0]}/movimentacoes`)
             .set('Authorization', `Bearer ${empresa2AdminToken}`);
 
-        // 2 esperadas: a entrada manual do setup + a saída automática gerada
-        // pela venda criada logo depois (vendasRepository.criar também baixa estoque).
+        // 3 esperadas: a entrada manual + uma saída para cada uma das duas vendas.
         expect(res.status).toBe(200);
-        expect(res.body.data.total).toBe(2);
-        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'saida']);
+        expect(res.body.data.total).toBe(3);
+        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'saida', 'saida']);
     });
 });
 
@@ -322,6 +360,14 @@ describe('acesso cruzado a um recurso específico por id não vaza existência',
     test('empresa 1 pedindo a conta a pagar da empresa 2 por id recebe 404', async () => {
         const res = await request(app)
             .get(`/contas-pagar/${contaPagarE2Id}`)
+            .set('Authorization', `Bearer ${empresa1AdminToken}`);
+
+        expect(res.status).toBe(404);
+    });
+
+    test('empresa 1 pedindo a conta a receber da empresa 2 por id recebe 404', async () => {
+        const res = await request(app)
+            .get(`/contas-receber/${contaReceberE2Id}`)
             .set('Authorization', `Bearer ${empresa1AdminToken}`);
 
         expect(res.status).toBe(404);
