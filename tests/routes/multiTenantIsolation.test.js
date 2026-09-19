@@ -205,7 +205,9 @@ beforeAll(async () => {
 afterAll(async () => {
     if (empresa2Id) {
         await db.query('DELETE FROM contas_receber WHERE empresa_id = $1', [empresa2Id]);
+        await db.query('DELETE FROM itens_compra WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [empresa2Id]);
+        await db.query('DELETE FROM compras WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM vendas WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM precos_produto WHERE empresa_id = $1', [empresa2Id]);
@@ -390,10 +392,10 @@ describe('empresa 2 não vê dados da empresa 1', () => {
             .get(`/produtos/${produtosE2[0]}/movimentacoes`)
             .set('Authorization', `Bearer ${empresa2AdminToken}`);
 
-        // 3 esperadas: a entrada manual + uma saída para cada uma das duas vendas.
+        // 4 esperadas: a entrada manual + uma entrada da compra + uma saída para cada venda.
         expect(res.status).toBe(200);
-        expect(res.body.data.total).toBe(3);
-        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'saida', 'saida']);
+        expect(res.body.data.total).toBe(4);
+        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'entrada', 'saida', 'saida']);
     });
 });
 
