@@ -215,6 +215,7 @@ afterAll(async () => {
         await db.query('DELETE FROM produtos WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM clientes WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM canais_venda WHERE empresa_id = $1', [empresa2Id]);
+        await db.query('DELETE FROM configuracoes_financeiras WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM usuarios WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM empresas WHERE id = $1', [empresa2Id]);
     }
