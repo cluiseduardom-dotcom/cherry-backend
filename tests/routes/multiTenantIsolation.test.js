@@ -66,7 +66,7 @@ beforeAll(async () => {
         vendas: (await request(app).get('/vendas?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         contasPagar: (await request(app).get('/contas-pagar?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         fornecedores: (await request(app).get('/fornecedores?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
-        canais: (await request(app).get('/canais').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+        canais: (await request(app).get('/canais-venda').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
     };
 
@@ -181,7 +181,7 @@ describe('empresa 1 não é afetada pela existência da empresa 2', () => {
             vendas: (await request(app).get('/vendas?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             contasPagar: (await request(app).get('/contas-pagar?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             fornecedores: (await request(app).get('/fornecedores?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
-            canais: (await request(app).get('/canais').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+            canais: (await request(app).get('/canais-venda').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
         };
 
@@ -226,7 +226,7 @@ describe('empresa 1 não vê dados da empresa 2', () => {
     });
 
     test('GET /canais não inclui canal da empresa 2', async () => {
-        const res = await request(app).get('/canais').set('Authorization', `Bearer ${empresa1AdminToken}`);
+        const res = await request(app).get('/canais-venda').set('Authorization', `Bearer ${empresa1AdminToken}`);
         const ids = res.body.data.map((canal) => canal.id);
 
         expect(ids).not.toContain(canalEmpresa2Id);
@@ -279,7 +279,7 @@ describe('empresa 2 não vê dados da empresa 1', () => {
     });
 
     test('GET /canais só retorna canal da própria empresa 2', async () => {
-        const res = await request(app).get('/canais').set('Authorization', `Bearer ${empresa2AdminToken}`);
+        const res = await request(app).get('/canais-venda').set('Authorization', `Bearer ${empresa2AdminToken}`);
 
         expect(res.body.data).toHaveLength(1);
         expect(res.body.data[0].id).toBe(canalEmpresa2Id);
