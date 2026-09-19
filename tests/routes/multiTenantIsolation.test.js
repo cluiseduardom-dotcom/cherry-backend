@@ -72,6 +72,7 @@ beforeAll(async () => {
         canais: (await request(app).get('/canais-venda').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         contasReceber: (await request(app).get('/contas-receber?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         despesasFixas: (await request(app).get('/despesas-fixas').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+        configuracaoFinanceira: (await request(app).get('/configuracoes-financeiras').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
         dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
     };
 
@@ -191,6 +192,14 @@ beforeAll(async () => {
 
     if (despesaFixaRes.status !== 201) throw new Error(`Falha ao criar despesa fixa e2: ${despesaFixaRes.status} ${JSON.stringify(despesaFixaRes.body)}`);
     despesaFixaE2Id = despesaFixaRes.body.data.id;
+
+    const configFinanceiraRes = await request(app)
+        .put('/configuracoes-financeiras')
+        .set('Authorization', `Bearer ${empresa2AdminToken}`)
+        .send({ aliquota_imposto: 0.09 });
+
+    if (configFinanceiraRes.status !== 200) throw new Error(`Falha ao configurar financeira e2: ${configFinanceiraRes.status} ${JSON.stringify(configFinanceiraRes.body)}`);
+    if (configFinanceiraRes.body.data.empresa_id !== empresa2Id) throw new Error('Configuração financeira da empresa 2 ficou vinculada à empresa errada');
 });
 
 afterAll(async () => {
@@ -206,6 +215,7 @@ afterAll(async () => {
         await db.query('DELETE FROM produtos WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM clientes WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM canais_venda WHERE empresa_id = $1', [empresa2Id]);
+        await db.query('DELETE FROM configuracoes_financeiras WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM usuarios WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM empresas WHERE id = $1', [empresa2Id]);
     }
@@ -224,6 +234,7 @@ describe('empresa 1 não é afetada pela existência da empresa 2', () => {
             canais: (await request(app).get('/canais-venda').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             contasReceber: (await request(app).get('/contas-receber?pageSize=100').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             despesasFixas: (await request(app).get('/despesas-fixas').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
+            configuracaoFinanceira: (await request(app).get('/configuracoes-financeiras').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data,
             dashboard: (await request(app).get('/dashboard').set('Authorization', `Bearer ${empresa1AdminToken}`)).body.data
         };
 
@@ -279,6 +290,15 @@ describe('empresa 1 não vê dados da empresa 2', () => {
         const ids = res.body.data.map((d) => d.id);
 
         expect(ids).not.toContain(despesaFixaE2Id);
+    });
+
+    test('GET /configuracoes-financeiras mantém a configuração da empresa 1', async () => {
+        const res = await request(app)
+            .get('/configuracoes-financeiras')
+            .set('Authorization', `Bearer ${empresa1AdminToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual(baseline.configuracaoFinanceira);
     });
 
     test('GET /canais não inclui canal da empresa 2', async () => {
@@ -346,6 +366,16 @@ describe('empresa 2 não vê dados da empresa 1', () => {
 
         expect(res.body.data).toHaveLength(1);
         expect(res.body.data[0].id).toBe(despesaFixaE2Id);
+    });
+
+    test('GET /configuracoes-financeiras retorna a configuração da empresa 2', async () => {
+        const res = await request(app)
+            .get('/configuracoes-financeiras')
+            .set('Authorization', `Bearer ${empresa2AdminToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.empresa_id).toBe(empresa2Id);
+        expect(res.body.data.aliquota_imposto).toBe('0.0900');
     });
 
     test('GET /canais só retorna canal da própria empresa 2', async () => {
