@@ -2,6 +2,9 @@ const db = require('../config/db');
 const estoqueRepository = require('./estoqueRepository');
 const precosRepository = require('./precosRepository');
 const contasReceberRepository = require('./contasReceberRepository');
+const pagamentosVendaRepository = require('./pagamentosVendaRepository');
+const parcelasPagamentoRepository = require('./parcelasPagamentoRepository');
+const estornosPagamentoRepository = require('./estornosPagamentoRepository');
 const { executarComLock } = require('./shared/transacoes');
 const AppError = require('../errors/AppError');
 
