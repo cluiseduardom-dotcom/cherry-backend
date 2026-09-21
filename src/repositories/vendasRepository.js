@@ -218,6 +218,33 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             valores.flat()
         );
 
+        // Compatibilidade: chamadas legadas não entram no novo núcleo financeiro.
+        // O frontend será migrado para pagamentos[] em etapa própria; enquanto
+        // isso não ocorre, preservamos exatamente o comportamento anterior.
+        if (pagamentos === undefined) {
+            if (forma_pagamento === 'prazo') {
+                const dataVencimento = dataComMeses(meses_prazo ?? 1);
+                await contasReceberRepository.criar({
+                    venda_id: venda.id,
+                    descricao: `Venda #${venda.id}`,
+                    valor: total,
+                    data_vencimento: dataVencimento,
+                    empresa_id
+                }, client);
+            }
+
+            await client.query('COMMIT');
+            return {
+                ...venda,
+                subtotal,
+                desconto: descontoFinal,
+                juros: jurosFinal,
+                total,
+                itens: itensRows,
+                pagamentos: []
+            };
+        }
+
         const pagamentosCriados = [];
         for (const pagamentoInput of pagamentosEfetivos) {
             const forma = pagamentoInput.forma_pagamento;
