@@ -397,6 +397,48 @@ async function cancelar(id, usuario_id, empresa_id) {
         // contasPagarRepository.atualizar (checa e falha antes de escrever).
         await contasReceberRepository.cancelarPorVendaId(id, empresa_id, client);
 
+        const { rows: pagamentosRows } = await client.query(
+            `SELECT * FROM pagamentos_venda WHERE venda_id = $1 AND empresa_id = $2 FOR UPDATE`,
+            [id, empresa_id]
+        );
+
+        for (const pagamento of pagamentosRows) {
+            const { rows: estornosRows } = await client.query(
+                `SELECT COALESCE(SUM(valor), 0) AS total_estornado
+                 FROM estornos_pagamento WHERE pagamento_id = $1 AND empresa_id = $2`,
+                [pagamento.id, empresa_id]
+            );
+
+            const totalEstornado = Number(estornosRows[0].total_estornado);
+            const saldoEstorno = Number((Number(pagamento.valor) - totalEstornado).toFixed(2));
+
+            if (saldoEstorno > 0 && pagamento.status !== 'cancelado') {
+                await estornosPagamentoRepository.criar({
+                    pagamento_id: pagamento.id,
+                    empresa_id,
+                    valor: saldoEstorno,
+                    motivo: `Estorno automático pelo cancelamento da venda #${id}`,
+                    usuario_id
+                }, client);
+            }
+
+            await client.query(
+                `UPDATE pagamentos_venda
+                 SET status = 'estornado', atualizado_em = NOW()
+                 WHERE id = $1 AND empresa_id = $2`,
+                [pagamento.id, empresa_id]
+            );
+
+            await client.query(
+                `UPDATE parcelas_pagamento
+                 SET status = CASE WHEN status = 'recebida' THEN 'estornada' ELSE 'cancelada' END,
+                     atualizado_em = NOW()
+                 WHERE pagamento_id = $1 AND empresa_id = $2
+                   AND status NOT IN ('estornada','cancelada')`,
+                [pagamento.id, empresa_id]
+            );
+        }
+
         const { rows: itensRows } = await client.query(
             'SELECT produto_id, quantidade FROM itens_venda WHERE venda_id = $1',
             [id]
