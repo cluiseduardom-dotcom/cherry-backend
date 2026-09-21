@@ -12,9 +12,17 @@ const pagamentoSchema = z.object({
 const criarVendaSchema = z.object({
     cliente_id: z.coerce.number({ error: 'Cliente inválido' }).int().positive('Cliente inválido').optional(),
     canal: z.string().min(1, 'Canal inválido').optional(),
+
+    // Modelo novo: uma venda pode possuir N pagamentos.
+    pagamentos: z.array(pagamentoSchema).min(1, 'Informe ao menos um pagamento').optional(),
+
+    // Compatibilidade temporária com o contrato legado.
+    forma_pagamento: z.enum(['a_vista', 'prazo'], { error: 'Forma de pagamento inválida' }).optional(),
+    meses_prazo: z.coerce.number({ error: 'Prazo em meses deve ser maior que zero' }).int().positive('Prazo em meses deve ser maior que zero').optional(),
+
     desconto: z.coerce.number({ error: 'Desconto inválido' }).nonnegative('Desconto não pode ser negativo').optional(),
     juros: z.coerce.number({ error: 'Juros inválidos' }).nonnegative('Juros não podem ser negativos').optional(),
-    pagamentos: z.array(pagamentoSchema).min(1, 'Informe ao menos um pagamento'),
+
     itens: z.array(
         z.object({
             produto_id: z.coerce.number({ error: 'Produto inválido' }).int().positive('Produto inválido'),
@@ -34,15 +42,28 @@ const criarVendaSchema = z.object({
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Kit precisa ter ao menos 2 componentes', path: ['itens'] });
     }
 
-    const pagamentosCrediario = data.pagamentos.filter((p) => p.forma_pagamento === 'crediario');
+    if (data.pagamentos && data.forma_pagamento) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Use pagamentos ou forma_pagamento legado, não ambos',
+            path: ['pagamentos']
+        });
+    }
+
+    const pagamentosCrediario = data.pagamentos?.filter((p) => p.forma_pagamento === 'crediario') ?? [];
+
     if (pagamentosCrediario.length > 0 && data.cliente_id == null) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Crediário exige cliente identificado', path: ['cliente_id'] });
     }
 
-    for (const [index, pagamento] of data.pagamentos.entries()) {
+    for (const [index, pagamento] of (data.pagamentos ?? []).entries()) {
         if (pagamento.forma_pagamento === 'crediario' && (pagamento.numero_parcelas ?? 1) > 1 && pagamento.meses_prazo == null) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Informe meses_prazo para crediário parcelado', path: ['pagamentos', index, 'meses_prazo'] });
         }
+    }
+
+    if (data.forma_pagamento === 'prazo' && data.meses_prazo == null) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Informe meses_prazo para vendas a prazo', path: ['meses_prazo'] });
     }
 });
 
