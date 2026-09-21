@@ -179,7 +179,13 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
 
         const total = Number((subtotal - descontoFinal + jurosFinal).toFixed(2));
         if (total <= 0) throw new AppError('Total da venda deve ser maior que zero', 400);
-        if (!validarSomaPagamentos(pagamentos, total)) {
+
+        const pagamentosEfetivos = pagamentos.map((pagamento) => ({
+            ...pagamento,
+            valor: pagamento.valor == null ? total : pagamento.valor
+        }));
+
+        if (!validarSomaPagamentos(pagamentosEfetivos, total)) {
             throw new AppError('A soma dos pagamentos deve ser exatamente igual ao total da venda', 400);
         }
 
@@ -205,7 +211,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
         );
 
         const pagamentosCriados = [];
-        for (const pagamentoInput of pagamentos) {
+        for (const pagamentoInput of pagamentosEfetivos) {
             const forma = pagamentoInput.forma_pagamento;
             const parcelas = pagamentoInput.numero_parcelas ?? 1;
             const valor = Number(Number(pagamentoInput.valor).toFixed(2));
