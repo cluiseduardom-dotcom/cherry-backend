@@ -52,7 +52,7 @@ async function buscarPorId(id, empresa_id) {
 // (venda + itens + conta a receber viram uma única transação), no mesmo
 // espírito de estoqueRepository.criarMovimentacao. Sem clienteExterno, abre e
 // gerencia sua própria transação.
-async function criar({ venda_id, descricao, valor, data_vencimento, empresa_id }, clienteExterno) {
+async function criar({ venda_id, descricao, valor, data_vencimento, empresa_id, parcela_id = null }, clienteExterno) {
     const client = clienteExterno || await db.connect();
     const gerenciaTransacao = !clienteExterno;
 
@@ -60,10 +60,10 @@ async function criar({ venda_id, descricao, valor, data_vencimento, empresa_id }
         if (gerenciaTransacao) await client.query('BEGIN');
 
         const { rows } = await client.query(
-            `INSERT INTO contas_receber (venda_id, descricao, valor, data_vencimento, empresa_id)
-             VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO contas_receber (venda_id, parcela_id, descricao, valor, data_vencimento, empresa_id)
+             VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING *`,
-            [venda_id, descricao, valor, data_vencimento, empresa_id]
+            [venda_id, parcela_id, descricao, valor, data_vencimento, empresa_id]
         );
 
         if (gerenciaTransacao) await client.query('COMMIT');
