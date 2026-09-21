@@ -86,12 +86,9 @@ async function criar(req, res, next) {
             throw new AppError('Idempotency-Key excede 200 caracteres', 400);
         }
 
-        const venda = await vendasService.criar(
-            parsed.data,
-            req.usuario.id,
-            req.usuario.empresa_id,
-            idempotencyKey
-        );
+        const venda = idempotencyKey
+            ? await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id, idempotencyKey)
+            : await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id);
 
         return response.success(res, filtrarParaRole(venda, req.usuario.role), 201);
     } catch (error) {
