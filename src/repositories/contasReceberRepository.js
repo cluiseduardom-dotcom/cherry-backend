@@ -112,6 +112,27 @@ async function cancelarPorVendaId(venda_id, empresa_id, clienteExterno) {
     });
 }
 
+async function buscarPorParcelaId(parcela_id, empresa_id, clienteExterno) {
+    const client = clienteExterno || db;
+    const { rows } = await client.query(
+        'SELECT * FROM contas_receber WHERE parcela_id = $1 AND empresa_id = $2',
+        [parcela_id, empresa_id]
+    );
+    return rows.length ? rows[0] : null;
+}
+
+async function atualizarRecebimento(id, { status, data_recebimento }, empresa_id, clienteExterno) {
+    const client = clienteExterno || db;
+    const { rows } = await client.query(
+        `UPDATE contas_receber
+         SET status = $1, data_recebimento = $2, atualizado_em = NOW()
+         WHERE id = $3 AND empresa_id = $4
+         RETURNING *`,
+        [status, data_recebimento, id, empresa_id]
+    );
+    return rows.length ? rows[0] : null;
+}
+
 async function marcarComoRecebida(id, empresa_id) {
     return transicionarStatus('contas_receber', id, empresa_id, {
         statusEsperado: 'pendente',
@@ -126,5 +147,7 @@ module.exports = {
     buscarPorId,
     criar,
     cancelarPorVendaId,
+    buscarPorParcelaId,
+    atualizarRecebimento,
     marcarComoRecebida
 };
