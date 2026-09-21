@@ -183,7 +183,12 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
         const total = Number((subtotal - descontoFinal + jurosFinal).toFixed(2));
         if (total <= 0) throw new AppError('Total da venda deve ser maior que zero', 400);
 
-        const pagamentosEfetivos = pagamentos.map((pagamento) => ({
+        const pagamentosEfetivos = (pagamentos ?? [{
+            forma_pagamento: forma_pagamento === 'prazo' ? 'crediario' : 'dinheiro',
+            valor: total,
+            numero_parcelas: 1,
+            meses_prazo
+        }]).map((pagamento) => ({
             ...pagamento,
             valor: pagamento.valor == null ? total : pagamento.valor
         }));
