@@ -39,7 +39,7 @@ async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_pra
         ...(juros !== undefined ? { juros } : {}),
         ...(forma_pagamento !== undefined ? { forma_pagamento } : {}),
         ...(meses_prazo !== undefined ? { meses_prazo } : {}),
-        idempotencyKey
+        ...(idempotencyKey ? { idempotencyKey } : {})
     });
 }
 async function listar({ page, pageSize, status, canal, data_de, data_ate }, usuario) {
