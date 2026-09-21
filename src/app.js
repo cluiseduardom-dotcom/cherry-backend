@@ -61,6 +61,8 @@ const producoesRoutes = require('./routes/producoes');
 const despesasFixasRoutes = require('./routes/despesasFixas');
 const configuracoesFinanceirasRoutes = require('./routes/configuracoesFinanceiras');
 const financeiroRoutes = require('./routes/financeiro');
+const pagamentosRoutes = require('./routes/pagamentos');
+const parcelasPagamentoRoutes = require('./routes/parcelasPagamento');
 const authRoutes = require('./routes/authRoutes');
 const onboardingRoutes = require('./routes/onboarding');
 const authMiddleware = require('./middlewares/authMiddleware');
@@ -85,6 +87,8 @@ app.use('/producoes', authMiddleware, requireEstoquista, producoesRoutes);
 app.use('/despesas-fixas', authMiddleware, requireAdmin, despesasFixasRoutes);
 app.use('/configuracoes-financeiras', authMiddleware, requireAdmin, configuracoesFinanceirasRoutes);
 app.use('/financeiro', authMiddleware, requireAdmin, financeiroRoutes);
+app.use('/pagamentos', authMiddleware, pagamentosRoutes);
+app.use('/parcelas', authMiddleware, parcelasPagamentoRoutes);
 app.use(errorHandler);
 
 module.exports = app;

@@ -18,24 +18,29 @@ async function maisVendidos(empresaId) {
     return vendasRepository.getMaisVendidosPeriodo(empresaId);
 }
 
-async function criar({ cliente_id, canal, forma_pagamento, meses_prazo, itens }, usuario_id, empresaId) {
+async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_prazo, desconto, juros, itens }, usuario_id, empresaId) {
     const canalRow = await precosRepository.buscarCanalPorNome(canal || 'loja_fisica', empresaId);
 
     if (!canalRow) {
         throw new AppError('Canal inválido', 400);
     }
 
+    // O contrato legado permanece intacto até o frontend migrar para
+    // pagamentos[]. O novo núcleo financeiro só é acionado quando o payload
+    // explicitamente envia pagamentos.
     return vendasRepository.criar({
         cliente_id: cliente_id ?? null,
         canal_id: canalRow.id,
         usuario_id,
         empresa_id: empresaId,
-        forma_pagamento,
-        meses_prazo,
-        itens
+        itens,
+        ...(pagamentos !== undefined ? { pagamentos } : {}),
+        ...(desconto !== undefined ? { desconto } : {}),
+        ...(juros !== undefined ? { juros } : {}),
+        ...(forma_pagamento !== undefined ? { forma_pagamento } : {}),
+        ...(meses_prazo !== undefined ? { meses_prazo } : {})
     });
 }
-
 async function listar({ page, pageSize, status, canal, data_de, data_ate }, usuario) {
     const limit = pageSize;
     const offset = (page - 1) * pageSize;
