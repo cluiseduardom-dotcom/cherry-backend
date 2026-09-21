@@ -262,10 +262,10 @@ afterAll(async () => {
         // a venda/empresa fictícia.
         await db.query('DELETE FROM recebimentos_conta WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM estornos_pagamento WHERE empresa_id = $1', [empresa2Id]);
+        await db.query('DELETE FROM contas_receber WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM parcelas_pagamento WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM pagamentos_venda WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM idempotency_keys WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM contas_receber WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM niveis_categoria WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM producoes WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM itens_ficha_tecnica WHERE empresa_id = $1', [empresa2Id]);
