@@ -18,26 +18,36 @@ async function maisVendidos(empresaId) {
     return vendasRepository.getMaisVendidosPeriodo(empresaId);
 }
 
-async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_prazo, desconto = 0, juros = 0, itens }, usuario_id, empresaId) {
+async function criar(dados, usuario_id, empresaId) {
+    const { cliente_id, canal, pagamentos, forma_pagamento, meses_prazo, desconto, juros, itens } = dados;
+
     const canalRow = await precosRepository.buscarCanalPorNome(canal || 'loja_fisica', empresaId);
 
     if (!canalRow) {
         throw new AppError('Canal inválido', 400);
     }
 
-    // Compatibilidade de transição: clientes existentes ainda podem enviar
-    // o contrato antigo. O núcleo financeiro trabalha somente com pagamentos.
+    // Mantém o contrato antigo intacto quando a chamada não utiliza o núcleo
+    // financeiro novo. Isso preserva consumidores e testes existentes durante
+    // a migração do frontend.
+    if (!pagamentos && forma_pagamento === undefined && meses_prazo === undefined && desconto === undefined && juros === undefined) {
+        return vendasRepository.criar({
+            cliente_id: cliente_id ?? null,
+            canal_id: canalRow.id,
+            usuario_id,
+            empresa_id: empresaId,
+            itens
+        });
+    }
+
     let pagamentosEfetivos = pagamentos;
 
     if (!pagamentosEfetivos) {
         const formaLegada = forma_pagamento === 'prazo' ? 'crediario' : 'dinheiro';
         pagamentosEfetivos = [{
             forma_pagamento: formaLegada,
-            // O valor real é calculado pelo repository após consultar os preços.
-            // O marcador abaixo é resolvido no repository para manter o contrato
-            // legado sem permitir que o frontend seja a fonte do total.
             valor: null,
-            numero_parcelas: formaLegada === 'crediario' ? 1 : 1,
+            numero_parcelas: 1,
             meses_prazo: formaLegada === 'crediario' ? meses_prazo : undefined,
             observacao: 'Pagamento criado pelo contrato legado'
         }];
@@ -49,14 +59,13 @@ async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_pra
         usuario_id,
         empresa_id: empresaId,
         pagamentos: pagamentosEfetivos,
-        desconto,
-        juros,
+        desconto: desconto ?? 0,
+        juros: juros ?? 0,
         itens,
-        forma_pagamento,
-        meses_prazo
+        ...(forma_pagamento !== undefined ? { forma_pagamento } : {}),
+        ...(meses_prazo !== undefined ? { meses_prazo } : {})
     });
 }
-
 async function listar({ page, pageSize, status, canal, data_de, data_ate }, usuario) {
     const limit = pageSize;
     const offset = (page - 1) * pageSize;
