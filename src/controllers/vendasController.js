@@ -81,7 +81,14 @@ async function criar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const venda = await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id);
+        const idempotencyKey = req.get('Idempotency-Key')?.trim() || null;
+        if (idempotencyKey && idempotencyKey.length > 200) {
+            throw new AppError('Idempotency-Key excede 200 caracteres', 400);
+        }
+
+        const venda = idempotencyKey
+            ? await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id, idempotencyKey)
+            : await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id);
 
         return response.success(res, filtrarParaRole(venda, req.usuario.role), 201);
     } catch (error) {

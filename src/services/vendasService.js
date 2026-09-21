@@ -18,7 +18,7 @@ async function maisVendidos(empresaId) {
     return vendasRepository.getMaisVendidosPeriodo(empresaId);
 }
 
-async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_prazo, desconto, juros, itens }, usuario_id, empresaId) {
+async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_prazo, desconto, juros, itens }, usuario_id, empresaId, idempotencyKey = null) {
     const canalRow = await precosRepository.buscarCanalPorNome(canal || 'loja_fisica', empresaId);
 
     if (!canalRow) {
@@ -38,7 +38,8 @@ async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_pra
         ...(desconto !== undefined ? { desconto } : {}),
         ...(juros !== undefined ? { juros } : {}),
         ...(forma_pagamento !== undefined ? { forma_pagamento } : {}),
-        ...(meses_prazo !== undefined ? { meses_prazo } : {})
+        ...(meses_prazo !== undefined ? { meses_prazo } : {}),
+        ...(idempotencyKey ? { idempotencyKey } : {})
     });
 }
 async function listar({ page, pageSize, status, canal, data_de, data_ate }, usuario) {

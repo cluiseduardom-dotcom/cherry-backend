@@ -16,14 +16,7 @@ const AppError = require('../errors/AppError');
 // o mês calendário real (ex: 31/01 + 1 mês vira 03/03 em ano não bissexto,
 // mesmo comportamento de overflow que o JS já aplica em soma de dias).
 function calcularDataVencimento(mesesPrazo) {
-    const hoje = new Date();
-    const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + mesesPrazo, hoje.getDate());
-
-    const ano = vencimento.getFullYear();
-    const mes = String(vencimento.getMonth() + 1).padStart(2, '0');
-    const dia = String(vencimento.getDate()).padStart(2, '0');
-
-    return `${ano}-${mes}-${dia}`;
+    return dataComMeses(mesesPrazo);
 }
 
 async function getResumo(empresa_id) {
@@ -111,11 +104,39 @@ function validarSomaPagamentos(pagamentos, total) {
     return soma === Math.round(Number(total) * 100);
 }
 
-async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo }) {
+async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null }) {
     const client = await db.connect();
 
     try {
         await client.query('BEGIN');
+
+        if (idempotencyKey) {
+            const endpoint = 'POST /vendas';
+            const { rows: idempotencyRows } = await client.query(
+                `INSERT INTO idempotency_keys (empresa_id, usuario_id, chave, endpoint)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (empresa_id, chave, endpoint) DO NOTHING
+                 RETURNING id`,
+                [empresa_id, usuario_id, idempotencyKey, endpoint]
+            );
+
+            if (!idempotencyRows.length) {
+                const { rows: existenteRows } = await client.query(
+                    `SELECT recurso_id, resposta
+                     FROM idempotency_keys
+                     WHERE empresa_id = $1 AND chave = $2 AND endpoint = $3
+                     FOR UPDATE`,
+                    [empresa_id, idempotencyKey, endpoint]
+                );
+
+                if (!existenteRows.length || existenteRows[0].resposta == null) {
+                    throw new AppError('Operação idempotente já está em processamento ou não possui resposta disponível', 409);
+                }
+
+                await client.query('COMMIT');
+                return existenteRows[0].resposta;
+            }
+        }
 
         if (cliente_id != null) {
             const { rows: clienteRows } = await client.query(
@@ -281,13 +302,14 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
 
             const valoresParcelas = dividirEmCentavos(valor, parcelas);
             const hoje = new Date();
+            const hojeLocal = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
 
             for (let i = 0; i < parcelas; i++) {
                 const numero = i + 1;
                 const valorParcela = valoresParcelas[i];
                 const crediario = forma === 'crediario';
                 const dataVencimento = imediato
-                    ? hoje.toISOString().slice(0, 10)
+                    ? hojeLocal
                     : dataComMeses(crediario ? ((pagamentoInput.meses_prazo ?? 1) * numero) : numero);
 
                 const parcela = await parcelasPagamentoRepository.criar({
@@ -317,8 +339,6 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             pagamentosCriados.push(pagamento);
         }
 
-        await client.query('COMMIT');
-
         const pagamentosComParcelas = [];
         for (const pagamento of pagamentosCriados) {
             pagamentosComParcelas.push({
@@ -327,7 +347,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             });
         }
 
-        return {
+        const resposta = {
             ...venda,
             subtotal,
             desconto: descontoFinal,
@@ -336,6 +356,18 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             itens: itensRows,
             pagamentos: pagamentosComParcelas
         };
+
+        if (idempotencyKey) {
+            await client.query(
+                `UPDATE idempotency_keys
+                 SET recurso_id = $1, resposta = $2::jsonb
+                 WHERE empresa_id = $3 AND chave = $4 AND endpoint = $5`,
+                [venda.id, JSON.stringify(resposta), empresa_id, idempotencyKey, 'POST /vendas']
+            );
+        }
+
+        await client.query('COMMIT');
+        return resposta;
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;
