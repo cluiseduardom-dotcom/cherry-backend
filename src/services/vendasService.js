@@ -18,50 +18,25 @@ async function maisVendidos(empresaId) {
     return vendasRepository.getMaisVendidosPeriodo(empresaId);
 }
 
-async function criar(dados, usuario_id, empresaId) {
-    const { cliente_id, canal, pagamentos, forma_pagamento, meses_prazo, desconto, juros, itens } = dados;
-
+async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_prazo, desconto, juros, itens }, usuario_id, empresaId) {
     const canalRow = await precosRepository.buscarCanalPorNome(canal || 'loja_fisica', empresaId);
 
     if (!canalRow) {
         throw new AppError('Canal inválido', 400);
     }
 
-    // Mantém o contrato antigo intacto quando a chamada não utiliza o núcleo
-    // financeiro novo. Isso preserva consumidores e testes existentes durante
-    // a migração do frontend.
-    if (!pagamentos && forma_pagamento === undefined && meses_prazo === undefined && desconto === undefined && juros === undefined) {
-        return vendasRepository.criar({
-            cliente_id: cliente_id ?? null,
-            canal_id: canalRow.id,
-            usuario_id,
-            empresa_id: empresaId,
-            itens
-        });
-    }
-
-    let pagamentosEfetivos = pagamentos;
-
-    if (!pagamentosEfetivos) {
-        const formaLegada = forma_pagamento === 'prazo' ? 'crediario' : 'dinheiro';
-        pagamentosEfetivos = [{
-            forma_pagamento: formaLegada,
-            valor: null,
-            numero_parcelas: 1,
-            meses_prazo: formaLegada === 'crediario' ? meses_prazo : undefined,
-            observacao: 'Pagamento criado pelo contrato legado'
-        }];
-    }
-
+    // O contrato legado permanece intacto até o frontend migrar para
+    // pagamentos[]. O novo núcleo financeiro só é acionado quando o payload
+    // explicitamente envia pagamentos.
     return vendasRepository.criar({
         cliente_id: cliente_id ?? null,
         canal_id: canalRow.id,
         usuario_id,
         empresa_id: empresaId,
-        pagamentos: pagamentosEfetivos,
-        desconto: desconto ?? 0,
-        juros: juros ?? 0,
         itens,
+        ...(pagamentos !== undefined ? { pagamentos } : {}),
+        ...(desconto !== undefined ? { desconto } : {}),
+        ...(juros !== undefined ? { juros } : {}),
         ...(forma_pagamento !== undefined ? { forma_pagamento } : {}),
         ...(meses_prazo !== undefined ? { meses_prazo } : {})
     });
