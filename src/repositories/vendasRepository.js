@@ -222,9 +222,11 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
         // O frontend será migrado para pagamentos[] em etapa própria; enquanto
         // isso não ocorre, preservamos exatamente o comportamento anterior.
         if (pagamentos === undefined) {
+            let contaReceber = null;
+
             if (forma_pagamento === 'prazo') {
                 const dataVencimento = dataComMeses(meses_prazo ?? 1);
-                await contasReceberRepository.criar({
+                contaReceber = await contasReceberRepository.criar({
                     venda_id: venda.id,
                     descricao: `Venda #${venda.id}`,
                     valor: total,
@@ -241,6 +243,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 juros: jurosFinal,
                 total,
                 itens: itensRows,
+                conta_receber: contaReceber,
                 pagamentos: []
             };
         }
