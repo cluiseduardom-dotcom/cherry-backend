@@ -90,26 +90,42 @@ async function criar({ venda_id, descricao, valor, data_vencimento, empresa_id, 
 // clienteExterno participa da transação de vendasRepository.cancelar, mesmo
 // padrão de criar().
 async function cancelarPorVendaId(venda_id, empresa_id, clienteExterno) {
-    return executarComLock('contas_receber', { coluna: 'venda_id', valor: venda_id }, empresa_id, clienteExterno, async (conta, client) => {
-        if (!conta) {
-            return null;
-        }
+    const client = clienteExterno || await db.connect();
+    const gerenciaTransacao = !clienteExterno;
 
-        if (conta.status === 'recebido') {
-            throw new AppError('Venda com conta a receber já recebida não pode ser cancelada', 409);
-        }
-
-        if (conta.status !== 'pendente') {
-            return conta;
-        }
+    try {
+        if (gerenciaTransacao) await client.query('BEGIN');
 
         const { rows } = await client.query(
-            `UPDATE contas_receber SET status = 'cancelado', atualizado_em = NOW() WHERE id = $1 RETURNING *`,
-            [conta.id]
+            `SELECT * FROM contas_receber
+             WHERE venda_id = $1 AND empresa_id = $2
+             FOR UPDATE`,
+            [venda_id, empresa_id]
         );
 
-        return rows[0];
-    });
+        if (rows.some((conta) => conta.status === 'recebido')) {
+            throw new AppError('Venda possui conta a receber já recebida e não pode ser cancelada sem estorno', 409);
+        }
+
+        const pendentes = rows.filter((conta) => conta.status === 'pendente');
+        if (pendentes.length) {
+            const ids = pendentes.map((conta) => conta.id);
+            await client.query(
+                `UPDATE contas_receber
+                 SET status = 'cancelado', atualizado_em = NOW()
+                 WHERE id = ANY($1::int[]) AND empresa_id = $2`,
+                [ids, empresa_id]
+            );
+        }
+
+        if (gerenciaTransacao) await client.query('COMMIT');
+        return rows;
+    } catch (error) {
+        if (gerenciaTransacao) await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        if (gerenciaTransacao) client.release();
+    }
 }
 
 async function buscarPorParcelaId(parcela_id, empresa_id, clienteExterno) {
