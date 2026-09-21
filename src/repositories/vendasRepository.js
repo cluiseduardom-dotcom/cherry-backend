@@ -302,13 +302,14 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
 
             const valoresParcelas = dividirEmCentavos(valor, parcelas);
             const hoje = new Date();
+            const hojeLocal = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
 
             for (let i = 0; i < parcelas; i++) {
                 const numero = i + 1;
                 const valorParcela = valoresParcelas[i];
                 const crediario = forma === 'crediario';
                 const dataVencimento = imediato
-                    ? hoje.toISOString().slice(0, 10)
+                    ? hojeLocal
                     : dataComMeses(crediario ? ((pagamentoInput.meses_prazo ?? 1) * numero) : numero);
 
                 const parcela = await parcelasPagamentoRepository.criar({
