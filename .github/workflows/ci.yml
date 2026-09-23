@@ -7,7 +7,7 @@ on:
     branches: [master]
 
 jobs:
-  quality-gate:
+  build:
     runs-on: ubuntu-latest
 
     steps:
