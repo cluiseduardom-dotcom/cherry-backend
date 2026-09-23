@@ -3,6 +3,15 @@ const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { salvarConfiguracaoSkuSchema } = require('../validations/configuracoesSkuValidation');
 
+async function listarTodos(req, res, next) {
+    try {
+        const configs = await configuracoesSkuService.listarTodos(req.usuario.empresa_id);
+        return response.success(res, configs);
+    } catch (error) {
+        next(error);
+    }
+}
+
 async function listar(req, res, next) {
     try {
         const config = await configuracoesSkuService.listar(req.usuario.empresa_id);
@@ -31,4 +40,4 @@ async function salvar(req, res, next) {
     }
 }
 
-module.exports = { listar, salvar };
+module.exports = { listar, listarTodos, salvar };

@@ -6,6 +6,10 @@ async function listar(empresaId) {
     return configuracoesSkuRepository.buscarAtiva(empresaId);
 }
 
+async function listarTodos(empresaId) {
+    return configuracoesSkuRepository.listar(empresaId);
+}
+
 async function validarSegmentos(segmentos, empresaId, client) {
     const niveis = new Set();
     const ordens = new Set();
@@ -50,18 +54,20 @@ async function salvar(dados, empresaId) {
     try {
         await client.query('BEGIN');
 
-        let config = await configuracoesSkuRepository.buscarAtiva(empresaId, client);
-
         await validarSegmentos(dados.segmentos, empresaId, client);
 
-        if (!config) {
-            config = await configuracoesSkuRepository.criar({
-                ...dados,
-                empresa_id: empresaId
-            }, client);
-        } else {
+        if (dados.padrao !== false) {
+            await client.query(
+                `UPDATE configuracoes_sku SET padrao = false, atualizado_em = NOW()
+                 WHERE empresa_id = $1 AND ativo = true`,
+                [empresaId]
+            );
+        }
+
+        let config;
+        if (dados.id) {
             config = await configuracoesSkuRepository.atualizar(
-                config.id,
+                dados.id,
                 empresaId,
                 dados,
                 client
@@ -70,6 +76,11 @@ async function salvar(dados, empresaId) {
             if (!config) {
                 throw new AppError('Configuração de SKU não encontrada', 404);
             }
+        } else {
+            config = await configuracoesSkuRepository.criar({
+                ...dados,
+                empresa_id: empresaId
+            }, client);
         }
 
         await configuracoesSkuRepository.substituirSegmentos(
@@ -80,7 +91,7 @@ async function salvar(dados, empresaId) {
 
         await client.query('COMMIT');
 
-        return configuracoesSkuRepository.buscarAtiva(empresaId);
+        return configuracoesSkuRepository.listar(empresaId);
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -89,4 +100,4 @@ async function salvar(dados, empresaId) {
     }
 }
 
-module.exports = { listar, salvar };
+module.exports = { listar, listarTodos, salvar };

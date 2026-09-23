@@ -2,31 +2,41 @@ const configuracoesSkuRepository = require('../repositories/configuracoesSkuRepo
 const sequenciasSkuRepository = require('../repositories/sequenciasSkuRepository');
 const AppError = require('../errors/AppError');
 
-function validarCodigo(codigo, tipo) {
-    const valor = String(codigo).toUpperCase();
+const SEPARADORES_PERMITIDOS = new Set(['-', '_', '/', 'x', '*', '+']);
 
-    if (tipo === 'numerico' && !/^\\d+$/.test(valor)) {
-        throw new AppError(`O código ${valor} não é compatível com SKU numérico`, 400);
+function validarSeparador(separador) {
+    const valor = String(separador ?? '');
+    if (valor.length > 1) {
+        throw new AppError('O separador do SKU deve ter no máximo um caractere', 400);
     }
-
-    if (tipo === 'alfabetico' && !/^[A-Z]+$/.test(valor)) {
-        throw new AppError(`O código ${valor} não é compatível com SKU alfabético`, 400);
+    if (valor && !SEPARADORES_PERMITIDOS.has(valor)) {
+        throw new AppError('Separador de SKU não permitido', 400);
     }
+    return valor;
+}
 
-    if (tipo === 'alfanumerico' && !/^[A-Z0-9]+$/.test(valor)) {
-        throw new AppError(`O código ${valor} contém caracteres incompatíveis com SKU alfanumérico`, 400);
+function normalizarCodigo(codigo) {
+    const valor = String(codigo ?? '').trim().toUpperCase();
+
+    if (!valor || !/^[A-Z0-9]+$/.test(valor)) {
+        throw new AppError('Código de segmento deve conter apenas letras e números', 400);
     }
 
     return valor;
 }
 
-async function obterConfiguracao(empresaId, client) {
-    const config = await configuracoesSkuRepository.buscarAtiva(empresaId, client);
+async function obterConfiguracao(categorias, empresaId, client) {
+    const categoriaIds = categorias.map((categoria) => Number(categoria.id)).filter(Number.isInteger);
+    const resolver = configuracoesSkuRepository.buscarParaCategorias || configuracoesSkuRepository.buscarAtiva;
+    const config = categoriaIds.length
+        ? await resolver(categoriaIds, empresaId, client)
+        : await configuracoesSkuRepository.buscarAtiva(empresaId, client);
 
     if (!config) {
         throw new AppError('Configuração de SKU não encontrada para esta empresa', 409);
     }
 
+    validarSeparador(config.separador);
     return config;
 }
 
@@ -48,11 +58,10 @@ function montarSegmentos(categorias, configuracao) {
                         400
                     );
                 }
-
                 return null;
             }
 
-            return validarCodigo(categoria.codigo, configuracao.tipo_sku);
+            return normalizarCodigo(categoria.codigo);
         })
         .filter(Boolean);
 }
@@ -62,24 +71,27 @@ function montarChaveCombinacao(codigos) {
 }
 
 function formatarSequencia(contador, configuracao) {
-    if (configuracao.tipo_sku !== 'alfabetico') {
-        return String(contador).padStart(configuracao.tamanho_sequencia, '0');
+    const numero = BigInt(contador);
+
+    if (configuracao.tipo_sku === 'alfabetico') {
+        let n = numero < 1n ? 1n : numero;
+        let resultado = '';
+
+        while (n > 0n) {
+            n -= 1n;
+            resultado = String.fromCharCode(65 + Number(n % 26n)) + resultado;
+            n = n / 26n;
+        }
+
+        return resultado.padStart(Number(configuracao.tamanho_sequencia), 'A');
     }
 
-    let numero = Number(contador);
-    if (numero < 1) numero = 1;
-
-    let resultado = '';
-    while (numero > 0) {
-        numero -= 1;
-        resultado = String.fromCharCode(65 + (numero % 26)) + resultado;
-        numero = Math.floor(numero / 26);
-    }
-
-    return resultado.padStart(configuracao.tamanho_sequencia, 'A');
+    const texto = numero.toString();
+    return texto.padStart(Number(configuracao.tamanho_sequencia), '0');
 }
 
 function formatarSku(codigos, contador, configuracao) {
+    const separador = validarSeparador(configuracao.separador);
     const sequencia = formatarSequencia(contador, configuracao);
 
     return [
@@ -87,12 +99,17 @@ function formatarSku(codigos, contador, configuracao) {
         ...codigos,
         sequencia,
         configuracao.sufixo
-    ].filter(Boolean).join(configuracao.separador);
+    ].filter(Boolean).join(separador);
 }
 
 async function gerar(categorias, empresaId, client) {
-    const configuracao = await obterConfiguracao(empresaId, client);
+    const configuracao = await obterConfiguracao(categorias, empresaId, client);
     const codigos = montarSegmentos(categorias, configuracao);
+
+    if (!codigos.length && !configuracao.prefixo && !configuracao.sufixo) {
+        // A sequência sozinha continua sendo um SKU válido quando a empresa
+        // deliberadamente configurou zero segmentos.
+    }
 
     const chave = montarChaveCombinacao(codigos);
     const contador = await sequenciasSkuRepository.incrementarContador(
@@ -110,6 +127,9 @@ async function gerar(categorias, empresaId, client) {
 }
 
 module.exports = {
+    SEPARADORES_PERMITIDOS,
+    validarSeparador,
+    normalizarCodigo,
     montarChaveCombinacao,
     formatarSku,
     formatarSequencia,

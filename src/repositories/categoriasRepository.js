@@ -44,20 +44,23 @@ async function buscarPorIds(ids, empresa_id) {
     return rows;
 }
 
-async function criar({ nivel, codigo, nome, empresa_id }) {
+async function criar({ nivel, codigo, nome, configuracao_sku_id, empresa_id }) {
     const { rows } = await db.query(
-        `INSERT INTO categorias_produto (nivel, codigo, nome, empresa_id) VALUES ($1, $2, $3, $4) RETURNING *`,
-        [nivel, codigo, nome, empresa_id]
+        `INSERT INTO categorias_produto (nivel, codigo, nome, configuracao_sku_id, empresa_id) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [nivel, codigo, nome, configuracao_sku_id ?? null, empresa_id]
     );
     return rows[0];
 }
 
-async function atualizarNome(id, nome, empresa_id) {
+async function atualizar(id, { nome, configuracao_sku_id }, empresa_id) {
     const { rows } = await db.query(
-        `UPDATE categorias_produto SET nome = $1, atualizado_em = NOW()
-         WHERE id = $2 AND empresa_id = $3 AND deletado_em IS NULL
+        `UPDATE categorias_produto
+         SET nome = $1,
+             configuracao_sku_id = $2,
+             atualizado_em = NOW()
+         WHERE id = $3 AND empresa_id = $4 AND deletado_em IS NULL
          RETURNING *`,
-        [nome, id, empresa_id]
+        [nome, configuracao_sku_id ?? null, id, empresa_id]
     );
     return rows.length ? rows[0] : null;
 }
@@ -78,6 +81,6 @@ module.exports = {
     buscarPorCodigoNivel,
     buscarPorIds,
     criar,
-    atualizarNome,
+    atualizar,
     softDelete
 };

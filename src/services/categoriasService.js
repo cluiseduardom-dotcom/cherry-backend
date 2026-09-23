@@ -18,8 +18,15 @@ async function criar(dados, empresaId) {
         throw new AppError('Já existe uma categoria com esse código neste nível', 409);
     }
 
+    if (dados.configuracao_sku_id != null) {
+        const configuracao = await require('../repositories/configuracoesSkuRepository').listar(empresaId);
+        if (!configuracao.some((item) => item.id === dados.configuracao_sku_id)) {
+            throw new AppError('Padrão de SKU inválido para esta empresa', 400);
+        }
+    }
+
     try {
-        return await categoriasRepository.criar({ nivel: dados.nivel, codigo, nome: dados.nome, empresa_id: empresaId });
+        return await categoriasRepository.criar({ nivel: dados.nivel, codigo, nome: dados.nome, configuracao_sku_id: dados.configuracao_sku_id, empresa_id: empresaId });
     } catch (error) {
         if (error.code === '23505') {
             throw new AppError('Já existe uma categoria com esse código neste nível', 409);
@@ -29,7 +36,14 @@ async function criar(dados, empresaId) {
 }
 
 async function atualizar(id, dados, empresaId) {
-    const atualizado = await categoriasRepository.atualizarNome(id, dados.nome, empresaId);
+    if (dados.configuracao_sku_id != null) {
+        const configuracoes = await require('../repositories/configuracoesSkuRepository').listar(empresaId);
+        if (!configuracoes.some((item) => item.id === dados.configuracao_sku_id)) {
+            throw new AppError('Padrão de SKU inválido para esta empresa', 400);
+        }
+    }
+
+    const atualizado = await categoriasRepository.atualizar(id, dados, empresaId);
 
     if (!atualizado) {
         throw new AppError('Categoria não encontrada', 404);

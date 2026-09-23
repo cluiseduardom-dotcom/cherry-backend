@@ -65,16 +65,16 @@ describe('criar', () => {
 
 describe('atualizar', () => {
   test('updates nome via the repository', async () => {
-    categoriasRepository.atualizarNome.mockResolvedValue({ id: 1, nome: 'Novo Nome' });
+    categoriasRepository.atualizar.mockResolvedValue({ id: 1, nome: 'Novo Nome' });
 
     const result = await categoriasService.atualizar(1, { nome: 'Novo Nome' }, 9);
 
-    expect(categoriasRepository.atualizarNome).toHaveBeenCalledWith(1, 'Novo Nome', 9);
+    expect(categoriasRepository.atualizar).toHaveBeenCalledWith(1, { nome: 'Novo Nome' }, 9);
     expect(result.nome).toBe('Novo Nome');
   });
 
   test('throws 404 when the categoria does not exist for this empresa', async () => {
-    categoriasRepository.atualizarNome.mockResolvedValue(null);
+    categoriasRepository.atualizar.mockResolvedValue(null);
 
     await expect(categoriasService.atualizar(999, { nome: 'X' }, 9)).rejects.toMatchObject({
       statusCode: 404,
