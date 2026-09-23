@@ -89,25 +89,25 @@ describe('criar', () => {
     expect(resultado.empresa_id).toBe(9);
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain('INSERT INTO categorias_produto');
-    expect(params).toEqual([1, 'BR', 'Brinco', 9]);
+    expect(params).toEqual([1, 'BR', 'Brinco', null, 9]);
   });
 });
 
-describe('atualizarNome', () => {
+describe('atualizar', () => {
   test('updates nome scoped by id, empresa_id, and only active rows', async () => {
     db.query = jest.fn().mockResolvedValue({ rows: [{ id: 1, nome: 'Novo Nome' }] });
 
-    const resultado = await categoriasRepository.atualizarNome(1, 'Novo Nome', 9);
+    const resultado = await categoriasRepository.atualizar(1, { nome: 'Novo Nome' }, 9);
 
     expect(resultado.nome).toBe('Novo Nome');
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain('deletado_em IS NULL');
-    expect(params).toEqual(['Novo Nome', 1, 9]);
+    expect(params).toEqual(['Novo Nome', null, 1, 9]);
   });
 
   test('returns null when the categoria does not belong to this empresa or is deleted', async () => {
     db.query = jest.fn().mockResolvedValue({ rows: [] });
-    expect(await categoriasRepository.atualizarNome(1, 'X', 9)).toBeNull();
+    expect(await categoriasRepository.atualizar(1, { nome: 'X' }, 9)).toBeNull();
   });
 });
 

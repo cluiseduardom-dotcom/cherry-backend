@@ -7,8 +7,8 @@ const skuService = require('../../src/services/skuService');
 
 const configuracao = {
   id: 10,
-  tipo_sku: 'alfanumerico',
-  separador: '',
+  tipo_sku: 'numerico',
+  separador: '-',
   prefixo: '',
   sufixo: '',
   tamanho_sequencia: 3,
@@ -22,6 +22,7 @@ const configuracao = {
 beforeEach(() => {
   jest.clearAllMocks();
   configuracoesSkuRepository.buscarAtiva.mockResolvedValue(configuracao);
+  configuracoesSkuRepository.buscarParaCategorias = jest.fn().mockResolvedValue(configuracao);
 });
 
 describe('montarChaveCombinacao', () => {
@@ -31,35 +32,47 @@ describe('montarChaveCombinacao', () => {
 });
 
 describe('formatarSku', () => {
-  test('formats configured SKU without a separator', () => {
-    expect(skuService.formatarSku(['BR', '01'], 7, configuracao)).toBe('BR01007');
+  test('formats variable-length category codes with the configured separator', () => {
+    expect(skuService.formatarSku(['COL', 'BO', 'FEM'], 1, configuracao)).toBe('COL-BO-FEM-001');
   });
 
-  test('formats configured SKU with prefix, separator, suffix and sequence size', () => {
+  test('supports prefix, suffix and custom separator', () => {
     const config = {
       ...configuracao,
-      separador: '-',
-      prefixo: 'P',
-      sufixo: 'X',
+      separador: '_',
+      prefixo: 'CH',
+      sufixo: 'V1',
       tamanho_sequencia: 4
     };
 
-    expect(skuService.formatarSku(['BR', '01'], 7, config)).toBe('P-BR-01-0007-X');
+    expect(skuService.formatarSku(['COL', '18K'], 7, config)).toBe('CH_COL_18K_0007_V1');
   });
 
-  test('does not truncate sequences above the configured width', () => {
-    expect(skuService.formatarSku(['BR'], 1000, configuracao)).toBe('BR1000');
+  test('does not truncate sequences when they exceed the configured padding width', () => {
+    expect(skuService.formatarSku(['COL'], 1000, configuracao)).toBe('COL-1000');
+  });
+});
+
+describe('validarSeparador', () => {
+  test('accepts the configured safe separators', () => {
+    for (const separador of ['-', '_', '/', 'x', '*', '+']) {
+      expect(skuService.validarSeparador(separador)).toBe(separador);
+    }
+  });
+
+  test('rejects unsafe separators', () => {
+    expect(() => skuService.validarSeparador('|')).toThrow('Separador de SKU não permitido');
   });
 });
 
 describe('montarSegmentos', () => {
-  test('uses the configured order instead of the old letter-first rule', () => {
+  test('uses configured order and accepts variable-length alphanumeric codes', () => {
     const categorias = [
-      { nivel: 1, codigo: '02' },
-      { nivel: 2, codigo: 'OU' }
+      { nivel: 1, codigo: 'COL' },
+      { nivel: 2, codigo: '18K' }
     ];
 
-    expect(skuService.montarSegmentos(categorias, configuracao)).toEqual(['02', 'OU']);
+    expect(skuService.montarSegmentos(categorias, configuracao)).toEqual(['COL', '18K']);
   });
 
   test('throws when a required level is missing', () => {
@@ -81,32 +94,25 @@ describe('montarSegmentos', () => {
 });
 
 describe('gerar', () => {
-  test('builds the key from configured segments, increments atomically, and formats the SKU', async () => {
+  test('resolves the pattern from product categories and increments atomically', async () => {
     sequenciasSkuRepository.incrementarContador.mockResolvedValue(2);
 
-    const sku = await skuService.gerar(
-      [{ nivel: 1, codigo: 'BR' }, { nivel: 2, codigo: '01' }],
-      9,
-      {}
-    );
+    const categorias = [
+      { id: 11, nivel: 1, codigo: 'COL' },
+      { id: 22, nivel: 2, codigo: 'BO' }
+    ];
 
+    const resultado = await skuService.gerar(categorias, 9, {});
+
+    expect(configuracoesSkuRepository.buscarParaCategorias).toHaveBeenCalledWith([11, 22], 9, {});
     expect(sequenciasSkuRepository.incrementarContador).toHaveBeenCalledWith(
-      'BR-01',
+      'COL-BO',
       9,
       10,
       1,
       {}
     );
-    expect(sku.sku).toBe('BR01002');
-    expect(sku.configuracao.id).toBe(10);
-  });
-
-  test('rejects a code incompatible with numeric SKU configuration', async () => {
-    const numeric = { ...configuracao, tipo_sku: 'numerico' };
-    configuracoesSkuRepository.buscarAtiva.mockResolvedValue(numeric);
-
-    await expect(
-      skuService.gerar([{ nivel: 1, codigo: 'BR' }], 9, {})
-    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(resultado.sku).toBe('COL-BO-002');
+    expect(resultado.configuracao.id).toBe(10);
   });
 });
