@@ -3,7 +3,7 @@
 > Auditoria consolidada do backend para o ciclo GPT + Claude + Gemini.
 > Estado verificado contra o código em `master`.
 > Última revisão: 2026-09-19
-> Master verificado: `13d6dadbb8dad0d35011ad1e1bc62715655c1f0a`
+> Master verificado: `f996c886f69b0a86135bdee0bf12dc54ff3faa6f`
 
 ## Estado técnico confirmado
 
@@ -25,14 +25,14 @@
 | BE-AUD-001 | Segurança | `helmet` instalado e não aplicado | **Resolvido** | Manter testes de headers |
 | BE-AUD-002 | CORS | CORS aberto sem allowlist | **Resolvido** | Configurar `CORS_ORIGINS` por ambiente em produção |
 | BE-AUD-003 | Auth | JWT de 8h, sem refresh/revogação | **Aberto** | Definir política de sessão antes de comercialização |
-| BE-AUD-004 | Multi-tenant | Testes reais não cobrem todos os módulos | **Parcialmente resolvido** | Produção já coberta; falta cobertura real de `niveis_categoria` |
+| BE-AUD-004 | Multi-tenant | Testes reais não cobrem todos os módulos | **Resolvido** | Manter testes de isolamento ao adicionar novos módulos |
 | BE-AUD-005 | Onboarding | Sem endpoint de criação de empresa | **Resolvido** | Validar fluxo comercial e controles de abuso em staging |
 | BE-AUD-006 | Canais | Sem endpoint de criação/gestão de canais | **Aberto** | Decidir se admin poderá criar/editar canais |
 | BE-AUD-007 | CI/runtime | Backend em Node 20 e frontend em Node 22 | **Aberto** | Padronizar runtime suportado |
 | BE-AUD-008 | Documentação | Referências históricas de stack ainda existem em docs | **Aberto** | Corrigir docs obsoletos |
 | BE-AUD-009 | Documentação | MAPA contém trechos históricos | **Aberto** | Atualizar mapa contra código real |
 | BE-AUD-010 | Observabilidade | Health-check sem observabilidade operacional completa | **Aberto** | Logs estruturados, métricas e alertas |
-| BE-AUD-011 | Banco/CI | Base persistente usada pelo CI não possui a tabela da migration 020 (`niveis_categoria`) | **Aberto — novo** | Definir estratégia de migração/versionamento e eliminar schema drift |
+| BE-AUD-011 | Banco/CI | Base persistente usada pelo CI não possui a tabela da migration 020 (`niveis_categoria`) | **Resolvido** | Usar `npm run db:migrate` antes do seed em CI/staging/produção |
 
 ## Cobertura real de isolamento
 
@@ -52,13 +52,13 @@ A suíte `tests/routes/multiTenantIsolation.test.js` hoje cobre, por integraçã
 - produção;
 - acesso cruzado por ID em módulos críticos.
 
-A cobertura real de `niveis_categoria` ainda não foi incorporada porque o banco persistente do CI não possui a tabela criada pela migration `020_niveis_categoria.sql`. A tentativa de esconder essa divergência criando a tabela dentro do teste foi deliberadamente descartada.
+A cobertura real de `niveis_categoria` foi incorporada após a criação do runner de migrations. O teste usa a API real e não cria schema dentro da suíte.
 
 ## Onboarding
 
 O backend agora possui fluxo público de onboarding para criação de tenant e primeiro administrador, com validação e rate limit específicos.
 
-O fluxo precisa ser validado em staging antes de qualquer exposição comercial ampla, principalmente para unicidade, abuso de endpoint, CORS e política de e-mail/senha.
+O fluxo precisa ser validado operacionalmente em staging antes de qualquer exposição comercial ampla, principalmente para unicidade, abuso de endpoint, CORS e política de e-mail/senha. O backend agora falha cedo quando a configuração mínima de produção está incompleta.
 
 ## Pontos positivos
 
@@ -85,10 +85,8 @@ O fluxo precisa ser validado em staging antes de qualquer exposição comercial 
 
 ### P0 — antes de comercialização
 
-1. Fechar cobertura real de multi-tenant com `niveis_categoria`.
-2. Resolver schema drift/migrações do CI e estabelecer estratégia de versionamento.
-3. Validar onboarding em staging.
-4. Separar claramente staging e produção.
+1. Executar validação operacional de onboarding em staging.
+2. Criar/confirmar serviços e bancos Render separados para staging e produção.
 
 ### P1 — profissionalização
 
@@ -110,9 +108,10 @@ Cada alteração deve ser pequena, ter critério de aceite, testes automatizados
 
 ## Próxima auditoria
 
-Depois do fechamento do isolamento de `niveis_categoria`, a próxima revisão deve concentrar-se em:
+Com a cobertura de isolamento e o versionamento básico do banco fechados, a próxima revisão deve concentrar-se em:
 
-- schema/migration drift entre desenvolvimento, CI, staging e produção;
+- governança das migrations entre desenvolvimento, CI, staging e produção;
+- execução operacional do onboarding e separação dos serviços Render;
 - onboarding e segurança operacional;
 - observabilidade;
 - E2E dos fluxos críticos;
