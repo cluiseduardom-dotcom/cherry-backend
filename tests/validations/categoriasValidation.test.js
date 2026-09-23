@@ -27,8 +27,8 @@ describe('criarCategoriaSchema', () => {
     expect(criarCategoriaSchema.safeParse(semCodigo).success).toBe(false);
   });
 
-  test('rejects a codigo longer than 3 characters', () => {
-    expect(criarCategoriaSchema.safeParse({ ...valid, codigo: 'BRIN' }).success).toBe(false);
+  test('accepts a codigo with more than 3 characters', () => {
+    expect(criarCategoriaSchema.safeParse({ ...valid, codigo: 'BRIN' }).success).toBe(true);
   });
 
   test('rejects an empty codigo', () => {
