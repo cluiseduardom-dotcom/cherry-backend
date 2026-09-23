@@ -1,7 +1,5 @@
 const db = require('../config/db');
 const configuracoesSkuRepository = require('../repositories/configuracoesSkuRepository');
-const niveisCategoriaRepository = require('../repositories/niveisCategoriaRepository');
-const categoriasRepository = require('../repositories/categoriasRepository');
 const AppError = require('../errors/AppError');
 
 async function listar(empresaId) {
@@ -27,14 +25,18 @@ async function validarSegmentos(segmentos, empresaId, client) {
 
     if (!segmentos.length) return;
 
-    const niveisExistentes = await niveisCategoriaRepository.listar(empresaId, client);
-    const categorias = await categoriasRepository.buscarNiveis(empresaId, client);
+    const { rows } = await client.query(
+        `SELECT DISTINCT nivel
+         FROM (
+             SELECT nivel FROM niveis_categoria WHERE empresa_id = $1
+             UNION
+             SELECT nivel FROM categorias_produto WHERE empresa_id = $1 AND deletado_em IS NULL
+         ) niveis
+         ORDER BY nivel`,
+        [empresaId]
+    );
 
-    const permitidos = new Set([
-        ...niveisExistentes.map((item) => Number(item.nivel)),
-        ...categorias.map((item) => Number(item.nivel))
-    ]);
-
+    const permitidos = new Set(rows.map((item) => Number(item.nivel)));
     const nivelInvalido = segmentos.find((segmento) => !permitidos.has(Number(segmento.nivel)));
 
     if (nivelInvalido) {
