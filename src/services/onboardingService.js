@@ -32,6 +32,13 @@ async function criarTenant({ empresa_nome, cnpj, nome_admin, email_admin, senha_
             [empresa.id]
         );
 
+        await client.query(
+            `INSERT INTO configuracoes_sku
+             (empresa_id, nome, tipo_sku, separador, prefixo, sufixo, tamanho_sequencia, inicio_sequencia, ativo)
+             VALUES ($1, 'Padrão atual', 'alfanumerico', '', '', '', 3, 1, true)`,
+            [empresa.id]
+        );
+
         const senhaHash = await bcrypt.hash(senha_admin, 10);
 
         const usuarioResult = await client.query(

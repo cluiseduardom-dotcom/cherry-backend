@@ -396,7 +396,7 @@ describe('PATCH /produtos/:id/categoria', () => {
       .send({ categoria_ids: [1, 2] });
 
     expect(res.status).toBe(200);
-    expect(produtosService.categorizar).toHaveBeenCalledWith(1, [1, 2], 1);
+    expect(produtosService.categorizar).toHaveBeenCalledWith(1, [1, 2], 1, 2);
   });
 
   test('returns 200 for an estoquista', async () => {
@@ -439,7 +439,7 @@ describe('PATCH /produtos/:id/categoria', () => {
       .send({ categoria_ids: [] });
 
     expect(res.status).toBe(200);
-    expect(produtosService.categorizar).toHaveBeenCalledWith(1, [], 1);
+    expect(produtosService.categorizar).toHaveBeenCalledWith(1, [], 1, 2);
   });
 
   test('includes custo and margem_percentual in the response for an admin (filtrarParaRole keeps them)', async () => {

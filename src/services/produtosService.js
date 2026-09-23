@@ -2,6 +2,7 @@ const produtosRepository = require('../repositories/produtosRepository');
 const precosRepository = require('../repositories/precosRepository');
 const categoriasRepository = require('../repositories/categoriasRepository');
 const skuService = require('./skuService');
+const historicoSkuRepository = require('../repositories/historicoSkuRepository');
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 
@@ -126,7 +127,7 @@ async function ajustarPreco(id, percentual, empresaId) {
     return produtosRepository.ajustarPreco(id, percentual, empresaId);
 }
 
-async function categorizar(id, categoriaIds, empresaId) {
+async function categorizar(id, categoriaIds, empresaId, usuarioId) {
     const produto = await produtosRepository.buscarPorId(id, empresaId);
 
     if (!produto) {
@@ -157,11 +158,22 @@ async function categorizar(id, categoriaIds, empresaId) {
         await produtosRepository.substituirCategorias(id, categoriaIds, empresaId, client);
 
         if (!produto.sku && categorias.length > 0) {
-            const sku = await skuService.gerar(categorias, empresaId, client);
+            const resultadoSku = await skuService.gerar(categorias, empresaId, client);
 
             try {
-                const atualizado = await produtosRepository.definirSkuSeNulo(id, sku, empresaId, client);
-                if (atualizado) produtoAtualizado = atualizado;
+                const atualizado = await produtosRepository.definirSkuSeNulo(id, resultadoSku.sku, empresaId, client);
+                if (atualizado) {
+                    produtoAtualizado = atualizado;
+                    await historicoSkuRepository.registrar({
+                        empresa_id: empresaId,
+                        produto_id: id,
+                        sku: resultadoSku.sku,
+                        configuracao_id: resultadoSku.configuracao.id,
+                        usuario_id: usuarioId,
+                        acao: 'gerado',
+                        motivo: 'SKU gerado automaticamente pela categorização do produto'
+                    }, client);
+                }
             } catch (error) {
                 if (error.code === '23505') {
                     throw new AppError('Erro ao gerar SKU, tente novamente', 409);
