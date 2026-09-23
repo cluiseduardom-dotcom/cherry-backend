@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
+    "start": "node src/database/migrate.js && node src/server.js",
     "test": "jest",
     "test:coverage": "jest --coverage",
     "db:migrate": "node src/database/migrate.js"
