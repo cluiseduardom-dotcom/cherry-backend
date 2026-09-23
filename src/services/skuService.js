@@ -61,8 +61,26 @@ function montarChaveCombinacao(codigos) {
     return codigos.join('-');
 }
 
+function formatarSequencia(contador, configuracao) {
+    if (configuracao.tipo_sku !== 'alfabetico') {
+        return String(contador).padStart(configuracao.tamanho_sequencia, '0');
+    }
+
+    let numero = Number(contador);
+    if (numero < 1) numero = 1;
+
+    let resultado = '';
+    while (numero > 0) {
+        numero -= 1;
+        resultado = String.fromCharCode(65 + (numero % 26)) + resultado;
+        numero = Math.floor(numero / 26);
+    }
+
+    return resultado.padStart(configuracao.tamanho_sequencia, 'A');
+}
+
 function formatarSku(codigos, contador, configuracao) {
-    const sequencia = String(contador).padStart(configuracao.tamanho_sequencia, '0');
+    const sequencia = formatarSequencia(contador, configuracao);
 
     return [
         configuracao.prefixo,
@@ -94,6 +112,7 @@ async function gerar(categorias, empresaId, client) {
 module.exports = {
     montarChaveCombinacao,
     formatarSku,
+    formatarSequencia,
     montarSegmentos,
     gerar
 };
