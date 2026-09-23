@@ -11,27 +11,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
 
-      # Node 20 vem com npm 10.8.2, que resolve peer deps opcionais (ex: as do
-      # jest-resolve via unrs-resolver/@napi-rs/wasm-runtime) de forma
-      # diferente do npm 11 usado localmente — isso já quebrou "npm ci" várias
-      # vezes com lockfile fora de sincronia mesmo sem mudança real de
-      # dependência. Fixar a major do npm aqui evita a divergência de vez.
-      - run: npm install -g npm@11
+      - name: Use npm 11
+        run: npm install -g npm@11
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
       - name: Syntax check
         run: find src -name "*.js" -exec node --check {} +
 
-      # Idempotente: pula se a empresa "Cherry Semijoias" já existir (branch
-      # ci-test é persistente entre runs, não recriado do zero a cada push).
       - name: Apply database migrations
         run: npm run db:migrate
         env:
@@ -47,3 +44,8 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+      - name: Quality gate summary
+        run: |
+          echo "Backend quality gate passed."
+          echo "Required checks: install, syntax, migrations, seed and tests."
