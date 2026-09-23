@@ -258,7 +258,7 @@ async function categorizar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const produto = await produtosService.categorizar(id, parsed.data.categoria_ids, req.usuario.empresa_id);
+        const produto = await produtosService.categorizar(id, parsed.data.categoria_ids, req.usuario.empresa_id, req.usuario.id);
 
         return response.success(res, filtrarParaRole(produto, req.usuario.role));
     } catch (error) {
