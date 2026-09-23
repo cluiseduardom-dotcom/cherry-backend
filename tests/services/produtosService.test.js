@@ -237,7 +237,7 @@ describe('categorizar', () => {
   test('rolls back and converts a unique-violation on the sku write into a clean 409', async () => {
     produtosRepository.buscarPorId.mockResolvedValue({ id: 1, sku: null, preco_venda: '10.00', custo: '5.00' });
     categoriasRepository.buscarPorIds.mockResolvedValue([{ id: 1, nivel: 1, codigo: 'BR' }]);
-    skuService.gerar.mockResolvedValue('BR001');
+    skuService.gerar.mockResolvedValue({ sku: 'BR001', configuracao: { id: 10 } });
     const erroColisao = new Error('duplicate key value violates unique constraint "idx_produtos_sku_unico"');
     erroColisao.code = '23505';
     produtosRepository.definirSkuSeNulo.mockRejectedValue(erroColisao);
