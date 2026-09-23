@@ -129,7 +129,8 @@ WHERE c.empresa_id = s.empresa_id
 ALTER TABLE sequencias_sku
     ALTER COLUMN configuracao_id SET NOT NULL;
 
-DROP INDEX IF EXISTS sequencias_sku_empresa_id_chave_combinacao_key;
+ALTER TABLE sequencias_sku
+    DROP CONSTRAINT IF EXISTS sequencias_sku_empresa_id_chave_combinacao_key;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sequencias_sku_empresa_config_combinacao
     ON sequencias_sku(empresa_id, configuracao_id, chave_combinacao);
