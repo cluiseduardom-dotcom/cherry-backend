@@ -98,7 +98,7 @@ SELECT
          LIMIT 1),
         'Nível ' || niveis.nivel
     ),
-    true,
+    false,
     true
 FROM configuracoes_sku c
 JOIN (
