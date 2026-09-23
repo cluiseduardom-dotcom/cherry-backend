@@ -2,6 +2,7 @@ jest.mock('../../src/repositories/produtosRepository');
 jest.mock('../../src/repositories/precosRepository');
 jest.mock('../../src/repositories/categoriasRepository');
 jest.mock('../../src/services/skuService');
+jest.mock('../../src/repositories/historicoSkuRepository');
 jest.mock('../../src/config/db');
 
 const produtosRepository = require('../../src/repositories/produtosRepository');
@@ -9,6 +10,7 @@ const precosRepository = require('../../src/repositories/precosRepository');
 const categoriasRepository = require('../../src/repositories/categoriasRepository');
 const skuService = require('../../src/services/skuService');
 const db = require('../../src/config/db');
+const historicoSkuRepository = require('../../src/repositories/historicoSkuRepository');
 const produtosService = require('../../src/services/produtosService');
 
 beforeEach(() => {
@@ -192,7 +194,7 @@ describe('categorizar', () => {
   test('generates the sku on first categorization (produto has no sku yet)', async () => {
     produtosRepository.buscarPorId.mockResolvedValue({ id: 1, sku: null, preco_venda: '10.00', custo: '5.00' });
     categoriasRepository.buscarPorIds.mockResolvedValue([{ id: 1, nivel: 1, codigo: 'BR' }]);
-    skuService.gerar.mockResolvedValue('BR001');
+    skuService.gerar.mockResolvedValue({ sku: 'BR001', configuracao: { id: 10 } });
     produtosRepository.definirSkuSeNulo.mockResolvedValue({ id: 1, sku: 'BR001', preco_venda: '10.00', custo: '5.00' });
     produtosRepository.buscarCategoriasDoProduto.mockResolvedValue([{ id: 1, nivel: 1, codigo: 'BR', nome: 'Brinco' }]);
 
@@ -201,6 +203,7 @@ describe('categorizar', () => {
     expect(produtosRepository.substituirCategorias).toHaveBeenCalledWith(1, [1], 9, client);
     expect(skuService.gerar).toHaveBeenCalledWith([{ id: 1, nivel: 1, codigo: 'BR' }], 9, client);
     expect(produtosRepository.definirSkuSeNulo).toHaveBeenCalledWith(1, 'BR001', 9, client);
+    expect(historicoSkuRepository.registrar).toHaveBeenCalledWith(expect.objectContaining({ produto_id: 1, sku: 'BR001', configuracao_id: 10, acao: 'gerado' }), client);
     expect(result.sku).toBe('BR001');
     expect(result.categorias).toEqual([{ id: 1, nivel: 1, codigo: 'BR', nome: 'Brinco' }]);
     expect(client.query).toHaveBeenCalledWith('BEGIN');
