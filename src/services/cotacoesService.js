@@ -73,8 +73,26 @@ async function adicionarOferta(cotacaoFornecedorId, dados, usuario) {
         throw new AppError('Preço unitário não pode ser negativo', 400);
     }
 
-    const fornecedor = await repository.listarFornecedoresDoItem?.();
-    void fornecedor;
+    const fornecedor = await repository.buscarFornecedor(
+        cotacaoFornecedorId,
+        usuario.empresa_id
+    );
+    if (!fornecedor) throw new AppError('Fornecedor da cotação não encontrado', 404);
+
+    const cotacao = await repository.buscarPorId(
+        fornecedor.cotacao_id,
+        usuario.empresa_id
+    );
+    if (!cotacao) throw new AppError('Cotação não encontrada', 404);
+    validarStatusOferta(cotacao.status);
+
+    const item = await repository.buscarItem(
+        dados.cotacao_item_id,
+        usuario.empresa_id
+    );
+    if (!item || item.cotacao_id !== fornecedor.cotacao_id) {
+        throw new AppError('Item não pertence à cotação informada', 400);
+    }
 
     return repository.adicionarOferta({
         ...dados,
