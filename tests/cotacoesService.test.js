@@ -4,6 +4,8 @@ jest.mock('../src/repositories/cotacoesRepository', () => ({
     adicionarFornecedor: jest.fn(),
     adicionarOferta: jest.fn(),
     buscarPorId: jest.fn(),
+    buscarFornecedor: jest.fn(),
+    buscarItem: jest.fn(),
     listarItens: jest.fn(),
     listarFornecedores: jest.fn(),
     listarOfertas: jest.fn(),
@@ -82,6 +84,49 @@ describe('cotacoesService', () => {
         }, { empresa_id: 10 })).rejects.toMatchObject({ statusCode: 400 });
 
         expect(repository.adicionarOferta).not.toHaveBeenCalled();
+    });
+
+    test('rejeita oferta para item de outra cotação', async () => {
+        repository.buscarFornecedor.mockResolvedValue({
+            id: 2, empresa_id: 10, cotacao_id: 1, fornecedor_id: 30
+        });
+        repository.buscarPorId.mockResolvedValue({
+            id: 1, empresa_id: 10, status: 'ABERTA'
+        });
+        repository.buscarItem.mockResolvedValue({
+            id: 5, empresa_id: 10, cotacao_id: 99
+        });
+
+        await expect(service.adicionarOferta(2, {
+            cotacao_item_id: 5,
+            quantidade_ofertada: 10,
+            preco_unitario: 10
+        }, { empresa_id: 10 })).rejects.toMatchObject({ statusCode: 400 });
+
+        expect(repository.adicionarOferta).not.toHaveBeenCalled();
+    });
+
+    test('adiciona oferta somente com cotação aberta', async () => {
+        repository.buscarFornecedor.mockResolvedValue({
+            id: 2, empresa_id: 10, cotacao_id: 1, fornecedor_id: 30
+        });
+        repository.buscarPorId.mockResolvedValue({
+            id: 1, empresa_id: 10, status: 'ABERTA'
+        });
+        repository.buscarItem.mockResolvedValue({
+            id: 5, empresa_id: 10, cotacao_id: 1
+        });
+        repository.adicionarOferta.mockResolvedValue({
+            id: 8, preco_unitario: 12.5
+        });
+
+        await expect(service.adicionarOferta(2, {
+            cotacao_item_id: 5,
+            quantidade_ofertada: 10,
+            preco_unitario: 12.5
+        }, { empresa_id: 10 })).resolves.toEqual({
+            id: 8, preco_unitario: 12.5
+        });
     });
 
     test('isolamento por empresa ao obter cotação', async () => {
