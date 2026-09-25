@@ -82,6 +82,24 @@ async function buscarPorId(id, empresa_id, clienteExterno) {
     return rows[0] || null;
 }
 
+async function buscarFornecedor(id, empresa_id, clienteExterno) {
+    const client = clienteExterno || db;
+    const { rows } = await client.query(
+        'SELECT * FROM cotacoes_fornecedores WHERE id = $1 AND empresa_id = $2',
+        [id, empresa_id]
+    );
+    return rows[0] || null;
+}
+
+async function buscarItem(id, empresa_id, clienteExterno) {
+    const client = clienteExterno || db;
+    const { rows } = await client.query(
+        'SELECT * FROM cotacoes_itens WHERE id = $1 AND empresa_id = $2',
+        [id, empresa_id]
+    );
+    return rows[0] || null;
+}
+
 async function listarItens(id, empresa_id, clienteExterno) {
     const client = clienteExterno || db;
     const { rows } = await client.query(
@@ -153,6 +171,8 @@ module.exports = {
     adicionarFornecedor,
     adicionarOferta,
     buscarPorId,
+    buscarFornecedor,
+    buscarItem,
     listarItens,
     listarFornecedores,
     listarOfertas,
