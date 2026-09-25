@@ -2,7 +2,7 @@ const AppError=require('../errors/AppError');
 const repository=require('../repositories/fluxoCaixaRepository');
 
 function validarData(valor,nome){
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(valor))) throw new AppError(`${nome} inválida`,400);
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(valor))) throw new AppError(`${nome} inválida`,400);
  return valor;
 }
 async function resumo(filtros,usuario){
