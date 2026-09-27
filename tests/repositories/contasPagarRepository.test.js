@@ -203,7 +203,7 @@ describe('criar', () => {
     expect(resultado.compra_id).toBe(3);
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain('INSERT INTO contas_pagar');
-    expect(params).toEqual(['Compra #1', 'Metais & Cia', 100, '2026-09-10', null, null, 2, 9, 3]);
+    expect(params).toEqual(['Compra #1', 'Metais & Cia', 100, '2026-09-10', null, null, 2, 9, 3, null]);
   });
 
   test('reuses an external client without managing the transaction', async () => {
