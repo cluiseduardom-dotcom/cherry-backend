@@ -31,7 +31,8 @@ const service = require('../src/services/integracaoRecebimentoService');
 
 function clientMock() {
     return {
-        query: jest.fn()
+        query: jest.fn(),
+        release: jest.fn()
     };
 }
 
