@@ -13,6 +13,10 @@ jest.mock('../src/repositories/eventosNegocioRepository', () => ({
     marcarProcessado: jest.fn()
 }));
 
+jest.mock('../src/services/integracaoFinanceiraRecebimentoService', () => ({
+    criarObrigacao: jest.fn()
+}));
+
 jest.mock('../src/repositories/integracaoRecebimentoRepository', () => ({
     buscarPorIdForUpdate: jest.fn(),
     listarItens: jest.fn(),
@@ -27,6 +31,7 @@ const db = require('../src/config/db');
 const estoqueRepository = require('../src/repositories/estoqueRepository');
 const eventosRepository = require('../src/repositories/eventosNegocioRepository');
 const repository = require('../src/repositories/integracaoRecebimentoRepository');
+const financeiroRecebimentoService = require('../src/services/integracaoFinanceiraRecebimentoService');
 const service = require('../src/services/integracaoRecebimentoService');
 
 function clientMock() {
@@ -83,6 +88,10 @@ describe('integracaoRecebimentoService', () => {
             id: 700,
             status: 'PROCESSADO'
         });
+        financeiroRecebimentoService.criarObrigacao.mockResolvedValue({
+            conta_pagar: { id: 800 },
+            idempotente: false
+        });
 
         const result = await service.aprovar(10, { empresa_id: 1, id: 99 });
 
@@ -98,6 +107,7 @@ describe('integracaoRecebimentoService', () => {
         );
         expect(repository.atualizarQuantidadeRecebidaPedidoItem).toHaveBeenCalledWith(200, 1, client);
         expect(repository.atualizarStatusPedido).toHaveBeenCalledWith(20, 1, client);
+        expect(financeiroRecebimentoService.criarObrigacao).toHaveBeenCalledWith(10, { empresa_id: 1, id: 99 }, client);
         expect(eventosRepository.criar).toHaveBeenCalledWith(
             expect.objectContaining({
                 empresa_id: 1,
@@ -108,6 +118,7 @@ describe('integracaoRecebimentoService', () => {
             client
         );
         expect(result.recebimento.status).toBe('APROVADO');
+        expect(result.conta_pagar.id).toBe(800);
         expect(client.query).toHaveBeenCalledWith('COMMIT');
     });
 
@@ -120,10 +131,15 @@ describe('integracaoRecebimentoService', () => {
             status: 'APROVADO'
         });
         eventosRepository.buscarPorEntidade.mockResolvedValue({ id: 700, status: 'PROCESSADO' });
+        financeiroRecebimentoService.criarObrigacao.mockResolvedValue({
+            conta_pagar: { id: 800 },
+            idempotente: true
+        });
 
         const result = await service.aprovar(10, { empresa_id: 1, id: 99 });
 
         expect(result.idempotente).toBe(true);
+        expect(financeiroRecebimentoService.criarObrigacao).toHaveBeenCalledWith(10, { empresa_id: 1, id: 99 }, client);
         expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
         expect(eventosRepository.criar).not.toHaveBeenCalled();
         expect(client.query).toHaveBeenCalledWith('COMMIT');
