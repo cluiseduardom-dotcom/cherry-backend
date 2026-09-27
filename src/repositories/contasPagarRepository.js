@@ -77,7 +77,8 @@ async function criar({ descricao, fornecedor, valor, data_vencimento, categoria,
             observacao ?? null,
             usuario_id,
             empresa_id,
-            compra_id ?? null
+            compra_id ?? null,
+            recebimento_id ?? null
         ]
     );
 
@@ -195,6 +196,7 @@ async function cancelarPorCompraId(compra_id, empresa_id, clienteExterno) {
 module.exports = {
     listarPaginado,
     buscarPorId,
+    buscarPorRecebimentoId,
     criar,
     atualizar,
     marcarComoPaga,
