@@ -62,8 +62,8 @@ async function adicionar(produtoId, dados, empresaId, usuarioId) {
     const produto = await produtosRepository.buscarPorId(produtoId, empresaId);
     if (!produto) throw new AppError('Produto não encontrado', 404);
 
-    const codigo = normalizarCodigo(dados.codigo);
     const tipo = dados.tipo ?? 'EAN_13';
+    const codigo = TIPOS_COMERCIAIS.has(tipo) ? normalizarCodigoComercial(dados.codigo) : normalizarCodigo(dados.codigo);
     validarCodigo(codigo, tipo);
 
     try {
