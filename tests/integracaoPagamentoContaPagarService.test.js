@@ -1,11 +1,11 @@
-jest.mock('../../src/config/db');
-jest.mock('../../src/repositories/transacoesPagamentoRepository');
-jest.mock('../../src/repositories/liquidacoesPagamentoRepository');
+jest.mock('../src/config/db');
+jest.mock('../src/repositories/transacoesPagamentoRepository');
+jest.mock('../src/repositories/liquidacoesPagamentoRepository');
 
-const db = require('../../src/config/db');
-const transacoes = require('../../src/repositories/transacoesPagamentoRepository');
-const liquidacoes = require('../../src/repositories/liquidacoesPagamentoRepository');
-const service = require('../../src/services/integracaoPagamentoContaPagarService');
+const db = require('../src/config/db');
+const transacoes = require('../src/repositories/transacoesPagamentoRepository');
+const liquidacoes = require('../src/repositories/liquidacoesPagamentoRepository');
+const service = require('../src/services/integracaoPagamentoContaPagarService');
 
 function clientFake(conta = { id: 10, status: 'pendente', valor: '100.00', data_vencimento: '2026-09-30' }) {
   return {
