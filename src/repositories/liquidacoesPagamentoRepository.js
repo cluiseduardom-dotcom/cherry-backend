@@ -1,13 +1,14 @@
-const pool = require('../config/database');
+const pool = require('../config/db');
 
-async function criar(dados) {
+async function criar(dados, clienteExterno) {
+  const client = clienteExterno || pool;
   const {
     empresa_id, transacao_pagamento_id, transacao_pagamento_parcela_id = null,
     tipo, valor_bruto, taxa = 0, valor_liquido,
     data_prevista = null, referencia_externa = null, observacao = null, usuario_id = null
   } = dados;
 
-  const { rows } = await pool.query(
+  const { rows } = await client.query(
     `INSERT INTO liquidacoes_pagamento
       (empresa_id, transacao_pagamento_id, transacao_pagamento_parcela_id, tipo,
        valor_bruto, taxa, valor_liquido, data_prevista, referencia_externa, observacao, usuario_id)

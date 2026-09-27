@@ -103,7 +103,7 @@ async function atualizar(req, res, next) {
 async function marcarComoPaga(req, res, next) {
     try {
         const id = parseId(req.params.id);
-        const conta = await contasPagarService.marcarComoPaga(id, req.usuario.empresa_id);
+        const conta = await contasPagarService.marcarComoPaga(id, req.body || {}, req.usuario);
 
         return response.success(res, conta);
     } catch (error) {
