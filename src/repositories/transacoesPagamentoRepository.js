@@ -1,7 +1,8 @@
 const db=require('../config/db');
 
-async function criar(dados){
-    const {rows}=await db.query(
+async function criar(dados, clienteExterno){
+    const client = clienteExterno || db;
+    const {rows}=await client.query(
         `INSERT INTO transacoes_pagamento
             (empresa_id,tipo,forma_pagamento,origem,provedor,valor,taxa,
              valor_liquido,status,transacao_externa_id,autorizacao,nsu,tid,
@@ -21,8 +22,9 @@ async function criar(dados){
     return rows[0];
 }
 
-async function criarParcela(dados){
-    const {rows}=await db.query(
+async function criarParcela(dados, clienteExterno){
+    const client = clienteExterno || db;
+    const {rows}=await client.query(
         `INSERT INTO transacoes_pagamento_parcelas
             (empresa_id,transacao_pagamento_id,numero,valor,data_prevista)
          VALUES ($1,$2,$3,$4,$5)
