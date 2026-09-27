@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+const pool = require('../config/db');
 
 async function criar(dados, clienteExterno) {
   const client = clienteExterno || pool;
