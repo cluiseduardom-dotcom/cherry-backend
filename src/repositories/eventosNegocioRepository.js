@@ -65,6 +65,17 @@ async function marcarProcessado(id, empresa_id, clienteExterno) {
     return rows[0] || null;
 }
 
+async function buscarPorEntidade(empresa_id, entidade_tipo, entidade_id, tipo_evento, clienteExterno) {
+    const client = clienteExterno || db;
+    const { rows } = await client.query(
+        `SELECT * FROM eventos_negocio
+         WHERE empresa_id = $1 AND entidade_tipo = $2 AND entidade_id = $3 AND tipo_evento = $4
+         ORDER BY id DESC LIMIT 1`,
+        [empresa_id, entidade_tipo, entidade_id, tipo_evento]
+    );
+    return rows[0] || null;
+}
+
 async function marcarErro(id, empresa_id, erro, clienteExterno) {
     const client = clienteExterno || db;
     const { rows } = await client.query(
@@ -83,5 +94,6 @@ module.exports = {
     listarPendentes,
     marcarProcessando,
     marcarProcessado,
-    marcarErro
+    marcarErro,
+    buscarPorEntidade
 };
