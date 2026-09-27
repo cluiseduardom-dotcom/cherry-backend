@@ -95,7 +95,7 @@ async function criarObrigacao(recebimentoId, usuario, client) {
     }, client);
 
     return {
-        conta_pagar: vencimentoRows[0],
+        conta_pagar: conta,
         idempotente: false,
         sem_obrigacao: false
     };
