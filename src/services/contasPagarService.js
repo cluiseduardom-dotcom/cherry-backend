@@ -68,7 +68,7 @@ async function atualizar(id, dados, empresaId) {
 // checagem antes de qualquer uma escrever.
 async function marcarComoPaga(id, dados, usuario) {
     const resultado = await integracaoPagamentoContaPagarService.pagar(id, dados, usuario);
-    return { ...resultado, conta: comAtraso(resultado.conta) };
+    return { ...comAtraso(resultado.conta), transacao_pagamento: resultado.transacao_pagamento, liquidacao: resultado.liquidacao };
 }
 
 async function cancelar(id, empresaId) {
