@@ -3,6 +3,7 @@ const AppError = require('../errors/AppError');
 const estoqueRepository = require('../repositories/estoqueRepository');
 const eventosRepository = require('../repositories/eventosNegocioRepository');
 const repository = require('../repositories/integracaoRecebimentoRepository');
+const financeiroRecebimentoService = require('./integracaoFinanceiraRecebimentoService');
 const { TIPOS_EVENTO } = require('../constants/eventosNegocio');
 
 async function aprovar(recebimentoId, usuario) {
@@ -30,8 +31,9 @@ async function aprovar(recebimentoId, usuario) {
                 TIPOS_EVENTO.RECEBIMENTO_APROVADO,
                 client
             );
+            const financeiro = await financeiroRecebimentoService.criarObrigacao(recebimentoId, usuario, client);
             await client.query('COMMIT');
-            return { recebimento, idempotente: true, evento };
+            return { recebimento, idempotente: true, evento, conta_pagar: financeiro.conta_pagar };
         }
 
         if (recebimento.status !== 'CONFERIDO') {
@@ -94,6 +96,12 @@ async function aprovar(recebimentoId, usuario) {
             );
         }
 
+        const financeiro = await financeiroRecebimentoService.criarObrigacao(
+            recebimentoId,
+            usuario,
+            client
+        );
+
         const atualizado = await repository.atualizarStatusComCliente(
             recebimentoId,
             empresaId,
@@ -119,7 +127,8 @@ async function aprovar(recebimentoId, usuario) {
                     unidade: item.unidade
                 })),
                 movimentacoes_estoque: movimentacoes.map(m => m.id),
-                pedido_status: pedido?.status ?? null
+                pedido_status: pedido?.status ?? null,
+                conta_pagar_id: financeiro.conta_pagar?.id ?? null
             },
             usuario_id: usuario.id
         }, client);
@@ -137,7 +146,8 @@ async function aprovar(recebimentoId, usuario) {
             recebimento: atualizado,
             pedido,
             evento: processado,
-            movimentacoes_estoque: movimentacoes
+            movimentacoes_estoque: movimentacoes,
+            conta_pagar: financeiro.conta_pagar
         };
     } catch (error) {
         await client.query('ROLLBACK');
