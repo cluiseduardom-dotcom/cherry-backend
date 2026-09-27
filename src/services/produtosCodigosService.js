@@ -10,7 +10,7 @@ function normalizarCodigo(codigo) {
 }
 
 function normalizarCodigoComercial(codigo) {
-    return normalizarCodigo(codigo).replace(/[\\s-]/g, '');
+    return normalizarCodigo(codigo).replace(/[\s-]/g, '');
 }
 
 function validarDigitoVerificador(codigo) {
