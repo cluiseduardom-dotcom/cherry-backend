@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS produtos_codigos (
     principal BOOLEAN NOT NULL DEFAULT false,
     descricao VARCHAR(255),
     ativo BOOLEAN NOT NULL DEFAULT true,
-    criado_por INTEGER REFERENCES usuarios(id),
+    criado_por INTEGER,
     criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT produtos_codigos_tipo_chk CHECK (
