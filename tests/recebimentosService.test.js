@@ -66,10 +66,10 @@ describe('recebimentosService',()=>{
         expect(repository.atualizarStatus).not.toHaveBeenCalled();
     });
 
-    test('permite conferido virar aprovado',async()=>{
+    test('não permite aprovação direta fora da integração',async()=>{
         repository.buscarPorId.mockResolvedValue({id:1,empresa_id:10,status:'CONFERIDO'});
-        repository.atualizarStatus.mockResolvedValue({id:1,status:'APROVADO'});
         await expect(service.alterarStatus(1,'APROVADO',{empresa_id:10}))
-            .resolves.toEqual({id:1,status:'APROVADO'});
+            .rejects.toMatchObject({statusCode:409});
+        expect(repository.atualizarStatus).not.toHaveBeenCalled();
     });
 });

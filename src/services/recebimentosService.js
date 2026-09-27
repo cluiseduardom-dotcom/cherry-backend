@@ -4,7 +4,7 @@ const repository = require('../repositories/recebimentosRepository');
 const TRANSICOES = {
     RASCUNHO: ['EM_CONFERENCIA', 'CANCELADO'],
     EM_CONFERENCIA: ['CONFERIDO', 'DIVERGENCIA', 'RASCUNHO', 'CANCELADO'],
-    CONFERIDO: ['APROVADO', 'DIVERGENCIA', 'EM_CONFERENCIA'],
+    CONFERIDO: ['DIVERGENCIA', 'EM_CONFERENCIA'],
     DIVERGENCIA: ['EM_CONFERENCIA', 'CONFERIDO', 'CANCELADO'],
     APROVADO: [],
     CANCELADO: []
@@ -77,6 +77,9 @@ async function alterarStatus(id, proximoStatus, usuario) {
     const recebimento = await repository.buscarPorId(id, usuario.empresa_id);
     if (!recebimento) throw new AppError('Recebimento não encontrado', 404);
     validarTransicao(recebimento.status, proximoStatus);
+    if (proximoStatus === 'APROVADO') {
+        throw new AppError('Aprovação deve ser realizada pela operação de integração do recebimento', 409);
+    }
     return repository.atualizarStatus(id, usuario.empresa_id, proximoStatus);
 }
 
