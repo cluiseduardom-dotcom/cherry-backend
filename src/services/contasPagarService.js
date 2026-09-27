@@ -1,4 +1,5 @@
 const contasPagarRepository = require('../repositories/contasPagarRepository');
+const integracaoPagamentoContaPagarService = require('./integracaoPagamentoContaPagarService');
 const AppError = require('../errors/AppError');
 
 // "atrasado" nunca é gravado: é sempre derivado de status + data_vencimento
@@ -65,9 +66,9 @@ async function atualizar(id, dados, empresaId) {
 // delegar direto pro repository: fazer a leitura+checagem aqui e a escrita lá
 // deixaria uma janela para duas requisições concorrentes passarem ambas pela
 // checagem antes de qualquer uma escrever.
-async function marcarComoPaga(id, empresaId) {
-    const paga = await contasPagarRepository.marcarComoPaga(id, empresaId);
-    return comAtraso(paga);
+async function marcarComoPaga(id, dados, usuario) {
+    const resultado = await integracaoPagamentoContaPagarService.pagar(id, dados, usuario);
+    return { ...resultado, conta: comAtraso(resultado.conta) };
 }
 
 async function cancelar(id, empresaId) {
