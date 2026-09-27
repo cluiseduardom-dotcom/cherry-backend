@@ -67,7 +67,14 @@ async function atualizar(id, dados, empresaId) {
 // deixaria uma janela para duas requisições concorrentes passarem ambas pela
 // checagem antes de qualquer uma escrever.
 async function marcarComoPaga(id, dados, usuario) {
-    const resultado = await integracaoPagamentoContaPagarService.pagar(id, dados, usuario);
+    // Compatibilidade com chamadas legadas que ainda passam empresaId diretamente.
+    // O fluxo novo usa o usuário autenticado e integra Payment Layer + liquidação.
+    if (usuario === undefined) {
+        const conta = await contasPagarRepository.marcarComoPaga(id, dados);
+        return comAtraso(conta);
+    }
+
+    const resultado = await integracaoPagamentoContaPagarService.pagar(id, dados || {}, usuario);
     return { ...comAtraso(resultado.conta), transacao_pagamento: resultado.transacao_pagamento, liquidacao: resultado.liquidacao };
 }
 
