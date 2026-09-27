@@ -6,11 +6,15 @@ const TIPOS_COMERCIAIS = new Set(['EAN_8','EAN_13','EAN_14','UPC_A','GTIN_14']);
 const TIPOS_VALIDOS = new Set([...TIPOS_COMERCIAIS, 'INTERNO', 'OUTRO']);
 
 function normalizarCodigo(codigo) {
-    return String(codigo ?? '').trim().replace(/[\\s-]/g, '');
+    return String(codigo ?? '').trim();
+}
+
+function normalizarCodigoComercial(codigo) {
+    return normalizarCodigo(codigo).replace(/[\\s-]/g, '');
 }
 
 function validarDigitoVerificador(codigo) {
-    if (!/^\\d+$/.test(codigo)) return false;
+    if (!/^\d+$/.test(codigo)) return false;
     const digits = codigo.split('').map(Number);
     const check = digits.pop();
     let soma = 0;
@@ -33,7 +37,7 @@ function validarCodigo(codigo, tipo) {
             UPC_A: 12,
             GTIN_14: 14
         };
-        if (!/^\\d+$/.test(codigo) || codigo.length !== tamanhos[tipo]) {
+        if (!/^\d+$/.test(codigo) || codigo.length !== tamanhos[tipo]) {
             throw new AppError(`Código ${tipo} deve possuir ${tamanhos[tipo]} dígitos`, 400);
         }
         if (!validarDigitoVerificador(codigo)) {
