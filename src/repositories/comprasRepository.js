@@ -86,6 +86,14 @@ async function criar({ fornecedor_id, data_compra, nota_fiscal, forma_pagamento,
                 throw new AppError('Produto não encontrado', 404);
             }
 
+            // Liga a movimentação de entrada à compra (compra_id, migration
+            // 042) pra cancelar() conseguir localizar depois a movimentação
+            // de origem e distingui-la de qualquer movimentação posterior.
+            await client.query(
+                'UPDATE movimentacoes_estoque SET compra_id = $1 WHERE id = $2',
+                [compra.id, resultado.movimentacao.id]
+            );
+
             itensProcessados.push({
                 produto_id: item.produto_id,
                 quantidade: item.quantidade,
@@ -232,6 +240,38 @@ async function cancelar(id, usuario_id, empresa_id) {
         }
 
         await contasPagarRepository.cancelarPorCompraId(id, empresa_id, client);
+
+        // Bloqueia o cancelamento se, pra qualquer produto desta compra,
+        // existir uma movimentação de estoque POSTERIOR à movimentação de
+        // entrada gerada pela própria compra (venda, nova entrada, ajuste,
+        // perda, transferência etc. — qualquer tipo, não só saída). Usa
+        // MAX(id) por produto (não a movimentação individual) pra não se
+        // auto-bloquear quando a própria compra tem mais de um item do
+        // mesmo produto; `id` (não `criado_em`) evita empate de timestamp.
+        // Roda antes de tocar em estoque, dentro da mesma transação —
+        // issue #79.
+        const { rows: movimentacoesPosterioresRows } = await client.query(
+            `SELECT 1
+             FROM (
+                 SELECT produto_id, MAX(id) AS ultima_id
+                 FROM movimentacoes_estoque
+                 WHERE compra_id = $1 AND empresa_id = $2
+                 GROUP BY produto_id
+             ) origem
+             JOIN movimentacoes_estoque posterior
+               ON posterior.produto_id = origem.produto_id
+              AND posterior.empresa_id = $2
+              AND posterior.id > origem.ultima_id
+             LIMIT 1`,
+            [id, empresa_id]
+        );
+
+        if (movimentacoesPosterioresRows.length) {
+            throw new AppError(
+                'Não é possível cancelar esta compra porque o estoque dos produtos já sofreu movimentações posteriores ao recebimento. Para preservar a rastreabilidade, utilize a operação de devolução ou ajuste apropriada.',
+                409
+            );
+        }
 
         const { rows: itensRows } = await client.query(
             'SELECT produto_id, quantidade FROM itens_compra WHERE compra_id = $1',
