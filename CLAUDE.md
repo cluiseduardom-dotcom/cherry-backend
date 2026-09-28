@@ -97,8 +97,7 @@ Regras já decididas no filtro de `empresa_id` na aplicação (não reabrir):
 Regras já decididas em contas a receber (não reabrir):
 - Acesso: **admin apenas** (mesmo padrão de contas a pagar/dashboard). Nem vendedor nem estoquista acessam.
 - Vínculo é automático, não manual: `vendas` ganhou `forma_pagamento` (`a_vista`/`prazo`, default `a_vista`). Só venda `prazo` gera uma linha em `contas_receber`, dentro da mesma transação de `vendasRepository.criar` — venda à vista já é dinheiro recebido na hora, não entra no fluxo de "a receber". Não existe `POST`/`PUT` manual em `/contas-receber`: toda linha nasce de uma venda.
-- `data_vencimento` vem de `dias_prazo` (número, obrigatório só quando `forma_pagamento = 'prazo'`, validado com `.refine` em `criarVendaSchema`) somado à data da venda — não é uma data explícita no payload. Cálculo usa getters locais do `Date` (`getFullYear`/`getMonth`/`getDate`), nunca `toISOString`, pela mesma armadilha de fuso horário já documentada em contas a pagar.
-- `valor` é copiado de `vendas.total` no momento da criação e travado (nunca recalculado a partir da venda depois) — mesma filosofia de `preco_unitario` em `itens_venda`.
+- `data_vencimento` vem de `dias_prazo` (número, obrigatório só quando `forma_pagamento = 'prazo'`, validado com `.refine` em `criarVendaSchema`) somado à data da venda — não é uma data explícita no payload. Cálculo usa getters locais do `Date` (`getFullYear`/`getMonth`/`getDate`), nunca `toISOString`, pela mesma armadilha de fuso horário já documentada em contas a pagar.- `valor` é copiado de `vendas.total` no momento da criação e travado (nunca recalculado a partir da venda depois) — mesma filosofia de `preco_unitario` em `itens_venda`.
 - `PATCH /vendas/:id/cancelar` cancela a conta a receber vinculada automaticamente, mas **só se ainda estiver `pendente`**. Se já foi `recebido`, o dinheiro já entrou: o cancelamento da **venda inteira** é bloqueado com 409 (`Venda com conta a receber já recebida não pode ser cancelada`), mesmo padrão de mensagem/status code do bloqueio de edição em `contasPagarRepository.atualizar`. Essa checagem roda logo após validar que a venda está `finalizada` e antes de estornar estoque ou atualizar o status da venda (`contasReceberRepository.cancelarPorVendaId`, dentro da mesma transação, reaproveitando o client externo, mesmo padrão de `estoqueRepository.criarMovimentacao`) — se bloquear, a transação inteira roda `ROLLBACK` e nada (estoque, status da venda) fica parcialmente alterado. Venda à vista nunca gerou conta, então é no-op.
 - `status` segue o mesmo padrão de contas a pagar: só 3 valores persistidos (`pendente`, `recebido`, `cancelado`); `atrasado` é campo calculado na leitura, nunca gravado.
 - `PATCH /contas-receber/:id/receber` marca como recebida, só a partir de `pendente`, com `FOR UPDATE` — mesmo padrão de `contasPagarRepository.marcarComoPaga`. Não existe cancelamento manual de conta a receber fora do cancelamento da venda: se for necessário no futuro (ex: perdão de dívida), é decisão de negócio a confirmar antes de implementar.
@@ -197,8 +196,7 @@ Migration `019_categorias_produto.sql`: `categorias_produto` (configurável por 
 Migration `020_niveis_categoria.sql`: `niveis_categoria` (`empresa_id`, `nivel`, `nome`, `UNIQUE(empresa_id, nivel)`) deixa cada empresa nomear o que um `categorias_produto.nivel` significa pra ela — Cherry usa 1=família, 2=material, 3=gênero; outra empresa do sistema (perfumes/eletrônicos) usa outros conceitos. Sem isso a UI só podia mostrar "Nível 1/2/3" ou cravar rótulos fixos no frontend, o que anularia a configurabilidade por empresa já construída em `categorias_produto`.
 
 - **`niveis_categoria` é uma tabela INDEPENDENTE de `categorias_produto` — sem FK entre `categorias_produto.nivel` e esta tabela.** Decisão tomada nesta sessão (não havia decisão prévia). Motivo: hoje é possível criar uma categoria em qualquer nível sem rótulo pré-cadastrado; uma FK passaria a exigir o rótulo antes da categoria — mudança de comportamento que quebraria fluxos e dados já existentes (toda empresa hoje tem `niveis_categoria` vazia). Se essa decisão for revisitada no futuro (ex.: exigir rótulo obrigatório), precisa de backfill explícito e de uma decisão de negócio sobre o que fazer com níveis já em uso sem rótulo — não é automático.
-- **Sem soft delete.** Diferente de `categorias_produto`, um rótulo de nível não tem histórico a preservar — `DELETE /niveis-categoria/:id` remove a linha de verdade. Não cascateia: categorias em `categorias_produto` naquele nível continuam funcionando normalmente, só voltam a aparecer sem nome (mesmo estado de hoje, antes de qualquer rótulo existir).
-- **Renomear (`PUT /niveis-categoria/:id`, só `{ nome }`, `.strict()`) nunca toca SKU nem `categorias_produto`.** O rótulo é puramente display — a `chave_combinacao` da sequência de SKU continua ancorada no texto de `categorias_produto.codigo` (decisão 7 do spec de categorias/SKU), nunca no nome do nível. Mandar `nivel` no body de `PUT` é 400 explícito (mesmo padrão de `PUT /categorias/:id` rejeitando `codigo`/`nivel`), não ignorado em silêncio.
+- **Sem soft delete.** Diferente de `categorias_produto`, um rótulo de nível não tem histórico a preservar — `DELETE /niveis-categoria/:id` remove a linha de verdade. Não cascateia: categorias em `categorias_produto` naquele nível continuam funcionando normalmente, só voltam a aparecer sem nome (mesmo estado de hoje, antes de qualquer rótulo existir).- **Renomear (`PUT /niveis-categoria/:id`, só `{ nome }`, `.strict()`) nunca toca SKU nem `categorias_produto`.** O rótulo é puramente display — a `chave_combinacao` da sequência de SKU continua ancorada no texto de `categorias_produto.codigo` (decisão 7 do spec de categorias/SKU), nunca no nome do nível. Mandar `nivel` no body de `PUT` é 400 explícito (mesmo padrão de `PUT /categorias/:id` rejeitando `codigo`/`nivel`), não ignorado em silêncio.
 - **Acesso: admin+estoquista** (`requireEstoquista`, mesmo padrão de `/categorias`) — vendedor recebe 403 em toda rota do módulo, princípio de não divergir de um recurso irmão sem motivo.
 - **`GET /categorias` e a geração de SKU continuam funcionando para empresa sem nenhum rótulo cadastrado** — nível sem rótulo não é erro, é o estado padrão de toda empresa hoje (inclusive todas as que já usam categorias antes desta migration). Coberto por teste dedicado em `tests/repositories/categoriasRepository.test.js` e `tests/routes/categorias.test.js`.
 - Mesmo padrão de nomenclatura do projeto: `criado_em`/`atualizado_em`, não `created_at`/`updated_at`.
@@ -238,29 +236,64 @@ Migration `020_niveis_categoria.sql`: `niveis_categoria` (`empresa_id`, `nivel`,
 
 ## Como trabalhar comigo
 
+- **Claude Code é o executor técnico do projeto.** Recebe a especificação, investiga o código existente, implementa, testa e prepara o PR.
+- **GPT é o arquiteto/revisor.** A especificação técnica, decisões de arquitetura e auditoria de PR devem seguir o SDD e o estado real do repositório.
+- **Usuário é o Product Owner.** Aprova mudanças de negócio e decide o merge.
+- Antes de implementar, investigue o código existente e confirme se a funcionalidade já existe. Não duplicar serviços, repositories, rotas, migrations ou regras.
 - Escopo fechado: faça o que foi pedido, teste, pare. Se aparecer uma melhoria fora do escopo, anote no resumo final em vez de implementar.
-- Não faça, sem eu pedir: bump de versão, licença, badges, README novo, refatoração de código não relacionado, troca de dependência.
-- Decisões pequenas e reversíveis: decida e siga, documentando no commit. Decisões irreversíveis ou que mudam regra de negócio: pergunte antes.
-- Commit ao final, mensagem descritiva em português. Push só quando eu pedir.
-- Resumo final curto: o que mudou, decisões tomadas sozinho, o que foi testado, hash do commit.
-- NUNCA faça push sem eu pedir explicitamente
+- Decisões pequenas e reversíveis: decida e siga, documentando no commit. Decisões irreversíveis ou que mudam regra de negócio: pare e peça confirmação.
+- Toda mudança de schema exige migration versionada e atualização de `schema.sql` conforme a convenção existente.
+- Toda funcionalidade nova deve preservar multi-tenant, RBAC, transações e auditoria já existentes.
+- Ao terminar: executar testes relevantes, lint/syntax/build quando aplicável, revisar o diff e abrir um PR com resumo, riscos e evidências dos testes.
+- Não fazer merge da própria PR.
+- Não alterar `master` diretamente.
 
 ## Fluxo de branches
-- Nunca commitar direto em `master`.
-- Todo trabalho começa com `git checkout -b feat/<modulo>` a partir de `master` atualizado.
-- Push e abertura de PR são feitos manualmente por mim, no terminal.
-- Merge só depois do CI verde.
 
-## Agent skills
+- Todo trabalho começa a partir de `master` atualizado.
+- Criar uma branch por tarefa, seguindo `feat/<modulo>`, `fix/<modulo>` ou `chore/<modulo>`.
+- O executor pode fazer commit e push da própria branch de trabalho e abrir a PR.
+- **Nunca** fazer push para `master`.
+- Merge somente após CI verde, revisão arquitetural e aprovação do Product Owner.
+- Se a CI falhar, corrigir na mesma branch e atualizar a PR; não criar uma segunda PR para a mesma tarefa.
+- Nunca reescrever histórico compartilhado com `push --force` sem autorização explícita.
 
-### Issue tracker
+## Contrato de entrega para PR
 
-Issues vivem no GitHub Issues deste repo (via CLI `gh`). See `docs/agents/issue-tracker.md`.
+Toda PR do executor deve informar:
 
-### Triage labels
+1. objetivo;
+2. arquivos/migrations alterados;
+3. regras de negócio implementadas;
+4. isolamento por `empresa_id`;
+5. permissões/RBAC;
+6. testes executados e resultado;
+7. migrations que precisam ser aplicadas;
+8. riscos ou pontos pendentes;
+9. confirmação de que não houve alteração fora do escopo.
 
-Vocabulário padrão das 5 roles canônicas (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+## Segurança operacional
 
-### Domain docs
+- Nunca imprimir, commitar ou expor `.env`, secrets, tokens, senhas ou `DATABASE_URL`.
+- Nunca executar SQL destrutivo em produção.
+- Não alterar migrations já mergeadas para corrigir histórico; criar migration corretiva.
+- Não fazer deploy manual como parte de uma tarefa de código sem autorização explícita.
 
-Single-context — `CONTEXT.md` + `docs/adr/` na raiz do repo. See `docs/agents/domain.md`.
+## Estado do fluxo de IA
+
+```
+Product Owner
+     ↓
+GPT — arquitetura / especificação / auditoria
+     ↓
+Claude Code — implementação / testes / PR
+     ↓
+GitHub Actions — CI
+     ↓
+GPT — revisão técnica
+     ↓
+Product Owner — aprovação
+     ↓
+Merge
+```
+
