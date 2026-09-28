@@ -221,4 +221,17 @@ describe('PATCH /compras/:id/cancelar', () => {
 
     expect(res.status).toBe(409);
   });
+
+  test('returns 409 when a produto had a stock movement after the compra was received', async () => {
+    comprasService.cancelar.mockRejectedValue(
+      new AppError(
+        'Não é possível cancelar esta compra porque o estoque dos produtos já sofreu movimentações posteriores ao recebimento. Para preservar a rastreabilidade, utilize a operação de devolução ou ajuste apropriada.',
+        409
+      )
+    );
+
+    const res = await request(app).patch('/compras/1/cancelar').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(409);
+  });
 });

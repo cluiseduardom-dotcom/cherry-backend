@@ -327,6 +327,14 @@ CREATE TABLE itens_compra (
 
 ALTER TABLE contas_pagar ADD COLUMN compra_id INTEGER UNIQUE REFERENCES compras(id);
 
+-- Liga a movimentação de entrada gerada no recebimento de uma compra à
+-- própria compra — necessário pra comprasRepository.cancelar distinguir a
+-- movimentação de origem de qualquer movimentação POSTERIOR do mesmo
+-- produto (venda, nova entrada, ajuste etc.), que bloqueia o cancelamento
+-- (issue #79). Nullable e sem UNIQUE: a maioria das linhas não vem de
+-- compra nenhuma, e uma compra com vários itens gera várias movimentações.
+ALTER TABLE movimentacoes_estoque ADD COLUMN compra_id INTEGER REFERENCES compras(id);
+
 ALTER TABLE produtos ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'acabado' CHECK (tipo IN ('acabado', 'insumo'));
 
 CREATE TABLE fichas_tecnicas (
@@ -376,6 +384,7 @@ CREATE INDEX idx_vendas_usuario_id ON vendas(usuario_id);
 CREATE INDEX idx_itens_venda_venda_id ON itens_venda(venda_id);
 CREATE INDEX idx_itens_venda_produto_id ON itens_venda(produto_id);
 CREATE INDEX idx_movimentacoes_estoque_produto_id ON movimentacoes_estoque(produto_id);
+CREATE INDEX idx_movimentacoes_estoque_compra_id ON movimentacoes_estoque(compra_id);
 CREATE INDEX idx_precos_produto_produto_canal ON precos_produto(produto_id, canal_id, criado_em DESC);
 CREATE INDEX idx_contas_pagar_status ON contas_pagar(status);
 CREATE INDEX idx_contas_pagar_vencimento ON contas_pagar(data_vencimento);

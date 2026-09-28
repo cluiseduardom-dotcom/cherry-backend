@@ -8,7 +8,7 @@ const contasPagarRepository = require('../../src/repositories/contasPagarReposit
 const comprasRepository = require('../../src/repositories/comprasRepository');
 const AppError = require('../../src/errors/AppError');
 
-function makeFakeClient({ fornecedor = {}, produtos = {}, compra = {} } = {}) {
+function makeFakeClient({ fornecedor = {}, produtos = {}, compra = {}, posterior = [] } = {}) {
   const client = {
     query: jest.fn(),
     release: jest.fn()
@@ -57,6 +57,10 @@ function makeFakeClient({ fornecedor = {}, produtos = {}, compra = {} } = {}) {
 
     if (sql.includes('SELECT produto_id, quantidade FROM itens_compra')) {
       return Promise.resolve({ rows: compra.itens ?? [] });
+    }
+
+    if (sql.includes('ultima_id')) {
+      return Promise.resolve({ rows: posterior });
     }
 
     if (sql.includes("UPDATE compras SET status = 'cancelado'")) {
@@ -173,6 +177,34 @@ describe('criar', () => {
     expect(fakeClient.query).toHaveBeenCalledWith('COMMIT');
   });
 
+  test('links each stock entrada movement back to the compra via compra_id', async () => {
+    const fakeClient = makeFakeClient({ produtos: { 1: { ativo: true }, 2: { ativo: true } } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+    estoqueRepository.criarMovimentacao
+      .mockResolvedValueOnce({ movimentacao: { id: 41 } })
+      .mockResolvedValueOnce({ movimentacao: { id: 42 } });
+
+    await comprasRepository.criar({
+      fornecedor_id: 3,
+      data_compra: '2026-08-10',
+      usuario_id: 2,
+      empresa_id: 9,
+      itens: [
+        { produto_id: 1, quantidade: 3, custo_unitario: 10 },
+        { produto_id: 2, quantidade: 2, custo_unitario: 5.5 }
+      ]
+    });
+
+    expect(fakeClient.query).toHaveBeenCalledWith(
+      'UPDATE movimentacoes_estoque SET compra_id = $1 WHERE id = $2',
+      [1, 41]
+    );
+    expect(fakeClient.query).toHaveBeenCalledWith(
+      'UPDATE movimentacoes_estoque SET compra_id = $1 WHERE id = $2',
+      [1, 42]
+    );
+  });
+
   test('does not create a conta a pagar for an à vista (default) compra', async () => {
     const fakeClient = makeFakeClient({ produtos: { 1: { ativo: true } } });
     db.connect = jest.fn().mockResolvedValue(fakeClient);
@@ -278,5 +310,64 @@ describe('cancelar', () => {
     const sqlChamados = fakeClient.query.mock.calls.map(([sql]) => sql);
     expect(sqlChamados).toContain('ROLLBACK');
     expect(sqlChamados).not.toContain('COMMIT');
+  });
+
+  test('checks for a posterior movement scoped to the compra and empresa before touching estoque', async () => {
+    const fakeClient = makeFakeClient({
+      compra: { status: 'recebido', itens: [{ produto_id: 1, quantidade: 3 }] }
+    });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+    contasPagarRepository.cancelarPorCompraId.mockResolvedValue(null);
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 } });
+
+    await comprasRepository.cancelar(1, 9, 5);
+
+    const chamada = fakeClient.query.mock.calls.find(([sql]) => sql.includes('ultima_id'));
+    expect(chamada[0]).toContain('compra_id = $1');
+    expect(chamada[0]).toContain('empresa_id = $2');
+    expect(chamada[1]).toEqual([1, 5]);
+  });
+
+  test.each([
+    ['venda (saída) posterior', 'saida'],
+    ['nova entrada posterior', 'entrada'],
+    ['ajuste/perda/transferência posterior', 'ajuste']
+  ])('blocks cancellation (409) when there is a %s of the same produto after the compra', async (_descricao, tipoPosterior) => {
+    const fakeClient = makeFakeClient({
+      compra: { status: 'recebido', itens: [{ produto_id: 1, quantidade: 3 }] },
+      posterior: [{ produto_id: 1, tipo: tipoPosterior }]
+    });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+    contasPagarRepository.cancelarPorCompraId.mockResolvedValue(null);
+
+    await expect(comprasRepository.cancelar(1, 9, 5)).rejects.toMatchObject({
+      statusCode: 409,
+      message:
+        'Não é possível cancelar esta compra porque o estoque dos produtos já sofreu movimentações posteriores ao recebimento. Para preservar a rastreabilidade, utilize a operação de devolução ou ajuste apropriada.'
+    });
+
+    expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
+
+    const sqlChamados = fakeClient.query.mock.calls.map(([sql]) => sql);
+    expect(sqlChamados).toContain('ROLLBACK');
+    expect(sqlChamados).not.toContain('COMMIT');
+  });
+
+  test('does not block cancellation when the posterior movement belongs to another empresa', async () => {
+    // A query real já filtra por empresa_id; este teste documenta que, quando
+    // a query não devolve linha nenhuma (como aconteceria numa empresa
+    // diferente da compra), o cancelamento segue normalmente.
+    const fakeClient = makeFakeClient({
+      compra: { status: 'recebido', itens: [{ produto_id: 1, quantidade: 3 }] },
+      posterior: []
+    });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+    contasPagarRepository.cancelarPorCompraId.mockResolvedValue(null);
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 } });
+
+    const resultado = await comprasRepository.cancelar(1, 9, 5);
+
+    expect(resultado.status).toBe('cancelado');
+    expect(fakeClient.query).toHaveBeenCalledWith('COMMIT');
   });
 });

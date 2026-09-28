@@ -272,11 +272,14 @@ afterAll(async () => {
         await db.query('DELETE FROM fichas_tecnicas WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM itens_compra WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [empresa2Id]);
+        // movimentacoes_estoque.compra_id (migration 042) referencia compras:
+        // precisa ser removida antes de compras, senão a FK bloqueia o DELETE
+        // abaixo (issue #79).
+        await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM compras WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM produtos_categorias WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM categorias_produto WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM vendas WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM precos_produto WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM contas_pagar WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM fornecedores WHERE empresa_id = $1', [empresa2Id]);
