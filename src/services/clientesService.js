@@ -9,6 +9,16 @@ async function criar(dados, empresaId) {
     return clientesRepository.criar({ ...dados, empresa_id: empresaId });
 }
 
+async function atualizar(id, dados, empresaId) {
+    const cliente = await clientesRepository.buscarPorId(id, empresaId);
+
+    if (!cliente) {
+        throw new AppError('Cliente não encontrado', 404);
+    }
+
+    return clientesRepository.atualizar(id, dados, empresaId);
+}
+
 async function historico(id, empresaId) {
     const registros = await clientesRepository.getHistorico(id, empresaId);
 
@@ -46,6 +56,7 @@ async function anonimizar(id, empresaId) {
 module.exports = {
     listar,
     criar,
+    atualizar,
     historico,
     ranking,
     totalGasto,

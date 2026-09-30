@@ -13,6 +13,28 @@ test('listar delegates to the repository', async () => {
   await expect(clientesService.listar()).resolves.toEqual([{ id: 1 }]);
 });
 
+describe('atualizar', () => {
+  test('throws 404 when the cliente does not exist (buscarPorId returns null)', async () => {
+    clientesRepository.buscarPorId.mockResolvedValue(null);
+
+    await expect(clientesService.atualizar(999, { nome: 'Novo Nome' }, 9)).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Cliente não encontrado'
+    });
+    expect(clientesRepository.atualizar).not.toHaveBeenCalled();
+  });
+
+  test('delegates to the repository when the cliente exists', async () => {
+    clientesRepository.buscarPorId.mockResolvedValue({ id: 1, nome: 'Antigo', empresa_id: 9 });
+    clientesRepository.atualizar.mockResolvedValue({ id: 1, nome: 'Novo Nome', empresa_id: 9 });
+
+    const resultado = await clientesService.atualizar(1, { nome: 'Novo Nome' }, 9);
+
+    expect(resultado).toEqual({ id: 1, nome: 'Novo Nome', empresa_id: 9 });
+    expect(clientesRepository.atualizar).toHaveBeenCalledWith(1, { nome: 'Novo Nome' }, 9);
+  });
+});
+
 describe('historico', () => {
   test('throws 404 when there are no registros', async () => {
     clientesRepository.getHistorico.mockResolvedValue([]);
