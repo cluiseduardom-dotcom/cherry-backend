@@ -1,7 +1,7 @@
 const clientesService = require('../services/clientesService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
-const { criarClienteSchema } = require('../validations/clientesValidation');
+const { criarClienteSchema, atualizarClienteSchema } = require('../validations/clientesValidation');
 
 function parseId(value) {
     const id = Number(value);
@@ -33,6 +33,24 @@ async function criar(req, res, next) {
         const cliente = await clientesService.criar(parsed.data, req.usuario.empresa_id);
 
         return response.success(res, cliente, 201);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function atualizar(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+
+        const parsed = atualizarClienteSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        const cliente = await clientesService.atualizar(id, parsed.data, req.usuario.empresa_id);
+
+        return response.success(res, cliente);
     } catch (error) {
         next(error);
     }
@@ -86,6 +104,7 @@ async function anonimizar(req, res, next) {
 module.exports = {
     listar,
     criar,
+    atualizar,
     historico,
     ranking,
     totalGasto,

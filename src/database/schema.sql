@@ -24,7 +24,17 @@ CREATE TABLE clientes (
     email VARCHAR(255),
     ativo BOOLEAN NOT NULL DEFAULT true,
     anonimizado BOOLEAN NOT NULL DEFAULT false,
-    anonimizado_em TIMESTAMP
+    anonimizado_em TIMESTAMP,
+    cpf_cnpj VARCHAR(20),
+    cep VARCHAR(10),
+    endereco VARCHAR(255),
+    numero VARCHAR(20),
+    complemento VARCHAR(100),
+    bairro VARCHAR(100),
+    cidade VARCHAR(100),
+    uf CHAR(2),
+    data_nascimento DATE,
+    observacoes TEXT
 );
 
 CREATE TABLE produtos (
