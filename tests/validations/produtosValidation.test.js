@@ -7,6 +7,25 @@ describe('criarProdutoSchema', () => {
     expect(criarProdutoSchema.safeParse(valid).success).toBe(true);
   });
 
+  // Regressão: SKU é sempre gerado automaticamente via PATCH
+  // /produtos/:id/categoria e nunca digitado manualmente (ver "Regras já
+  // decididas em categorias de produto + SKU automático" no CLAUDE.md).
+  // Isso já foi removido do schema em #22 ("refactor(produtos): remove
+  // entrada manual de SKU"); estes testes travam para que a obrigatoriedade
+  // não volte por acidente (ex.: deploy de uma versão anterior a #22, como
+  // aconteceu no staging) nem seja reintroduzida numa alteração futura.
+  test('does not require sku to create a produto (regressão: SKU nunca é digitado manualmente)', () => {
+    expect(valid.sku).toBeUndefined();
+    const result = criarProdutoSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+
+  test('strips an unexpected sku field instead of persisting it (defesa em profundidade)', () => {
+    const result = criarProdutoSchema.safeParse({ ...valid, sku: 'CAM-001' });
+    expect(result.success).toBe(true);
+    expect(result.data.sku).toBeUndefined();
+  });
+
   test('accepts optional fields (descricao, categoria, estoque, ativo)', () => {
     const result = criarProdutoSchema.safeParse({
       ...valid,
