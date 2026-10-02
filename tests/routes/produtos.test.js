@@ -147,7 +147,12 @@ describe('GET /produtos/:id', () => {
 });
 
 describe('POST /produtos (admin only)', () => {
-  const validBody = { sku: 'CAM-001', nome: 'Camiseta', preco_venda: 49.9, custo: 20 };
+  // Regressão: SKU nunca é digitado manualmente (gerado só via PATCH
+  // /produtos/:id/categoria — ver CLAUDE.md). O body de teste aqui NÃO pode
+  // incluir sku: um validBody com sku mascararia a reintrodução acidental
+  // do campo como obrigatório (foi exatamente isso que aconteceu no staging
+  // em produção, com uma versão anterior a #22 ainda exigindo sku).
+  const validBody = { nome: 'Camiseta', preco_venda: 49.9, custo: 20 };
 
   test('returns 403 for a non-admin (vendedor) token', async () => {
     const res = await request(app)
@@ -169,8 +174,8 @@ describe('POST /produtos (admin only)', () => {
     expect(res.body.message).toBe('Preço de venda é obrigatório');
   });
 
-  test('returns 201 and the created produto for an admin', async () => {
-    produtosService.criar.mockResolvedValue({ id: 1, ...validBody, margem_percentual: 59.92 });
+  test('returns 201 and the created produto for an admin, without requiring sku (regressão)', async () => {
+    produtosService.criar.mockResolvedValue({ id: 1, ...validBody, sku: null, margem_percentual: 59.92 });
 
     const res = await request(app)
       .post('/produtos')
@@ -179,6 +184,25 @@ describe('POST /produtos (admin only)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.id).toBe(1);
+    expect(produtosService.criar).toHaveBeenCalledWith(
+      expect.not.objectContaining({ sku: expect.anything() }),
+      1
+    );
+  });
+
+  test('ignores a sku sent by an old/incompatible client instead of persisting it (regressão de deploy desatualizado)', async () => {
+    produtosService.criar.mockResolvedValue({ id: 1, ...validBody, sku: null, margem_percentual: 59.92 });
+
+    const res = await request(app)
+      .post('/produtos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ ...validBody, sku: 'CAM-001' });
+
+    expect(res.status).toBe(201);
+    expect(produtosService.criar).toHaveBeenCalledWith(
+      expect.not.objectContaining({ sku: expect.anything() }),
+      1
+    );
   });
 });
 

@@ -262,6 +262,21 @@ describe('criar', () => {
     expect(produtosRepository.criar).toHaveBeenCalledWith(dados);
     expect(result.margem_percentual).toBe(50);
   });
+
+  // Regressão: a geração de SKU é responsabilidade exclusiva de
+  // `categorizar` (via skuService.gerar + definirSkuSeNulo). `criar` nunca
+  // deve exigir, gerar ou mexer em sku — se isso mudar, a regra "SKU só
+  // existe depois de categorizar" (ver CLAUDE.md) quebra silenciosamente.
+  test('never touches skuService when creating a produto (SKU só nasce na categorização)', async () => {
+    const dados = { nome: 'X', preco_venda: 10, custo: 5 };
+    produtosRepository.criar.mockResolvedValue({ id: 1, ...dados, sku: null });
+
+    const result = await produtosService.criar(dados);
+
+    expect(skuService.gerar).not.toHaveBeenCalled();
+    expect(produtosRepository.definirSkuSeNulo).not.toHaveBeenCalled();
+    expect(result.sku).toBeNull();
+  });
 });
 
 describe('atualizar', () => {
