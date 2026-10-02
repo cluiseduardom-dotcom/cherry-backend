@@ -12,6 +12,13 @@ function obterOrigensPermitidas() {
         .filter(Boolean);
 }
 
+// Só development/test têm o bypass permissivo de conveniência — staging
+// roda num serviço Render público com banco/JWT reais e recebe o mesmo
+// hardening de produção (ver src/config/runtimeConfig.js). Allow-list
+// positiva, não "tudo exceto production": um NODE_ENV inesperado/vazio
+// também fica sem bypass.
+const AMBIENTES_SEM_HARDENING_CORS = new Set(['development', 'test']);
+
 function configurarCors() {
     const origensPermitidas = obterOrigensPermitidas();
 
@@ -21,8 +28,10 @@ function configurarCors() {
             // não são bloqueadas pelo CORS.
             if (!origin) return callback(null, true);
 
+            const nodeEnv = process.env.NODE_ENV || 'development';
+
             // Desenvolvimento/testes continuam convenientes sem configuração.
-            if (process.env.NODE_ENV !== 'production' && origensPermitidas.length === 0) {
+            if (AMBIENTES_SEM_HARDENING_CORS.has(nodeEnv) && origensPermitidas.length === 0) {
                 return callback(null, true);
             }
 

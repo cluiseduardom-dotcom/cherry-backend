@@ -301,6 +301,17 @@ Toda PR do executor deve informar:
 - Não alterar migrations já mergeadas para corrigir histórico; criar migration corretiva.
 - Não fazer deploy manual como parte de uma tarefa de código sem autorização explícita.
 
+## Regras já decididas no contrato de ambiente (`NODE_ENV`) — não reabrir
+
+`src/config/runtimeConfig.js` (`validarRuntime`, chamada em `src/server.js` no boot) valida `NODE_ENV`, `DATABASE_URL`, `JWT_SECRET` e, em ambientes com hardening, `CORS_ORIGINS`.
+
+- **`staging` é um valor de `NODE_ENV` explicitamente suportado, não um apelido de `production`.** Causa raiz de um incidente de boot em staging (Render): `AMBIENTES_VALIDOS` só aceitava `development`/`test`/`production`; o serviço Render de staging usa `NODE_ENV=staging` de verdade (não `production`, como `docs/ENVIRONMENTS.md` documentava antes — corrigido). `validarRuntime` derrubava o processo com `NODE_ENV inválido: staging`.
+- **`staging` recebe o mesmo hardening de `production`** (`JWT_SECRET` ≥ 32 caracteres, `CORS_ORIGINS` obrigatório, sem o bypass permissivo de CORS que `development`/`test` têm em `src/app.js`) — decisão tomada ao corrigir o boot, não só reabilitar o valor. Motivo: staging roda num serviço público do Render com banco e JWT reais; sem isso, só adicionar `'staging'` à lista de ambientes válidos teria *piorado* a segurança (CORS aberto por padrão, sem exigir JWT forte), já que as duas checagens de hardening comparavam contra `=== 'production'` (allow-list de 1 item) em vez de contra os ambientes "abertos" (`development`/`test`).
+- `src/app.js`: o bypass de CORS virou allow-list positiva (`development`/`test`), não mais "tudo exceto production" — um `NODE_ENV` vazio/inesperado também fica sem bypass agora (antes caía no bypass por acidente).
+- Mensagens de erro de hardening (`JWT_SECRET deve ter pelo menos 32 caracteres em X` / `CORS_ORIGINS deve ser configurado em X`) usam "produção"/"staging" conforme o ambiente real — a mensagem de produção não mudou de texto (não quebra consumidor nenhum que já parseia essa string).
+- `loginRateLimiter`/`onboardingRateLimiter` não precisaram mudar: já comparavam contra `=== 'test'` (allow-list positiva), então `staging` sempre caiu no rate limit estrito (igual produção).
+- Nenhuma mudança em regra de negócio, motor de SKU ou banco/migrations — escopo fechado ao contrato de ambiente.
+
 ## Estado do fluxo de IA
 
 ```
