@@ -22,9 +22,11 @@ Criar um serviço Render separado do serviço de produção e usar:
 
 - banco PostgreSQL separado;
 - `DATABASE_URL` separado;
-- `JWT_SECRET` separado;
+- `JWT_SECRET` separado, com pelo menos 32 caracteres;
 - `CORS_ORIGINS` apontando somente para o frontend de staging;
-- `NODE_ENV=production`.
+- `NODE_ENV=staging`.
+
+`staging` é um valor de `NODE_ENV` explicitamente suportado (não um apelido de `production`) e recebe o mesmo hardening de produção: `JWT_SECRET` com pelo menos 32 caracteres e `CORS_ORIGINS` obrigatórios, sem o bypass permissivo de CORS que `development`/`test` têm (ver `src/config/runtimeConfig.js` e `src/app.js`).
 
 Antes de promover código para produção, validar onboarding, login, criação de produtos, venda, estoque, financeiro e cancelamentos em staging.
 
