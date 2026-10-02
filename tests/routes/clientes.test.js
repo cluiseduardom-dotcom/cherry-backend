@@ -7,6 +7,8 @@ const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
 
 const token = makeToken({ id: 1, role: 'vendedor', empresa_id: 1 });
+const adminToken = makeToken({ id: 4, role: 'admin', empresa_id: 1 });
+const estoquistaToken = makeToken({ id: 5, role: 'estoquista', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -87,4 +89,172 @@ test('GET /clientes/ranking returns 200 with the ranking', async () => {
 
   expect(res.status).toBe(200);
   expect(res.body.data).toEqual([{ id: 1, total_gasto: 500 }]);
+});
+
+describe('PATCH /clientes/:id', () => {
+  test('returns 401 without a token', async () => {
+    const res = await request(app).patch('/clientes/1').send({ nome: 'Novo Nome' });
+    expect(res.status).toBe(401);
+  });
+
+  test('returns 200 for a vendedor (no role restriction on this route)', async () => {
+    clientesService.atualizar.mockResolvedValue({ id: 1, nome: 'Novo Nome' });
+
+    const res = await request(app)
+      .patch('/clientes/1')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nome: 'Novo Nome' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 1, nome: 'Novo Nome' });
+  });
+
+  test('returns 200 for an estoquista (no role restriction on this route)', async () => {
+    clientesService.atualizar.mockResolvedValue({ id: 1, nome: 'Novo Nome' });
+
+    const res = await request(app)
+      .patch('/clientes/1')
+      .set('Authorization', `Bearer ${estoquistaToken}`)
+      .send({ nome: 'Novo Nome' });
+
+    expect(res.status).toBe(200);
+  });
+
+  test('returns 400 for an empty payload', async () => {
+    const res = await request(app)
+      .patch('/clientes/1')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Informe ao menos um campo para atualizar');
+    expect(clientesService.atualizar).not.toHaveBeenCalled();
+  });
+
+  test('returns 400 for an invalid field (uf with wrong length)', async () => {
+    const res = await request(app)
+      .patch('/clientes/1')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uf: 'SPX' });
+
+    expect(res.status).toBe(400);
+    expect(clientesService.atualizar).not.toHaveBeenCalled();
+  });
+
+  test('returns 400 for a non-numeric id', async () => {
+    const res = await request(app)
+      .patch('/clientes/abc')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nome: 'X' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('ID inválido');
+    expect(clientesService.atualizar).not.toHaveBeenCalled();
+  });
+
+  test('returns 404 when the cliente does not exist (or belongs to another empresa)', async () => {
+    clientesService.atualizar.mockRejectedValue(new AppError('Cliente não encontrado', 404));
+
+    const res = await request(app)
+      .patch('/clientes/999')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nome: 'X' });
+
+    expect(res.status).toBe(404);
+  });
+
+  test('accepts the full set of cadastral fields and forwards them to the service', async () => {
+    clientesService.atualizar.mockResolvedValue({ id: 1 });
+
+    const payload = {
+      cpf_cnpj: '12345678901',
+      cep: '01310-100',
+      endereco: 'Av. Paulista',
+      numero: '1000',
+      complemento: 'Sala 10',
+      bairro: 'Bela Vista',
+      cidade: 'São Paulo',
+      uf: 'SP',
+      data_nascimento: '1990-05-20',
+      observacoes: 'Prefere contato por telefone'
+    };
+
+    const res = await request(app)
+      .patch('/clientes/1')
+      .set('Authorization', `Bearer ${token}`)
+      .send(payload);
+
+    expect(res.status).toBe(200);
+    expect(clientesService.atualizar).toHaveBeenCalledWith(1, payload, 1);
+  });
+});
+
+describe('PATCH /clientes/:id/anonimizar (admin only)', () => {
+  test('returns 401 without a token', async () => {
+    const res = await request(app).patch('/clientes/1/anonimizar');
+    expect(res.status).toBe(401);
+  });
+
+  test('returns 403 for a vendedor', async () => {
+    const res = await request(app).patch('/clientes/1/anonimizar').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(403);
+    expect(clientesService.anonimizar).not.toHaveBeenCalled();
+  });
+
+  test('returns 403 for an estoquista', async () => {
+    const res = await request(app)
+      .patch('/clientes/1/anonimizar')
+      .set('Authorization', `Bearer ${estoquistaToken}`);
+    expect(res.status).toBe(403);
+    expect(clientesService.anonimizar).not.toHaveBeenCalled();
+  });
+
+  test('returns 400 for a non-numeric id', async () => {
+    const res = await request(app)
+      .patch('/clientes/abc/anonimizar')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('ID inválido');
+    expect(clientesService.anonimizar).not.toHaveBeenCalled();
+  });
+
+  test('returns 200 with the anonymized data for an admin', async () => {
+    clientesService.anonimizar.mockResolvedValue({
+      id: 1,
+      anonimizado: true,
+      anonimizado_em: '2026-09-06T00:00:00.000Z'
+    });
+
+    const res = await request(app)
+      .patch('/clientes/1/anonimizar')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      success: true,
+      data: { id: 1, anonimizado: true, anonimizado_em: '2026-09-06T00:00:00.000Z' }
+    });
+    expect(clientesService.anonimizar).toHaveBeenCalledWith(1, 1);
+  });
+
+  test('returns 409 when the cliente is already anonimizado', async () => {
+    clientesService.anonimizar.mockRejectedValue(new AppError('Cliente já foi anonimizado', 409));
+
+    const res = await request(app)
+      .patch('/clientes/1/anonimizar')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(409);
+  });
+
+  test('returns 404 when the cliente belongs to another empresa', async () => {
+    clientesService.anonimizar.mockRejectedValue(new AppError('Cliente não encontrado', 404));
+
+    const res = await request(app)
+      .patch('/clientes/999/anonimizar')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(404);
+  });
 });

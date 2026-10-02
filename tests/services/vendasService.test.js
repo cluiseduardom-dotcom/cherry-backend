@@ -86,12 +86,35 @@ describe('criar', () => {
 });
 
 describe('listar', () => {
+  test('repassa filtros server-side para o repository', async () => {
+    vendasRepository.listarPaginado.mockResolvedValue({ items: [], total: 0 });
+
+    await vendasService.listar({
+      page: 1,
+      pageSize: 100,
+      status: 'finalizada',
+      canal: 'loja_fisica',
+      data_de: '2026-09-01',
+      data_ate: '2026-09-30'
+    }, { id: 1, role: 'admin', empresa_id: 9 });
+
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({
+      limit: 100,
+      offset: 0,
+      usuario_id: undefined,
+      empresa_id: 9,
+      status: 'finalizada',
+      canal: 'loja_fisica',
+      data_de: '2026-09-01',
+      data_ate: '2026-09-30'
+    });
+  });
   test('does not filter by usuario_id for an admin', async () => {
     vendasRepository.listarPaginado.mockResolvedValue({ items: [{ id: 1 }, { id: 2 }], total: 2 });
 
     const result = await vendasService.listar({ page: 1, pageSize: 20 }, { id: 1, role: 'admin', empresa_id: 9 });
 
-    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: undefined, empresa_id: 9 });
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: undefined, empresa_id: 9, status: undefined, canal: undefined, data_de: undefined, data_ate: undefined });
     expect(result).toEqual({ items: [{ id: 1 }, { id: 2 }], page: 1, pageSize: 20, total: 2, totalPages: 1 });
   });
 
@@ -100,7 +123,7 @@ describe('listar', () => {
 
     await vendasService.listar({ page: 1, pageSize: 20 }, { id: 42, role: 'vendedor', empresa_id: 9 });
 
-    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: 42, empresa_id: 9 });
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: 42, empresa_id: 9, status: undefined, canal: undefined, data_de: undefined, data_ate: undefined });
   });
 
   test('computes the correct offset for page > 1', async () => {
@@ -108,7 +131,7 @@ describe('listar', () => {
 
     await vendasService.listar({ page: 3, pageSize: 10 }, { id: 1, role: 'admin', empresa_id: 9 });
 
-    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 10, offset: 20, usuario_id: undefined, empresa_id: 9 });
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 10, offset: 20, usuario_id: undefined, empresa_id: 9, status: undefined, canal: undefined, data_de: undefined, data_ate: undefined });
   });
 });
 

@@ -3,7 +3,7 @@ jest.mock('../../src/config/db');
 const db = require('../../src/config/db');
 const estoqueRepository = require('../../src/repositories/estoqueRepository');
 
-function makeFakeClient({ estoqueAtual = 10 } = {}) {
+function makeFakeClient({ estoqueAtual = 10, custo = '15.50' } = {}) {
   const client = {
     query: jest.fn(),
     release: jest.fn()
@@ -13,8 +13,8 @@ function makeFakeClient({ estoqueAtual = 10 } = {}) {
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
       return Promise.resolve({});
     }
-    if (sql.includes('SELECT id, estoque_atual FROM produtos')) {
-      return Promise.resolve({ rows: [{ id: 1, estoque_atual: estoqueAtual }] });
+    if (sql.includes('SELECT id, estoque_atual, custo FROM produtos')) {
+      return Promise.resolve({ rows: [{ id: 1, estoque_atual: estoqueAtual, custo }] });
     }
     if (sql.includes('UPDATE produtos SET estoque_atual')) {
       return Promise.resolve({});
@@ -46,6 +46,19 @@ describe('without an external client (self-managed transaction, existing behavio
     expect(fakeClient.query).toHaveBeenCalledWith('COMMIT');
     expect(fakeClient.release).toHaveBeenCalledTimes(1);
     expect(resultado.movimentacao.id).toBe(1);
+  });
+
+  test('returns the produto custo read from the same locked SELECT, for callers that need to freeze it', async () => {
+    const fakeClient = makeFakeClient({ custo: '22.90' });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    const resultado = await estoqueRepository.criarMovimentacao({
+      produto_id: 1, tipo: 'saida', quantidade: 3, motivo: 'teste', usuario_id: 1
+    });
+
+    expect(resultado.custo).toBe('22.90');
+    const sqlChamados = fakeClient.query.mock.calls.map(([sql]) => sql);
+    expect(sqlChamados.filter((sql) => sql.includes('FROM produtos'))).toHaveLength(1);
   });
 
   test('rolls back and releases on insufficient stock', async () => {

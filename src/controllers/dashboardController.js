@@ -61,10 +61,21 @@ async function margem(req, res, next) {
     }
 }
 
+async function giroCoberturaAgregado(req, res, next) {
+    try {
+        const dias = parseDias(req.query);
+        const dados = await dashboardService.giroCoberturaAgregado(dias, req.usuario.empresa_id);
+        return response.success(res, dados);
+    } catch (error) {
+        next(error);
+    }
+}
+
 module.exports = {
     resumo,
     curvaABC,
     giro,
     cobertura,
-    margem
+    margem,
+    giroCoberturaAgregado
 };

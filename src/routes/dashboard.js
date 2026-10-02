@@ -7,5 +7,6 @@ router.get('/curva-abc', controller.curvaABC);
 router.get('/giro', controller.giro);
 router.get('/cobertura', controller.cobertura);
 router.get('/margem', controller.margem);
+router.get('/giro-cobertura', controller.giroCoberturaAgregado);
 
 module.exports = router;

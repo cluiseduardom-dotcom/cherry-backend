@@ -22,6 +22,8 @@ Cherry ERP Backend — a REST API built with Express and PostgreSQL.
    ```
    DATABASE_URL=postgresql://user:password@host:port/database
    JWT_SECRET=your-secret-key
+   NODE_ENV=development
+   CORS_ORIGINS=http://localhost:5173
    ```
 3. Run the app:
    ```bash
@@ -30,6 +32,10 @@ Cherry ERP Backend — a REST API built with Express and PostgreSQL.
    ```
 
 The server listens on port 3000 by default.
+
+### CORS
+
+Set `CORS_ORIGINS` as a comma-separated list of browser origins allowed to call the API (for example `https://app.exemplo.com,http://localhost:5173`). In production, browser origins not listed there are rejected. Requests without an `Origin` header (health checks, curl, server-to-server) remain allowed.
 
 ## Testing
 

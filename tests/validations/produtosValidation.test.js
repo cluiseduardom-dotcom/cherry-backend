@@ -1,10 +1,29 @@
 const { criarProdutoSchema, atualizarProdutoSchema, ajustarPrecoSchema } = require('../../src/validations/produtosValidation');
 
 describe('criarProdutoSchema', () => {
-  const valid = { sku: 'CAM-001', nome: 'Camiseta', preco_venda: 49.9, custo: 20 };
+  const valid = { nome: 'Camiseta', preco_venda: 49.9, custo: 20 };
 
   test('accepts a valid produto payload', () => {
     expect(criarProdutoSchema.safeParse(valid).success).toBe(true);
+  });
+
+  // Regressão: SKU é sempre gerado automaticamente via PATCH
+  // /produtos/:id/categoria e nunca digitado manualmente (ver "Regras já
+  // decididas em categorias de produto + SKU automático" no CLAUDE.md).
+  // Isso já foi removido do schema em #22 ("refactor(produtos): remove
+  // entrada manual de SKU"); estes testes travam para que a obrigatoriedade
+  // não volte por acidente (ex.: deploy de uma versão anterior a #22, como
+  // aconteceu no staging) nem seja reintroduzida numa alteração futura.
+  test('does not require sku to create a produto (regressão: SKU nunca é digitado manualmente)', () => {
+    expect(valid.sku).toBeUndefined();
+    const result = criarProdutoSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+
+  test('strips an unexpected sku field instead of persisting it (defesa em profundidade)', () => {
+    const result = criarProdutoSchema.safeParse({ ...valid, sku: 'CAM-001' });
+    expect(result.success).toBe(true);
+    expect(result.data.sku).toBeUndefined();
   });
 
   test('accepts optional fields (descricao, categoria, estoque, ativo)', () => {
@@ -17,13 +36,6 @@ describe('criarProdutoSchema', () => {
       ativo: false
     });
     expect(result.success).toBe(true);
-  });
-
-  test('rejects a missing sku', () => {
-    const { sku, ...rest } = valid;
-    const result = criarProdutoSchema.safeParse(rest);
-    expect(result.success).toBe(false);
-    expect(result.error.issues[0].message).toBe('SKU é obrigatório');
   });
 
   test('rejects a missing nome', () => {
@@ -66,6 +78,18 @@ describe('criarProdutoSchema', () => {
     const result = criarProdutoSchema.safeParse({ ...valid, tipo: 'outro' });
     expect(result.success).toBe(false);
   });
+
+  test('accepts an optional unidade of UN, PAR, CX or PCT', () => {
+    for (const unidade of ['UN', 'PAR', 'CX', 'PCT']) {
+      expect(criarProdutoSchema.safeParse({ ...valid, unidade }).success).toBe(true);
+    }
+  });
+
+  test.each(['KG', 'XYZ', 'un'])('rejects an invalid unidade (%p)', (unidade) => {
+    const result = criarProdutoSchema.safeParse({ ...valid, unidade });
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('Unidade inválida');
+  });
 });
 
 describe('atualizarProdutoSchema', () => {
@@ -86,6 +110,16 @@ describe('atualizarProdutoSchema', () => {
 
   test('accepts an optional tipo update', () => {
     expect(atualizarProdutoSchema.safeParse({ tipo: 'insumo' }).success).toBe(true);
+  });
+
+  test('accepts an optional unidade update', () => {
+    expect(atualizarProdutoSchema.safeParse({ unidade: 'PAR' }).success).toBe(true);
+  });
+
+  test('rejects an invalid unidade update', () => {
+    const result = atualizarProdutoSchema.safeParse({ unidade: 'KG' });
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('Unidade inválida');
   });
 });
 

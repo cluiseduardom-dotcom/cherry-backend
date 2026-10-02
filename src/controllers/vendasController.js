@@ -2,6 +2,7 @@ const vendasService = require('../services/vendasService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { criarVendaSchema } = require('../validations/vendasValidation');
+const { listarVendasSchema } = require('../validations/listarVendasValidation');
 
 function parseId(value) {
     const id = Number(value);
@@ -22,6 +23,18 @@ function parsePaginacao(query) {
     if (pageSize > 100) pageSize = 100;
 
     return { page, pageSize };
+}
+
+// custo_unitario é dado de custo — vendedor nunca vê, mesmo padrão de
+// produtosController.filtrarParaRole. venda.itens pode não existir
+// (listagem paginada hoje não inclui itens), por isso o guard.
+function filtrarParaRole(venda, role) {
+    if (role !== 'vendedor' || !Array.isArray(venda.itens)) return venda;
+
+    return {
+        ...venda,
+        itens: venda.itens.map(({ custo_unitario, ...resto }) => resto)
+    };
 }
 
 async function resumo(req, res, next) {
@@ -68,9 +81,16 @@ async function criar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const venda = await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id);
+        const idempotencyKey = req.get('Idempotency-Key')?.trim() || null;
+        if (idempotencyKey && idempotencyKey.length > 200) {
+            throw new AppError('Idempotency-Key excede 200 caracteres', 400);
+        }
 
-        return response.success(res, venda, 201);
+        const venda = idempotencyKey
+            ? await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id, idempotencyKey)
+            : await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id);
+
+        return response.success(res, filtrarParaRole(venda, req.usuario.role), 201);
     } catch (error) {
         next(error);
     }
@@ -79,9 +99,24 @@ async function criar(req, res, next) {
 async function listar(req, res, next) {
     try {
         const paginacao = parsePaginacao(req.query);
-        const resultado = await vendasService.listar(paginacao, req.usuario);
+        const parsedFiltros = listarVendasSchema.safeParse({
+            status: req.query.status,
+            canal: req.query.canal,
+            data_de: req.query.data_de,
+            data_ate: req.query.data_ate
+        });
 
-        return response.success(res, resultado);
+        if (!parsedFiltros.success) {
+            throw new AppError(parsedFiltros.error.issues[0].message, 400);
+        }
+
+        const resultado = await vendasService.listar({
+            ...paginacao,
+            ...parsedFiltros.data
+        }, req.usuario);
+        const items = resultado.items.map((venda) => filtrarParaRole(venda, req.usuario.role));
+
+        return response.success(res, { ...resultado, items });
     } catch (error) {
         next(error);
     }
@@ -92,7 +127,7 @@ async function buscarPorId(req, res, next) {
         const id = parseId(req.params.id);
         const venda = await vendasService.buscarPorId(id, req.usuario);
 
-        return response.success(res, venda);
+        return response.success(res, filtrarParaRole(venda, req.usuario.role));
     } catch (error) {
         next(error);
     }

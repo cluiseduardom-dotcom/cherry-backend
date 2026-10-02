@@ -58,8 +58,30 @@ async function alertasEstoqueBaixo(empresaId) {
     return estoqueRepository.getEstoqueBaixo(empresaId);
 }
 
+async function listarMovimentacoesRelatorio(filtros, empresaId) {
+    const { page, pageSize } = filtros;
+    const limit = pageSize;
+    const offset = (page - 1) * pageSize;
+
+    const { items, total } = await estoqueRepository.listarMovimentacoesRelatorio({
+        ...filtros,
+        limit,
+        offset,
+        empresa_id: empresaId
+    });
+
+    return {
+        items,
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize))
+    };
+}
+
 module.exports = {
     registrarMovimentacao,
     historicoPorProduto,
-    alertasEstoqueBaixo
+    alertasEstoqueBaixo,
+    listarMovimentacoesRelatorio
 };

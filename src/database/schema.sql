@@ -21,13 +21,26 @@ CREATE TABLE clientes (
     empresa_id INTEGER NOT NULL REFERENCES empresas(id),
     nome VARCHAR(255) NOT NULL,
     telefone VARCHAR(20),
-    email VARCHAR(255)
+    email VARCHAR(255),
+    ativo BOOLEAN NOT NULL DEFAULT true,
+    anonimizado BOOLEAN NOT NULL DEFAULT false,
+    anonimizado_em TIMESTAMP,
+    cpf_cnpj VARCHAR(20),
+    cep VARCHAR(10),
+    endereco VARCHAR(255),
+    numero VARCHAR(20),
+    complemento VARCHAR(100),
+    bairro VARCHAR(100),
+    cidade VARCHAR(100),
+    uf CHAR(2),
+    data_nascimento DATE,
+    observacoes TEXT
 );
 
 CREATE TABLE produtos (
     id SERIAL PRIMARY KEY,
     empresa_id INTEGER NOT NULL REFERENCES empresas(id),
-    sku VARCHAR(50) UNIQUE,
+    sku VARCHAR(50),
     nome VARCHAR(255) NOT NULL,
     descricao TEXT,
     categoria VARCHAR(100),
@@ -35,7 +48,143 @@ CREATE TABLE produtos (
     custo NUMERIC(10, 2) NOT NULL,
     estoque_atual INTEGER NOT NULL DEFAULT 0,
     estoque_minimo INTEGER NOT NULL DEFAULT 0,
-    ativo BOOLEAN NOT NULL DEFAULT true
+    ativo BOOLEAN NOT NULL DEFAULT true,
+    unidade VARCHAR(4) NOT NULL DEFAULT 'UN'
+);
+
+-- sku é único POR EMPRESA (nullable), não globalmente — ver migration
+-- 019_categorias_produto.sql para o motivo (SKU gerado por sequência
+-- isolada por empresa).
+CREATE UNIQUE INDEX idx_produtos_sku_unico
+    ON produtos (empresa_id, sku)
+    WHERE sku IS NOT NULL;
+
+COMMENT ON COLUMN produtos.categoria IS
+    'Deprecado: campo de texto livre substituído pela categorização estruturada (categorias_produto/produtos_categorias). Não ler nem escrever em código novo. Remoção planejada para uma etapa futura, antes do carregamento do catálogo real.';
+
+-- Categorias de produto configuráveis por empresa (nível = posição no SKU,
+-- ex.: nível 1 = família, nível 2 = material) + geração automática de SKU.
+-- Ver docs/superpowers/specs/2026-09-12-categorias-sku-design.md.
+CREATE TABLE categorias_produto (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    nivel INTEGER NOT NULL CHECK (nivel > 0),
+    codigo VARCHAR(3) NOT NULL,
+    nome VARCHAR(255) NOT NULL,
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    deletado_em TIMESTAMP
+);
+
+-- Único por (empresa, nível, código em maiúsculas) entre categorias ativas.
+-- Código PODE ser reaproveitado depois que a categoria antiga é soft-deletada
+-- — seguro porque a sequência de SKU (ver sequencias_sku) é ancorada no TEXTO
+-- do código, não no id: uma categoria nova com o mesmo código continua a
+-- mesma sequência em vez de reiniciar e colidir. codigo/nivel são imutáveis
+-- após a criação (aplicação, não constraint) — exatamente para não reabrir
+-- esse mesmo risco de colisão por edição.
+CREATE UNIQUE INDEX idx_categorias_produto_codigo_unico
+    ON categorias_produto (empresa_id, nivel, UPPER(codigo))
+    WHERE deletado_em IS NULL;
+
+-- Vínculo produto <-> categoria. Tabela de junção necessária porque o número
+-- de níveis é configurável por empresa (não fixo) — não dá pra representar
+-- isso com colunas fixas categoria_nivel1_id/categoria_nivel2_id em produtos.
+-- Deletar uma categoria (soft delete) NÃO apaga vínculos existentes nem afeta
+-- SKUs já gerados.
+CREATE TABLE produtos_categorias (
+    produto_id INTEGER NOT NULL REFERENCES produtos(id),
+    categoria_id INTEGER NOT NULL REFERENCES categorias_produto(id),
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    PRIMARY KEY (produto_id, categoria_id)
+);
+
+-- Contador atômico por combinação de códigos de categoria, isolado por
+-- empresa. chave_combinacao = códigos das categorias atribuídas (maiúsculo),
+-- ordenados por nível ascendente, unidos por "-" (ex.: "BR-01"). Upsert
+-- (INSERT ... ON CONFLICT DO UPDATE) garante atomicidade sem lock explícito.
+CREATE TABLE configuracoes_sku (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    nome VARCHAR(100) NOT NULL,
+    tipo_sku VARCHAR(20) NOT NULL DEFAULT 'alfanumerico'
+        CHECK (tipo_sku IN ('numerico', 'alfabetico', 'alfanumerico')),
+    separador VARCHAR(1) NOT NULL DEFAULT '',
+    prefixo VARCHAR(30) NOT NULL DEFAULT '',
+    sufixo VARCHAR(30) NOT NULL DEFAULT '',
+    tamanho_sequencia SMALLINT NOT NULL DEFAULT 3
+        CHECK (tamanho_sequencia BETWEEN 1 AND 9),
+    inicio_sequencia INTEGER NOT NULL DEFAULT 1
+        CHECK (inicio_sequencia >= 0),
+    ativo BOOLEAN NOT NULL DEFAULT true,
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_configuracoes_sku_ativa_empresa
+    ON configuracoes_sku(empresa_id)
+    WHERE ativo = true;
+
+CREATE TABLE configuracoes_sku_segmentos (
+    id SERIAL PRIMARY KEY,
+    configuracao_id INTEGER NOT NULL REFERENCES configuracoes_sku(id) ON DELETE CASCADE,
+    nivel INTEGER NOT NULL CHECK (nivel > 0),
+    ordem INTEGER NOT NULL CHECK (ordem > 0),
+    nome VARCHAR(255) NOT NULL,
+    obrigatorio BOOLEAN NOT NULL DEFAULT true,
+    participa_sku BOOLEAN NOT NULL DEFAULT true,
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE (configuracao_id, nivel),
+    UNIQUE (configuracao_id, ordem)
+);
+
+CREATE INDEX idx_configuracoes_sku_segmentos_configuracao
+    ON configuracoes_sku_segmentos(configuracao_id);
+
+CREATE TABLE sequencias_sku (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    configuracao_id INTEGER NOT NULL REFERENCES configuracoes_sku(id),
+    chave_combinacao VARCHAR(255) NOT NULL,
+    contador INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (empresa_id, configuracao_id, chave_combinacao)
+);
+
+CREATE TABLE historico_sku (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    produto_id INTEGER NOT NULL REFERENCES produtos(id),
+    sku VARCHAR(100) NOT NULL,
+    configuracao_id INTEGER REFERENCES configuracoes_sku(id),
+    usuario_id INTEGER REFERENCES usuarios(id),
+    acao VARCHAR(20) NOT NULL CHECK (acao IN ('gerado', 'alterado', 'legado')),
+    sku_anterior VARCHAR(100),
+    motivo TEXT,
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_historico_sku_empresa_id ON historico_sku(empresa_id);
+CREATE INDEX idx_historico_sku_produto_id ON historico_sku(produto_id);
+CREATE INDEX idx_historico_sku_sku ON historico_sku(empresa_id, sku);
+
+-- Rótulo do que cada categorias_produto.nivel significa para a empresa
+-- (ex.: Cherry: 1=família, 2=material, 3=gênero; outra empresa pode usar
+-- conceitos totalmente diferentes). Tabela INDEPENDENTE de categorias_produto
+-- — deliberadamente sem FK de nivel para cá. Motivo: hoje é possível criar
+-- uma categoria em qualquer nível sem rótulo pré-cadastrado; uma FK exigiria
+-- o rótulo antes da categoria, quebrando esse fluxo e qualquer dado já
+-- existente. Renomear ou remover um rótulo aqui NUNCA afeta
+-- categorias_produto nem a geração de SKU (que é ancorada no texto do
+-- `codigo`, nunca no rótulo do nível) — puramente display.
+CREATE TABLE niveis_categoria (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    nivel INTEGER NOT NULL CHECK (nivel > 0),
+    nome VARCHAR(255) NOT NULL,
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE (empresa_id, nivel)
 );
 
 CREATE TABLE canais_venda (
@@ -77,7 +226,9 @@ CREATE TABLE itens_venda (
     venda_id INTEGER NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
     produto_id INTEGER NOT NULL REFERENCES produtos(id),
     quantidade INTEGER NOT NULL,
-    preco_unitario NUMERIC(10, 2) NOT NULL
+    preco_unitario NUMERIC(10, 2) NOT NULL,
+    custo_unitario NUMERIC(10, 2) NOT NULL CHECK (custo_unitario >= 0),
+    kit_id INTEGER NULL
 );
 
 CREATE TABLE movimentacoes_estoque (
@@ -160,9 +311,12 @@ CREATE TABLE despesas_fixas (
     descricao VARCHAR(255) NOT NULL,
     valor NUMERIC(12,2) NOT NULL CHECK (valor >= 0),
     ativo BOOLEAN NOT NULL DEFAULT true,
+    vigencia_inicio DATE NOT NULL,
+    vigencia_fim DATE,
     criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
     atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
-    deletado_em TIMESTAMP
+    deletado_em TIMESTAMP,
+    CHECK (vigencia_fim IS NULL OR vigencia_fim >= vigencia_inicio)
 );
 
 CREATE TABLE configuracoes_financeiras (
@@ -182,6 +336,14 @@ CREATE TABLE itens_compra (
 );
 
 ALTER TABLE contas_pagar ADD COLUMN compra_id INTEGER UNIQUE REFERENCES compras(id);
+
+-- Liga a movimentação de entrada gerada no recebimento de uma compra à
+-- própria compra — necessário pra comprasRepository.cancelar distinguir a
+-- movimentação de origem de qualquer movimentação POSTERIOR do mesmo
+-- produto (venda, nova entrada, ajuste etc.), que bloqueia o cancelamento
+-- (issue #79). Nullable e sem UNIQUE: a maioria das linhas não vem de
+-- compra nenhuma, e uma compra com vários itens gera várias movimentações.
+ALTER TABLE movimentacoes_estoque ADD COLUMN compra_id INTEGER REFERENCES compras(id);
 
 ALTER TABLE produtos ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'acabado' CHECK (tipo IN ('acabado', 'insumo'));
 
@@ -232,6 +394,7 @@ CREATE INDEX idx_vendas_usuario_id ON vendas(usuario_id);
 CREATE INDEX idx_itens_venda_venda_id ON itens_venda(venda_id);
 CREATE INDEX idx_itens_venda_produto_id ON itens_venda(produto_id);
 CREATE INDEX idx_movimentacoes_estoque_produto_id ON movimentacoes_estoque(produto_id);
+CREATE INDEX idx_movimentacoes_estoque_compra_id ON movimentacoes_estoque(compra_id);
 CREATE INDEX idx_precos_produto_produto_canal ON precos_produto(produto_id, canal_id, criado_em DESC);
 CREATE INDEX idx_contas_pagar_status ON contas_pagar(status);
 CREATE INDEX idx_contas_pagar_vencimento ON contas_pagar(data_vencimento);
@@ -257,3 +420,10 @@ CREATE INDEX idx_itens_compra_produto_id ON itens_compra(produto_id);
 CREATE INDEX idx_itens_compra_empresa_id ON itens_compra(empresa_id);
 CREATE INDEX idx_contas_pagar_compra_id ON contas_pagar(compra_id);
 CREATE INDEX idx_despesas_fixas_empresa_id ON despesas_fixas(empresa_id);
+CREATE INDEX idx_categorias_produto_empresa_id ON categorias_produto(empresa_id);
+CREATE INDEX idx_produtos_categorias_produto_id ON produtos_categorias(produto_id);
+CREATE INDEX idx_produtos_categorias_empresa_id ON produtos_categorias(empresa_id);
+CREATE INDEX idx_sequencias_sku_empresa_id ON sequencias_sku(empresa_id);
+CREATE INDEX idx_sequencias_sku_configuracao_id ON sequencias_sku(configuracao_id);
+CREATE INDEX idx_niveis_categoria_empresa_id ON niveis_categoria(empresa_id);
+CREATE INDEX idx_configuracoes_sku_empresa_id ON configuracoes_sku(empresa_id);

@@ -40,6 +40,15 @@ async function listarPaginado({ limit, offset, status, vencimentoDe, vencimentoA
     return { items: rows, total: Number(countRows[0].count) };
 }
 
+async function buscarPorRecebimentoId(recebimento_id, empresa_id, clienteExterno) {
+    const client = clienteExterno || db;
+    const { rows } = await client.query(
+        'SELECT * FROM contas_pagar WHERE recebimento_id = $1 AND empresa_id = $2',
+        [recebimento_id, empresa_id]
+    );
+    return rows[0] || null;
+}
+
 async function buscarPorId(id, empresa_id) {
     const { rows } = await db.query(
         'SELECT * FROM contas_pagar WHERE id = $1 AND empresa_id = $2',
@@ -52,12 +61,12 @@ async function buscarPorId(id, empresa_id) {
 // (compra + itens + movimentação de estoque + conta a pagar viram uma única
 // transação), no mesmo espírito de contasReceberRepository.criar. Sem
 // clienteExterno, roda como statement avulso (comportamento original).
-async function criar({ descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id, empresa_id, compra_id }, clienteExterno) {
+async function criar({ descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id, empresa_id, compra_id, recebimento_id }, clienteExterno) {
     const client = clienteExterno || db;
 
     const { rows } = await client.query(
-        `INSERT INTO contas_pagar (descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id, empresa_id, compra_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO contas_pagar (descricao, fornecedor, valor, data_vencimento, categoria, observacao, usuario_id, empresa_id, compra_id, recebimento_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
         [
             descricao,
@@ -68,7 +77,8 @@ async function criar({ descricao, fornecedor, valor, data_vencimento, categoria,
             observacao ?? null,
             usuario_id,
             empresa_id,
-            compra_id ?? null
+            compra_id ?? null,
+            recebimento_id ?? null
         ]
     );
 
@@ -186,6 +196,7 @@ async function cancelarPorCompraId(compra_id, empresa_id, clienteExterno) {
 module.exports = {
     listarPaginado,
     buscarPorId,
+    buscarPorRecebimentoId,
     criar,
     atualizar,
     marcarComoPaga,

@@ -52,7 +52,7 @@ async function buscarPorId(id, empresa_id) {
 // (venda + itens + conta a receber viram uma única transação), no mesmo
 // espírito de estoqueRepository.criarMovimentacao. Sem clienteExterno, abre e
 // gerencia sua própria transação.
-async function criar({ venda_id, descricao, valor, data_vencimento, empresa_id }, clienteExterno) {
+async function criar({ venda_id, descricao, valor, data_vencimento, empresa_id, parcela_id = null }, clienteExterno) {
     const client = clienteExterno || await db.connect();
     const gerenciaTransacao = !clienteExterno;
 
@@ -60,10 +60,10 @@ async function criar({ venda_id, descricao, valor, data_vencimento, empresa_id }
         if (gerenciaTransacao) await client.query('BEGIN');
 
         const { rows } = await client.query(
-            `INSERT INTO contas_receber (venda_id, descricao, valor, data_vencimento, empresa_id)
-             VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO contas_receber (venda_id, parcela_id, descricao, valor, data_vencimento, empresa_id)
+             VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING *`,
-            [venda_id, descricao, valor, data_vencimento, empresa_id]
+            [venda_id, parcela_id, descricao, valor, data_vencimento, empresa_id]
         );
 
         if (gerenciaTransacao) await client.query('COMMIT');
@@ -90,26 +90,77 @@ async function criar({ venda_id, descricao, valor, data_vencimento, empresa_id }
 // clienteExterno participa da transação de vendasRepository.cancelar, mesmo
 // padrão de criar().
 async function cancelarPorVendaId(venda_id, empresa_id, clienteExterno) {
-    return executarComLock('contas_receber', { coluna: 'venda_id', valor: venda_id }, empresa_id, clienteExterno, async (conta, client) => {
-        if (!conta) {
-            return null;
+    return executarComLock(
+        'contas_receber',
+        { coluna: 'venda_id', valor: venda_id },
+        empresa_id,
+        clienteExterno,
+        async (linha, client) => {
+            if (!linha) return null;
+
+            // Compatibilidade com a unidade antiga: uma linha mockada sem
+            // venda_id representa a conta única do modelo anterior.
+            if (linha.venda_id == null) {
+                if (linha.status === 'recebido') {
+                    throw new AppError('Venda com conta a receber já recebida não pode ser cancelada', 409);
+                }
+                if (linha.status === 'cancelado') return linha;
+
+                const { rows } = await client.query(
+                    `UPDATE contas_receber
+                     SET status = 'cancelado', atualizado_em = NOW()
+                     WHERE id = $1 RETURNING *`,
+                    [linha.id]
+                );
+                return rows[0];
+            }
+
+            const { rows: contas } = await client.query(
+                `SELECT * FROM contas_receber
+                 WHERE venda_id = $1 AND empresa_id = $2
+                 FOR UPDATE`,
+                [venda_id, empresa_id]
+            );
+
+            if (contas.some((conta) => conta.status === 'recebido')) {
+                throw new AppError('Venda com conta a receber já recebida e não pode ser cancelada', 409);
+            }
+
+            const pendentes = contas.filter((conta) => conta.status === 'pendente');
+            if (!pendentes.length) return contas[0] ?? null;
+
+            const { rows } = await client.query(
+                `UPDATE contas_receber
+                 SET status = 'cancelado', atualizado_em = NOW()
+                 WHERE venda_id = $1 AND empresa_id = $2 AND status = 'pendente'
+                 RETURNING *`,
+                [venda_id, empresa_id]
+            );
+
+            return rows.length === 1 ? rows[0] : rows;
         }
+    );
+}
 
-        if (conta.status === 'recebido') {
-            throw new AppError('Venda com conta a receber já recebida não pode ser cancelada', 409);
-        }
+async function buscarPorParcelaId(parcela_id, empresa_id, clienteExterno) {
+    const client = clienteExterno || db;
+    const { rows } = await client.query(
+        'SELECT * FROM contas_receber WHERE parcela_id = $1 AND empresa_id = $2',
+        [parcela_id, empresa_id]
+    );
+    return rows.length ? rows[0] : null;
+}
 
-        if (conta.status !== 'pendente') {
-            return conta;
-        }
-
-        const { rows } = await client.query(
-            `UPDATE contas_receber SET status = 'cancelado', atualizado_em = NOW() WHERE id = $1 RETURNING *`,
-            [conta.id]
-        );
-
-        return rows[0];
-    });
+async function atualizarRecebimento(id, { status, data_recebimento }, empresa_id, clienteExterno) {
+    const client = clienteExterno || db;
+    const { rows } = await client.query(
+        `UPDATE contas_receber
+         SET status = $1, data_recebimento = $2, atualizado_em = NOW()
+         WHERE id = $3 AND empresa_id = $4
+         RETURNING *`,
+        [status, data_recebimento, id, empresa_id]
+    );
+    return rows.length ? rows[0] : null;
 }
 
 async function marcarComoRecebida(id, empresa_id) {
@@ -126,5 +177,7 @@ module.exports = {
     buscarPorId,
     criar,
     cancelarPorVendaId,
+    buscarPorParcelaId,
+    atualizarRecebimento,
     marcarComoRecebida
 };

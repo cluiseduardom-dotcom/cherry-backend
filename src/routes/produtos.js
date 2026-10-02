@@ -4,10 +4,12 @@ const controller = require('../controllers/produtosController');
 const estoqueController = require('../controllers/estoqueController');
 const precosController = require('../controllers/precosController');
 const fichasTecnicasController = require('../controllers/fichasTecnicasController');
+const produtosCodigosController = require('../controllers/produtosCodigosController');
 const requireAdmin = require('../middlewares/requireAdmin');
 const requireEstoquista = require('../middlewares/requireEstoquista');
 
 router.get('/', controller.listar);
+router.get('/buscar-codigo/:codigo', produtosCodigosController.buscar);
 router.post('/', requireAdmin, controller.criar);
 router.get('/mais-vendidos', controller.maisVendidos);
 router.get('/curva-abc', controller.curvaABC);
@@ -22,10 +24,15 @@ router.get('/alerta-prejuizo', controller.alertaPrejuizo);
 router.get('/inteligencia', controller.inteligencia);
 router.get('/dashboard', controller.dashboard);
 router.get('/estoque-baixo', estoqueController.alertas);
+router.get('/movimentacoes', requireAdmin, estoqueController.listarMovimentacoesRelatorio);
 
 router.get('/:id', controller.buscarPorId);
 router.put('/:id', requireAdmin, controller.atualizar);
 router.delete('/:id', requireAdmin, controller.remover);
+router.patch('/:id/categoria', requireEstoquista, controller.categorizar);
+router.get('/:id/codigos', produtosCodigosController.listar);
+router.post('/:id/codigos', requireEstoquista, produtosCodigosController.adicionar);
+router.delete('/:id/codigos/:codigoId', requireEstoquista, produtosCodigosController.remover);
 
 router.get('/:id/movimentacoes', estoqueController.historico);
 router.post('/:id/movimentacoes', requireEstoquista, estoqueController.registrarMovimentacao);

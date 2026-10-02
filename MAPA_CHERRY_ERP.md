@@ -2,7 +2,7 @@
 
 Auditoria feita em 2026-08-01, lendo o código-fonte (controllers/services/repositories/rotas/migrations) e rodando a suíte de testes real. Este documento reflete o estado **verificado em código**, não intenção ou documentação anterior — onde não foi possível confirmar algo com certeza, está marcado como "a verificar".
 
-Última atualização: 2026-08-18 — Fase A do módulo de Produção/Fornecedores (entidade Fornecedores) concluída e validada no banco de dev (ver §3, §4, §5 e §8).
+Última atualização: 2026-09-09 — Fase C do módulo de Produção revisada em sessão de grilling: escopo passa a ser Kit + Desconto no PDV (a Cherry não produz semijoia com transformação física — o que existe é composição de produtos já prontos, decidida na venda; ficha técnica fica reservada para produção real futura, ex: confeitaria). PR 1/2 (Kit) ✅ mergeado (`#18`); PR 2/2 (Desconto) pendente (ver §3 e §8).
 
 `package.json`: `cherry-backend@2.4.0`.
 
@@ -21,6 +21,10 @@ Auditoria feita em 2026-08-01, lendo o código-fonte (controllers/services/repos
 | `008_canais_venda_unique_por_empresa.sql` | Troca `canais_venda.nome UNIQUE` (global) por `UNIQUE(empresa_id, nome)`. |
 | `009_contas_receber.sql` | Adiciona `forma_pagamento` (`a_vista`/`prazo`) a `vendas`; cria `contas_receber` (vínculo automático via `venda_id UNIQUE`, `status` `pendente`/`recebido`/`cancelado`). |
 | `010_fornecedores.sql` | Cria `fornecedores` (`empresa_id`, `nome` obrigatório, `contato`/`telefone`/`email`/`cnpj_cpf`/`observacoes` opcionais, `ativo` para soft delete, `criado_em`/`atualizado_em`). |
+| `015_custo_congelado_itens_venda.sql` | Adiciona `itens_venda.custo_unitario` (`NUMERIC(10,2) NOT NULL CHECK >= 0`), congelando `produtos.custo` no momento da venda — mesmo padrão de `preco_unitario`. Backfill com o custo atual (seguro por construção nesta base, ver `## Regras já decididas em custo congelado` no CLAUDE.md). |
+| `016_vigencia_despesas_fixas.sql` | Adiciona `despesas_fixas.vigencia_inicio` (`DATE NOT NULL`) e `vigencia_fim` (`DATE`, `NULL` = em vigor), com `CHECK (vigencia_fim IS NULL OR vigencia_fim >= vigencia_inicio)`. Vigência passa a ser a fonte de verdade cronológica pro custo fixo do Ponto de Equilíbrio, rateado por dia — ver `## Regras já decididas em rateio e vigência de despesas fixas` no CLAUDE.md. Tabela vazia nos três ambientes no momento da migration; backfill no-op. |
+
+Tabela incompleta entre `010` e `016`: as migrations `011_ponto_equilibrio.sql`, `012_compras.sql`, `013_producao.sql` e `014_clientes_anonimizacao.sql` já existem no repo mas não foram registradas aqui quando implementadas — não preenchidas nesta tarefa por estar fora do escopo pedido (só `015` e `016` foram adicionadas, nas respectivas tarefas que as criaram). Ver os arquivos em `src/database/migrations/` pra conteúdo exato.
 
 Não existe migration `001_*`: a tabela base (`empresas` já incluída, `usuarios`, `clientes`, `produtos`, `vendas`, `itens_venda`) está apenas em `src/database/schema.sql`, mantido como snapshot consolidado — `schema.sql` já reflete o schema pós-migration 009 (inclui `empresa_id` em tudo).
 
@@ -104,6 +108,20 @@ Mount inteiro atrás de `authMiddleware + requireAdmin` — admin-only.
 
 Sem `POST`/`PUT` manual, como já documentado — toda linha nasce de `POST /vendas` com `forma_pagamento: 'prazo'`.
 
+### Financeiro — despesas fixas e Ponto de Equilíbrio (`/despesas-fixas`, `/configuracoes-financeiras`, `/financeiro`)
+Todos os três mounts atrás de `authMiddleware + requireAdmin` em `app.js` — admin-only (confirmado 2026-09-08, ao mexer nesta área pra migration `016_vigencia_despesas_fixas.sql`; antes só constava como "a verificar" em §3).
+
+| Método | Rota | Observação |
+|---|---|---|
+| GET | `/despesas-fixas` | Lista todas não-deletadas (inclui `ativo = false`, pra tela conseguir reativar) |
+| POST | `/despesas-fixas` | `vigencia_inicio` obrigatório desde a migration 016 |
+| PUT | `/despesas-fixas/:id` | Parcial; não altera `ativo` (só o toggle abaixo altera) |
+| DELETE | `/despesas-fixas/:id` | Soft delete via `deletado_em`, não apaga a linha |
+| PATCH | `/despesas-fixas/:id/toggle` | Inverte `ativo` — pausa de exceção manual, ver CLAUDE.md |
+| GET | `/configuracoes-financeiras` | Alíquota de imposto usada no cálculo de impostos do PE |
+| PUT | `/configuracoes-financeiras` | — |
+| GET | `/financeiro/ponto-equilibrio` | `data_inicio`/`data_fim` opcionais (default: mês corrente); custo fixo rateado por dia, ver CLAUDE.md |
+
 ### Fornecedores (`/fornecedores`)
 Mount inteiro atrás de `authMiddleware + requireEstoquista` — admin ou estoquista (vendedor recebe 403 em toda rota do módulo, inclusive leitura).
 
@@ -128,33 +146,40 @@ Mount inteiro atrás de `authMiddleware + requireEstoquista` — admin ou estoqu
 | Dashboard analítico (`/dashboard`) | **Implementado** | Curva ABC, giro, cobertura, margem — admin-only, como documentado. |
 | Financeiro — contas a pagar | **Implementado** | CRUD completo, transições de status com lock de linha, `atrasado` calculado na leitura. **A CLAUDE.md desatualizada dizia isso como pendente — não é: está implementado e testado (87 testes).** |
 | Financeiro — contas a receber | **Implementado** | Vínculo automático a vendas a prazo, sem CRUD manual, cancelamento em cascata com a venda respeitando conta já recebida. |
-| Produção / Fornecedores | 🔄 Em andamento | Fase A concluída: entidade Fornecedores (CRUD, RBAC admin+estoquista, multi-tenancy, migration `010_fornecedores.sql`). Fase B (Compras) e Fase C (Produção própria com ficha técnica) pendentes. |
+| Produção / Fornecedores | ⚠️ Fase C revisada (09/09/2026) | Fase A (Fornecedores, migration `010_fornecedores.sql`) e Fase B (Compras, migration `012_compras.sql`) completas. Fase C — antes "Produção própria/ficha técnica" — revisada em sessão de grilling: agora é Kit + Desconto no PDV (composição de produtos já prontos, não produção com transformação física). PR 1/2 (Kit) ✅ mergeado (`#18`, migration `017_kit_id_itens_venda.sql`); PR 2/2 (Desconto) pendente. Ficha técnica (migration `013_producao.sql`) segue implementada, reservada para produção real futura — ver §8. |
 
-Não existe nenhum módulo do backend hoje totalmente "ausente" no sentido de zero código — todos os módulos descritos no CLAUDE.md, mais a Fase A de Fornecedores, têm código, rotas e testes. O que existe são **ressalvas dentro de módulos implementados** (ver §6), o módulo de Produção com fases ainda pendentes (Compras e Produção própria — ver §3 acima e §8) e funcionalidades fora do escopo atual (ver §7).
+Não existe nenhum módulo do backend hoje totalmente "ausente" no sentido de zero código — todos os módulos descritos no CLAUDE.md, incluindo as três fases de Produção/Fornecedores, têm código, rotas e testes (a Fase C teve seu escopo revisado em 09/09/2026 — ver §8 — e tem um PR ainda pendente, desconto no PDV). O que existe são **ressalvas dentro de módulos implementados** (ver §6) e funcionalidades fora do escopo atual (ver §7).
 
 ---
 
-## 4. Contagem de testes (suíte rodada em 2026-08-18 — `npm test`, com banco real acessível)
+## 4. Contagem de testes (suíte rodada em 2026-09-05 — `npm test`, com banco real acessível)
 
-**Total: 564 testes, 39 suítes, todos passando.**
+**Total: 824 testes, 66 suítes, todos passando.**
 
-Nota de correção: a contagem anterior deste documento (auditoria de 2026-08-01) mostrava 453 testes, mas o commit `8c3902b` (correção de RBAC do PR #4) já tinha elevado o total real para 501 sem que esta tabela fosse atualizada — os testes por papel adicionados em `produtos.test.js` e `vendas.test.js` não estavam refletidos aqui. Corrigido nesta atualização junto com a adição de Fornecedores.
+Nota de correção: a contagem anterior deste documento (2026-08-18) mostrava 564 testes, mas não refletia nem o refactor de transação compartilhada (`src/repositories/shared/transacoes.js`, que centralizou testes de lock/rollback antes espalhados pelos repositories), nem os módulos de Compras e Produção mergeados desde então (PR #12). Corrigido nesta atualização.
 
 | Módulo | Arquivos | Testes |
 |---|---|---|
 | Auth | `middlewares/authMiddleware`, `requireAdmin`, `requireEstoquista`, `routes/auth`, `services/authService`, `validations/authValidation` | 34 |
-| Produtos | `routes/produtos`, `services/produtosService`, `validations/produtosValidation` | 107 |
+| Rate limiting (login) | `middlewares/loginRateLimiter`, `routes/authLoginRateLimit` | 4 |
+| Produtos | `routes/produtos`, `services/produtosService`, `validations/produtosValidation`, `repositories/produtosRepository` | 113 |
 | Estoque | `repositories/estoqueRepository`, `routes/estoque`, `services/estoqueService`, `validations/estoqueValidation` | 32 |
 | Precificação (+ canais de venda) | `routes/precos`, `routes/canaisVenda`, `services/precosService`, `validations/precosValidation` | 46 |
 | Vendas/PDV | `repositories/vendasRepository`, `routes/vendas`, `services/vendasService`, `validations/vendasValidation` | 82 |
 | Clientes | `routes/clientes`, `services/clientesService`, `validations/clientesValidation` | 20 |
 | Dashboard | `routes/dashboard`, `services/dashboardService` | 29 |
-| Contas a pagar | `repositories/contasPagarRepository`, `routes/contasPagar`, `services/contasPagarService`, `validations/contasPagarValidation` | 87 |
-| Contas a receber | `repositories/contasReceberRepository`, `routes/contasReceber`, `services/contasReceberService`, `validations/contasReceberValidation` | 48 |
+| Contas a pagar | `repositories/contasPagarRepository`, `routes/contasPagar`, `services/contasPagarService`, `validations/contasPagarValidation` | 89 |
+| Contas a receber | `repositories/contasReceberRepository`, `routes/contasReceber`, `services/contasReceberService`, `validations/contasReceberValidation` | 45 |
 | Fornecedores | `repositories/fornecedoresRepository`, `routes/fornecedores`, `services/fornecedoresService`, `validations/fornecedoresValidation` | 63 |
+| Compras | `repositories/comprasRepository`, `routes/compras`, `services/comprasService`, `validations/comprasValidation` | 69 |
+| Produção (fichas técnicas + produções) | `repositories/fichasTecnicasRepository`, `repositories/producoesRepository`, `routes/fichasTecnicas`, `routes/producoes`, `services/fichasTecnicasService`, `services/producoesService`, `validations/fichasTecnicasValidation`, `validations/producoesValidation` | 75 |
+| Transação compartilhada (shared) | `repositories/shared/transacoes` | 9 |
 | Isolamento multi-tenant (cross-módulo, banco real) | `routes/multiTenantIsolation` | 16 |
+| **Não auditados neste mapa** (módulos existentes no código mas fora do escopo de auditoria até agora) | `routes/despesasFixas`, `routes/configuracoesFinanceiras`, `routes/financeiro`, `repositories/despesasFixasRepository`, `repositories/configuracoesFinanceirasRepository`, `repositories/pontoEquilibrioRepository`, `services/despesasFixasService`, `services/configuracoesFinanceirasService`, `services/pontoEquilibrioService`, `validations/despesasFixasValidation`, `validations/configuracoesFinanceirasValidation`, `validations/pontoEquilibrioValidation` | 98 |
 
-(Soma: 34+107+32+46+82+20+29+87+48+63+16 = 564.)
+(Soma: 34+4+113+32+46+82+20+29+89+45+63+69+75+9+16+98 = 824.)
+
+A última linha (despesas fixas, configurações financeiras, ponto de equilíbrio) existe em código e passa na suíte, mas não foi lida linha a linha nem tem isolamento multi-tenant (banco real) verificado neste documento — mergeada em outra frente de trabalho (`feat/ponto-equilibrio`, `feat/despesas-fixas`) fora do escopo desta atualização. **RBAC de rota confirmado (2026-09-08)**, ao mexer nesta área pra migration `016_vigencia_despesas_fixas.sql`: os três mounts (`/despesas-fixas`, `/configuracoes-financeiras`, `/financeiro`) estão atrás de `authMiddleware + requireAdmin` (ver §2). Isolamento por `empresa_id` ainda não tem teste de banco real como os módulos do §5 — marcar como "a verificar" se precisar da mesma garantia.
 
 ---
 
@@ -174,10 +199,12 @@ Todos os repositories foram lidos linha a linha; toda query de leitura/escrita f
 | Contas a pagar | Sim | `contasPagarRepository` filtra em listagem, busca por id e nas transições de status (`FOR UPDATE`). |
 | Contas a receber | Sim | `contasReceberRepository` filtra em todas as queries, inclusive `cancelarPorVendaId`. |
 | Fornecedores | Sim | `fornecedoresRepository` filtra `empresa_id` em todas as queries (listagem paginada, busca por id, criar, atualizar, soft delete). Confirmado por testes de repository/service/rotas com mock e, adicionalmente, validado manualmente via API contra o banco de dev (login como admin e como estoquista, criação e listagem funcionando; vendedor bloqueado com 403). |
+| Compras | Sim | `comprasRepository` filtra `empresa_id` em todas as queries, inclusive a validação de `fornecedor_id`/`produto_id` dentro da transação de criação e no `FOR UPDATE` de `cancelar`. |
+| Produção (fichas técnicas + produções) | Sim | `fichasTecnicasRepository` filtra `empresa_id` em toda query (criar versão, buscar vigente, histórico), inclusive na validação de tipo do produto/insumo dentro da transação. `producoesRepository` filtra `empresa_id` em toda query, inclusive no `SELECT ... FOR UPDATE` dos insumos ao registrar produção e no lock de `cancelar`. |
 
 **Teste de isolamento ponta a ponta com banco real** (`tests/routes/multiTenantIsolation.test.js`, 16 testes) cobre: produtos, clientes, vendas, contas a pagar, movimentações de estoque — confirma que a empresa 1 não vê dados da empresa 2 e vice-versa, inclusive em busca por id (404, não 403).
 
-**Não coberto por teste de isolamento ponta a ponta com banco real** (a filtragem foi confirmada lendo o código e por testes unitários com mock, mas não por um teste de integração com duas empresas reais, como existe para os módulos acima): contas a receber, canais de venda, preços/precificação, dashboard, fornecedores. Marcar como "a verificar com teste de integração" se isolamento multi-tenant nesses módulos precisar de garantia mais forte que leitura de código.
+**Não coberto por teste de isolamento ponta a ponta com banco real** (a filtragem foi confirmada lendo o código e por testes unitários com mock, mas não por um teste de integração com duas empresas reais, como existe para os módulos acima): contas a receber, canais de venda, preços/precificação, dashboard, fornecedores, compras, produção. Marcar como "a verificar com teste de integração" se isolamento multi-tenant nesses módulos precisar de garantia mais forte que leitura de código.
 
 ---
 
@@ -185,7 +212,7 @@ Todos os repositories foram lidos linha a linha; toda query de leitura/escrita f
 
 Durante a auditoria de rotas (§2), dois pontos merecem atenção porque o código diverge do que o CLAUDE.md descreve como regra de negócio:
 
-1. **Sub-rotas analíticas de `/produtos` expõem `custo`/`margem`/`lucro` para qualquer papel autenticado.** As rotas `/produtos/pricing`, `/pricing-profissional`, `/lucro`, `/alerta-prejuizo`, `/sugestao-preco` e `/inteligencia` estão montadas em `app.js` só atrás de `authMiddleware` (sem `requireAdmin`), e `produtosController` só aplica o filtro `filtrarParaRole` (que remove `custo`/`margem_percentual`) nas funções `listar` e `buscarPorId` — as 11 funções analíticas (`giro`, `parados`, `pricingProfissional`, `lucroPorProduto`, `alertaPrejuizo`, `maisVendidos`, `curvaABC`, `reposicao`, `sugestaoPreco`, `inteligencia`, `acoes`, `dashboard`) devolvem o resultado cru do repository sem nenhum filtro. Confirmado lendo `produtosRepository.js`: `getPricingProfissional`, `getLucroPorProduto`, `getAlertaPrejuizo` e `getSugestaoPreco` retornam `custo`, `margem_percentual` e/ou `lucro` diretamente. Os testes existentes (`tests/routes/produtos.test.js`, bloco "read-only sub-routes") só chamam essas rotas com token de admin — não há teste que confirme bloqueio ou filtragem para `vendedor`/`estoquista`, e o código de fato não bloqueia nem filtra. Isso contradiz a regra inviolável do CLAUDE.md ("vendedor NUNCA vê preco_custo nem margem, em nenhum endpoint").
+1. ~~**Sub-rotas analíticas de `/produtos` expõem `custo`/`margem`/`lucro` para qualquer papel autenticado.**~~ **Correção (2026-09-08): esta nota estava desatualizada.** Confirmado durante a tarefa de custo congelado (`fix/custo-congelado-itens-venda`) que `produtosController` **já aplica** `filtrarDadosAnaliticos` (que remove `custo`/`custo_total`/`margem_percentual`/`lucro`/`lucro_unitario`) nas 11 funções analíticas (`giro`, `parados`, `pricingProfissional`, `lucroPorProduto`, `alertaPrejuizo`, `maisVendidos`, `curvaABC`, `reposicao`, `sugestaoPreco`, `inteligencia`, `acoes`, `dashboard`) — não só em `listar`/`buscarPorId`. As rotas continuam **sem** `requireAdmin`/`requireEstoquista` (RBAC é por campo, não por rota, mesmo padrão do resto do sistema), mas o campo sensível é de fato removido pra quem não é admin. `tests/routes/produtos.test.js` (bloco "rotas analíticas de /produtos filtram custo/margem/lucro por papel") cobre `vendedor` e `estoquista` recebendo 200 sem os campos sensíveis. Não há vazamento — a nota original estava errada ou a checagem foi feita antes do filtro existir; sem histórico de commit que explique a divergência.
 2. **Rotas analíticas de `/vendas` (`/resumo`, `/por-dia`, `/por-mes`, `/mais-vendidos`) são acessíveis a `estoquista`.** Estão montadas só atrás de `authMiddleware`, sem `requireVendedor`/`requireAdmin`. Não expõem `custo`/`margem` (confirmado em `vendasRepository`), mas contradizem a regra "estoquista não acessa vendas nem financeiro".
 
 Nenhum código foi alterado nesta tarefa (auditoria/documentação apenas) — os dois pontos acima ficam registrados para decisão do usuário sobre como corrigir (aplicar `filtrarParaRole`/restringir rota, ou decisão de negócio de liberar esse dado mesmo).
@@ -201,9 +228,7 @@ Nenhum código foi alterado nesta tarefa (auditoria/documentação apenas) — o
 - UNIQUE por empresa em `usuarios.email` e `produtos.sku` — continuam únicos globalmente entre empresas (decisão pendente de confirmação, não implementado).
 - Nome/CNPJ reais da empresa seed — ainda usa o placeholder "Cherry Semijoias" com `cnpj` NULL.
 - Qualquer autenticação/fluxo de "esqueci minha senha", refresh token, ou revogação de token antes de expirar (JWT de 8h é o único mecanismo).
-- Testes de integração com banco real para isolamento multi-tenant de contas a receber, canais de venda, preços, dashboard e fornecedores (ver §5).
-- **Módulo de Compras (Produção Fase B).** Cadastro de fornecedores existe (Fase A, ver §3), mas não há endpoint pra registrar uma compra/entrada de mercadoria vinculada a um fornecedor com preço de custo por lote — toda entrada de estoque hoje passa pela rota genérica `POST /produtos/:id/movimentacoes`, sem esse vínculo. Ver decisão de design já tomada para quando for implementado em §8.
-- **Módulo de Produção própria (Produção Fase C).** Não existe ficha técnica (consumo de insumos/matéria-prima do estoque por produto) nem fluxo de registrar produção — produtos continuam cadastrados com custo manual. Ver decisão de design já tomada em §8.
+- Testes de integração com banco real para isolamento multi-tenant de contas a receber, canais de venda, preços, dashboard, fornecedores, compras e produção (ver §5).
 
 ---
 
@@ -211,8 +236,31 @@ Nenhum código foi alterado nesta tarefa (auditoria/documentação apenas) — o
 
 - **Fornecedores:** RBAC libera admin e estoquista; vendedor sem acesso (mesmo padrão de 403 usado em outras rotas restritas).
 - **Nomenclatura de timestamp em tabelas novas** segue `criado_em`/`atualizado_em` (português), consistente com `contas_pagar`/`contas_receber` — não `created_at`/`updated_at`.
-- **Compras** (módulo ainda não implementado) vai nascer como entrada direta simples (uma compra = uma movimentação de estoque imediata), mas com campo `status` desde o schema inicial (default `'recebido'`), para permitir evoluir para fluxo de pedido formal (`pendente`→`recebido`) sem reescrever a tabela depois.
-- **Produção própria** (módulo ainda não implementado) vai usar ficha técnica — consumo de insumos/matéria-prima do estoque ao registrar produção, não só uma entrada simples com custo manual.
+- **Compras** (implementado, migration `012_compras.sql`, RBAC admin+estoquista): entrada direta simples (uma compra = uma movimentação de estoque imediata), com campo `status` desde o schema inicial (default `'recebido'`, aceita também `'pendente'`/`'cancelado'`) — decisão tomada antes da implementação pra permitir evoluir pra fluxo de pedido formal (`pendente`→`recebido`) sem reescrever a tabela depois; não usado ainda (toda compra hoje já nasce `'recebido'`).
+- **Fase C revisada em sessão de grilling (09/09/2026): Kit + Desconto no PDV, não mais "Produção própria / ficha técnica".** Motivo: hoje a Cherry não produz semijoia com transformação física (banho, montagem industrial) — o que existe é composição de produtos já prontos (colar + pingente = kit), decidida pelo cliente na hora da venda. Ficha técnica com insumos, versionamento em ledger e cálculo de custo por receita é o modelo certo pra produção de verdade (ex: confeitaria, fase futura), não pra semijoia hoje.
+  - **Escopo atual, em dois PRs:** PR 1/2 — Kit no PDV: ✅ mergeado (`#18`, 09/09/2026) — migration `017_kit_id_itens_venda.sql`, kit montado do zero a cada venda sem cadastro prévio, baixa de estoque direta por componente. PR 2/2 — Desconto no PDV: pendente — passos fixos de 1% a 8%, distribuído proporcionalmente no `preco_unitario`, PIN de 4 dígitos do admin, bloqueia se derrubar item abaixo do custo, recibo mostra preço cheio + linha de desconto.
+  - **Ficha técnica / produção real (confeitaria) — decisões preservadas para quando esse vertical entrar:** insumo com quantidade decimal + unidade de medida, quantidade produzida inteira com fator multiplicador decimal (meia receita), `produtos.tipo` (acabado/insumo) reservado, `fichas_tecnicas` versionada em ledger append-only, papel "operador" fica para essa fase.
+- **Decisões de schema da Fase C como implementado hoje** (migration `013_producao.sql`, RBAC admin+estoquista via `requireEstoquista`, vendedor recebe 403 em toda rota) — descrevem o código que já existe, mantidas por referência técnica; não é o desenho de produção real listado acima:
+  - **Insumo é um `produto` com `tipo = 'insumo'`, não uma tabela separada.** `produtos` ganhou a coluna `tipo` (`'acabado'` | `'insumo'`, default `'acabado'`). Insumo e produto acabado compartilham todo o resto do schema (`estoque_atual`, `preco_custo`, soft delete via `ativo`, `empresa_id`) — uma tabela `insumos` separada duplicaria esse controle de estoque inteiro. Trade-off aceito: nada hoje impede cadastrar um insumo com preço de venda/canal (`precos_produto`) ou usar um produto acabado como insumo de outro; não há constraint bloqueando isso.
+  - **Ficha técnica é versionada, ledger append-only — mas não é o mesmo mecanismo de `precos_produto`.** Nunca `UPDATE` numa ficha: uma nova versão é sempre um `INSERT` (`fichas_tecnicas`), com a versão anterior marcada `vigente = false` na mesma transação. Diferença de `precos_produto` (que resolve "preço atual" só por `criado_em` mais recente, sem flag): aqui existe um índice único parcial (`vigente = true` por `empresa_id + produto_id`) que torna "a ficha vigente" uma consulta direta e impõe explicitamente que só pode haver uma vigente por produto — mecanismo mais explícito, não uma repetição do de preços.
+  - **Produção parcial é calculada automaticamente, não rejeitada.** Ao registrar uma produção, cada insumo da ficha limita `quantidade_produzida` a `floor(estoque_atual do insumo / quantidade_necessária)`; vence o mínimo entre todos os insumos e a `quantidade_solicitada`. Zero unidades produzíveis bloqueia com 409 sem criar nada; produção parcial (`quantidade_produzida < quantidade_solicitada`) é aceita e sinalizada (`parcial: true` na resposta), consumindo estoque só na proporção do que foi de fato produzido.
+  - **Cancelamento estorna proporcional ao produzido, não ao solicitado.** `PATCH /producoes/:id/cancelar` dá saída do produto acabado (bloqueia 409 se já foi vendido/consumido, sem tocar nos insumos) e devolve ao estoque cada insumo na quantidade que realmente saiu (`quantidade_necessaria × quantidade_produzida`) — nunca a quantidade solicitada original.
+  - **`custo_sugerido` (ficha técnica) e `custo_total` (produção) são calculados na leitura, nunca gravados.** Somam `quantidade × preco_custo` de cada insumo no momento da consulta; **não sobrescrevem `produtos.preco_custo`** do produto acabado — ajustar o custo de venda do acabado com base no custo sugerido continua sendo uma decisão manual do usuário, mesmo espírito de `atrasado` calculado na leitura em contas a pagar/receber.
+  - **RBAC de custo é decisão de negócio (não uma extensão da regra inviolável)**: a regra inviolável do CLAUDE.md protege `vendedor`, que nem acessa este módulo (403 via `requireEstoquista`). Aqui quem perde `custo_sugerido`/`custo_total`/`custo_unitario`/`subtotal_custo` é a `estoquista` (`fichasTecnicasController.filtrarCustoParaRole` e `producoesController.filtrarCustoParaRole`, mesmo padrão de `produtosController.filtrarParaRole`) — decisão nova, consistente com o espírito da regra mas não idêntica a ela.
+  - **Quantidades são `INTEGER`, não `NUMERIC`** — `quantidade_necessaria` (ficha técnica) segue o mesmo tipo de `produtos.estoque_atual`/`movimentacoes_estoque.quantidade`; suportar consumo fracionário de insumo (ex: 0.5g de prata) exigiria repensar o ledger de estoque inteiro, fora do escopo desta fase.
+- **Custo congelado em `itens_venda`** (migration `015_custo_congelado_itens_venda.sql`, branch `fix/custo-congelado-itens-venda`): `custo_unitario` congela `produtos.custo` no momento da venda, capturado no mesmo `SELECT ... FOR UPDATE` que já trava o produto pra validar/baixar estoque (`estoqueRepository.criarMovimentacao` agora devolve `custo`) — não uma query separada, pra não abrir janela de inconsistência. Ver `## Regras já decididas em custo congelado` no `CLAUDE.md` pra a distinção completa entre margem prospectiva e histórica.
+  - **Classificação de todo uso de `p.custo`/`produtos.custo` no backend, feita nesta tarefa:**
+    | Função | Fonte de custo | Por quê |
+    |---|---|---|
+    | `pontoEquilibrioRepository.somarCustoVariavelProdutos` | convertido → `iv.custo_unitario` | margem histórica (vendas já fechadas) |
+    | `produtosRepository.getLucroPorProduto` (`GET /produtos/lucro`) | convertido → `iv.custo_unitario` **e** `iv.preco_unitario` | margem histórica; `faturamento`/`lucro`/`margem_percentual` agora usam preço e custo travados na venda, não `produtos.preco_venda`/`custo` atuais |
+    | `precosRepository.listarMargemPorProdutoECanal` (`GET /dashboard/margem`) | mantido `produtos.custo` | margem prospectiva — não junta `itens_venda`, é custo×preço vigente pra todo produto×canal ativo, existindo venda ou não |
+    | `produtosRepository.getPricingProfissional`, `getSugestaoPreco`, `getInteligencia` | mantido `produtos.custo` | sugestão de preço futuro a partir do custo atual, não análise de venda fechada |
+    | `produtosRepository.getAlertaPrejuizo` | mantido `produtos.custo` | alerta prospectivo (preço vigente < custo vigente *hoje*), sem join a `itens_venda` — congelar cegaria o alerta |
+    | `produtosService.comMargem`, CRUD de produtos, `produtosRepository.ajustarPreco`, `precosService.calcularPreco`, ficha técnica/produção | mantido `produtos.custo` | CRUD/precificação de produto, não histórico de venda |
+  - **`GET /produtos/pricing`, `/pricing-profissional`, `/lucro`, `/alerta-prejuizo`, `/inteligencia`, `/sugestao-preco` não têm `requireAdmin`** — confirmado que não é vazamento (RBAC por campo via `filtrarDadosAnaliticos`, já existia antes desta tarefa); corrigida a nota desatualizada em §6.
+  - **`getAcoes`/`produtosService.acoes`** existe mas não tem rota montada em `routes/produtos.js` — função morta, não removida (fora do escopo desta tarefa), candidata a limpeza numa branch própria.
+  - **Débito de UI não corrigido**: o rótulo "Margem" no Dashboard do `cherry-frontend` não indica que é prospectiva — fica pra ajuste de UI em branch separado.
 - **Rate limiting em `POST /auth/login`** (item 6 do roteiro de profissionalização): 5 tentativas por 15 minutos, chave padrão da lib (`express-rate-limit`) = **IP**, não conta/email. Limitação conhecida e aceita: um ataque de força bruta distribuído por vários IPs diferentes mirando a mesma conta não é pego por esse limite. Rate limit por conta/email ficou fora do escopo por decisão consciente, não esquecimento. Em `NODE_ENV=test` o limite sobe pra 1000 (efetivamente desabilitado) pra não quebrar a suíte, que faz login repetidamente — ver `src/middlewares/loginRateLimiter.js`.
 
 ---
@@ -230,6 +278,8 @@ Decisão tomada: o Cherry ERP vai virar produto vendável a outras empresas (Gir
 | 5 | Backup/DR confirmado | ✅ Completo e confirmado — ver 11.3 |
 | 6 | Rate limiting no login | ✅ Completo |
 | 7 | LGPD documentado | ❌ Não iniciado |
+
+Com Produção/Fornecedores majoritariamente completo (Fases A e B fechadas; Fase C revisada em 09/09/2026 — Kit + Desconto no PDV — com PR 1/2 mergeado e PR 2/2 pendente, ver §3 e §8), os módulos de negócio planejados nesta fase do produto estão praticamente fechados. Restam três fronts abertos no roteiro de profissionalização: **(a) finalização do staging** (item 2 — Git branch dedicada + configuração do serviço correspondente no Render, além do `ci-test` já existente no Neon), **(b) observabilidade/LGPD** (itens 4 e 7) e **(c) o PR de desconto no PDV** (Fase C, PR 2/2).
 
 ### 11.3. Detalhe do item 5 (Backup/DR) — confirmação
 

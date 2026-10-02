@@ -19,21 +19,13 @@ async function listarPaginado({ limit, offset, empresa_id }) {
     return { items: rows, total: Number(countRows[0].count) };
 }
 
-async function buscarPorSku(sku, empresa_id) {
+async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id }) {
     const { rows } = await db.query(
-        'SELECT * FROM produtos WHERE sku = $1 AND empresa_id = $2',
-        [sku, empresa_id]
-    );
-    return rows.length ? rows[0] : null;
-}
-
-async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, empresa_id }) {
-    const { rows } = await db.query(
-        `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, empresa_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
-            sku,
+            sku ?? null,
             nome,
             descricao ?? null,
             categoria ?? null,
@@ -43,6 +35,7 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
             estoque_minimo ?? 0,
             ativo ?? true,
             tipo ?? 'acabado',
+            unidade ?? 'UN',
             empresa_id
         ]
     );
@@ -52,7 +45,7 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
 
 async function atualizar(id, dados, empresa_id) {
     // estoque_atual is deliberately excluded: it's only ever changed via estoqueRepository.criarMovimentacao
-    const campos = ['sku', 'nome', 'descricao', 'categoria', 'preco_venda', 'custo', 'estoque_minimo', 'ativo', 'tipo'];
+    const campos = ['nome', 'descricao', 'categoria', 'preco_venda', 'custo', 'estoque_minimo', 'ativo', 'tipo', 'unidade'];
 
     const sets = [];
     const valores = [];
@@ -161,19 +154,26 @@ async function getPricingProfissional(empresa_id) {
     return rows;
 }
 
+// Margem HISTÓRICA (o que já foi vendido) — custo_total/lucro/margem_percentual
+// usam iv.custo_unitario, e faturamento/lucro/margem_percentual usam
+// iv.preco_unitario, ambos congelados na venda (migration 015; preco_unitario
+// já existia e já era gravado desde a criação de vendas — não precisou de
+// migration nova). Nenhum dos dois é recalculado a partir de produtos.*
+// atual, senão o resultado de vendas já fechadas mudaria toda vez que preço
+// ou custo do produto mudassem.
 async function getLucroPorProduto(empresa_id) {
     const { rows } = await db.query(`
         SELECT
           p.id,
           p.nome,
           COALESCE(SUM(iv.quantidade), 0) AS total_vendido,
-          COALESCE(SUM(iv.quantidade * p.preco_venda), 0) AS faturamento,
-          COALESCE(SUM(iv.quantidade * p.custo), 0) AS custo_total,
-          COALESCE(SUM(iv.quantidade * (p.preco_venda - p.custo)), 0) AS lucro,
+          COALESCE(SUM(iv.quantidade * iv.preco_unitario), 0) AS faturamento,
+          COALESCE(SUM(iv.quantidade * iv.custo_unitario), 0) AS custo_total,
+          COALESCE(SUM(iv.quantidade * (iv.preco_unitario - iv.custo_unitario)), 0) AS lucro,
           ROUND(
             COALESCE(
-              (SUM(iv.quantidade * (p.preco_venda - p.custo)) /
-              NULLIF(SUM(iv.quantidade * p.preco_venda), 0)) * 100,
+              (SUM(iv.quantidade * (iv.preco_unitario - iv.custo_unitario)) /
+              NULLIF(SUM(iv.quantidade * iv.preco_unitario), 0)) * 100,
             0), 2
           ) AS margem_percentual
         FROM produtos p
@@ -185,6 +185,10 @@ async function getLucroPorProduto(empresa_id) {
     return rows;
 }
 
+// Margem PROSPECTIVA (se eu vender hoje) de propósito: não junta itens_venda,
+// só compara p.preco_venda x p.custo atuais pra alertar produto cujo preço
+// vigente já não cobre o custo vigente. Congelar isso em iv.custo_unitario
+// cegaria o alerta (ele existe pra reagir a mudança de custo/preço hoje).
 async function getAlertaPrejuizo(empresa_id) {
     const { rows } = await db.query(`
         SELECT
@@ -326,10 +330,54 @@ async function getDashboard(empresa_id) {
     return rows[0];
 }
 
+async function buscarCategoriasDoProduto(produto_id, empresa_id) {
+    const { rows } = await db.query(
+        `SELECT c.id, c.nivel, c.codigo, c.nome
+         FROM produtos_categorias pc
+         JOIN categorias_produto c ON c.id = pc.categoria_id
+         WHERE pc.produto_id = $1 AND pc.empresa_id = $2
+         ORDER BY c.nivel ASC`,
+        [produto_id, empresa_id]
+    );
+    return rows;
+}
+
+async function buscarCategoriasPorProdutoIds(produtoIds, empresa_id) {
+    if (!produtoIds.length) return [];
+
+    const { rows } = await db.query(
+        `SELECT pc.produto_id, c.id, c.nivel, c.codigo, c.nome
+         FROM produtos_categorias pc
+         JOIN categorias_produto c ON c.id = pc.categoria_id
+         WHERE pc.produto_id = ANY($1::int[]) AND pc.empresa_id = $2
+         ORDER BY c.nivel ASC`,
+        [produtoIds, empresa_id]
+    );
+    return rows;
+}
+
+async function substituirCategorias(produto_id, categoriaIds, empresa_id, client) {
+    await client.query('DELETE FROM produtos_categorias WHERE produto_id = $1 AND empresa_id = $2', [produto_id, empresa_id]);
+
+    for (const categoria_id of categoriaIds) {
+        await client.query(
+            'INSERT INTO produtos_categorias (produto_id, categoria_id, empresa_id) VALUES ($1, $2, $3)',
+            [produto_id, categoria_id, empresa_id]
+        );
+    }
+}
+
+async function definirSkuSeNulo(produto_id, sku, empresa_id, client) {
+    const { rows } = await client.query(
+        'UPDATE produtos SET sku = $1 WHERE id = $2 AND empresa_id = $3 AND sku IS NULL RETURNING *',
+        [sku, produto_id, empresa_id]
+    );
+    return rows.length ? rows[0] : null;
+}
+
 module.exports = {
     listar,
     listarPaginado,
-    buscarPorSku,
     criar,
     atualizar,
     desativar,
@@ -346,5 +394,9 @@ module.exports = {
     getSugestaoPreco,
     getInteligencia,
     getAcoes,
-    getDashboard
+    getDashboard,
+    buscarCategoriasDoProduto,
+    buscarCategoriasPorProdutoIds,
+    substituirCategorias,
+    definirSkuSeNulo
 };

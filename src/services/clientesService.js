@@ -9,6 +9,16 @@ async function criar(dados, empresaId) {
     return clientesRepository.criar({ ...dados, empresa_id: empresaId });
 }
 
+async function atualizar(id, dados, empresaId) {
+    const cliente = await clientesRepository.buscarPorId(id, empresaId);
+
+    if (!cliente) {
+        throw new AppError('Cliente não encontrado', 404);
+    }
+
+    return clientesRepository.atualizar(id, dados, empresaId);
+}
+
 async function historico(id, empresaId) {
     const registros = await clientesRepository.getHistorico(id, empresaId);
 
@@ -33,10 +43,22 @@ async function totalGasto(id, empresaId) {
     return dados;
 }
 
+async function anonimizar(id, empresaId) {
+    const cliente = await clientesRepository.anonimizar(id, empresaId);
+
+    return {
+        id: cliente.id,
+        anonimizado: cliente.anonimizado,
+        anonimizado_em: cliente.anonimizado_em
+    };
+}
+
 module.exports = {
     listar,
     criar,
+    atualizar,
     historico,
     ranking,
-    totalGasto
+    totalGasto,
+    anonimizar
 };

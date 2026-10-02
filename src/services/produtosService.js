@@ -1,5 +1,9 @@
 const produtosRepository = require('../repositories/produtosRepository');
 const precosRepository = require('../repositories/precosRepository');
+const categoriasRepository = require('../repositories/categoriasRepository');
+const skuService = require('./skuService');
+const historicoSkuRepository = require('../repositories/historicoSkuRepository');
+const db = require('../config/db');
 const AppError = require('../errors/AppError');
 
 function comMargem(produto) {
@@ -21,14 +25,21 @@ async function resolverCanal(nome, empresaId) {
 }
 
 function comPrecoCanal(produto, canalNome, precoRow) {
+    // listarPrecosVigentesPorCanal usa LEFT JOIN LATERAL ... ON true, que sempre
+    // devolve uma linha por produto (com colunas NULL quando não há preço) — por
+    // isso `precoRow` sozinho não indica que existe preço: é preciso checar o
+    // campo. Sem essa checagem, Number(null) vira 0 e o preço aparece como
+    // "R$ 0,00" em vez de "sem preço definido".
+    const temPreco = precoRow != null && precoRow.preco_venda != null;
+
     return {
         ...produto,
         preco_canal: {
             canal: canalNome,
-            preco_venda: precoRow ? Number(precoRow.preco_venda) : null,
-            markup_percentual: precoRow ? Number(precoRow.markup_percentual) : null,
-            margem_percentual: precoRow ? Number(precoRow.margem_percentual) : null,
-            vigente_desde: precoRow ? precoRow.vigente_desde : null
+            preco_venda: temPreco ? Number(precoRow.preco_venda) : null,
+            markup_percentual: temPreco ? Number(precoRow.markup_percentual) : null,
+            margem_percentual: temPreco ? Number(precoRow.margem_percentual) : null,
+            vigente_desde: temPreco ? precoRow.vigente_desde : null
         }
     };
 }
@@ -43,8 +54,18 @@ async function listar({ page, pageSize, canal }, empresaId) {
     const precos = await precosRepository.listarPrecosVigentesPorCanal(items.map((produto) => produto.id), canalRow.id, empresaId);
     const precosPorProduto = new Map(precos.map((preco) => [preco.produto_id, preco]));
 
+    const categoriaLinhas = await produtosRepository.buscarCategoriasPorProdutoIds(items.map((produto) => produto.id), empresaId);
+    const categoriasPorProduto = new Map();
+    for (const { produto_id, ...categoria } of categoriaLinhas) {
+        if (!categoriasPorProduto.has(produto_id)) categoriasPorProduto.set(produto_id, []);
+        categoriasPorProduto.get(produto_id).push(categoria);
+    }
+
     return {
-        items: items.map((produto) => comPrecoCanal(comMargem(produto), canalRow.nome, precosPorProduto.get(produto.id))),
+        items: items.map((produto) => ({
+            ...comPrecoCanal(comMargem(produto), canalRow.nome, precosPorProduto.get(produto.id)),
+            categorias: categoriasPorProduto.get(produto.id) || []
+        })),
         page,
         pageSize,
         total,
@@ -61,17 +82,12 @@ async function buscarPorId(id, canal, empresaId) {
 
     const canalRow = await resolverCanal(canal, empresaId);
     const precoRow = await precosRepository.buscarPrecoVigente(id, canalRow.id, empresaId);
+    const categorias = await produtosRepository.buscarCategoriasDoProduto(id, empresaId);
 
-    return comPrecoCanal(comMargem(produto), canalRow.nome, precoRow);
+    return { ...comPrecoCanal(comMargem(produto), canalRow.nome, precoRow), categorias };
 }
 
 async function criar(dados, empresaId) {
-    const existente = await produtosRepository.buscarPorSku(dados.sku, empresaId);
-
-    if (existente) {
-        throw new AppError('SKU já cadastrado', 409);
-    }
-
     const produto = await produtosRepository.criar({ ...dados, empresa_id: empresaId });
 
     return comMargem(produto);
@@ -82,14 +98,6 @@ async function atualizar(id, dados, empresaId) {
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
-    }
-
-    if (dados.sku && dados.sku !== produto.sku) {
-        const existente = await produtosRepository.buscarPorSku(dados.sku, empresaId);
-
-        if (existente) {
-            throw new AppError('SKU já cadastrado', 409);
-        }
     }
 
     const atualizado = await produtosRepository.atualizar(id, dados, empresaId);
@@ -117,6 +125,74 @@ async function ajustarPreco(id, percentual, empresaId) {
     }
 
     return produtosRepository.ajustarPreco(id, percentual, empresaId);
+}
+
+async function categorizar(id, categoriaIds, empresaId, usuarioId) {
+    const produto = await produtosRepository.buscarPorId(id, empresaId);
+
+    if (!produto) {
+        throw new AppError('Produto não encontrado', 404);
+    }
+
+    let categorias = [];
+
+    if (categoriaIds.length > 0) {
+        categorias = await categoriasRepository.buscarPorIds(categoriaIds, empresaId);
+
+        if (categorias.length !== categoriaIds.length) {
+            throw new AppError('Categoria inválida', 400);
+        }
+
+        const niveis = categorias.map((c) => c.nivel);
+        if (new Set(niveis).size !== niveis.length) {
+            throw new AppError('Não é permitido mais de uma categoria do mesmo nível', 400);
+        }
+    }
+
+    const client = await db.connect();
+    let produtoAtualizado = produto;
+
+    try {
+        await client.query('BEGIN');
+
+        await produtosRepository.substituirCategorias(id, categoriaIds, empresaId, client);
+
+        if (!produto.sku && categorias.length > 0) {
+            const resultadoSku = await skuService.gerar(categorias, empresaId, client);
+
+            try {
+                const atualizado = await produtosRepository.definirSkuSeNulo(id, resultadoSku.sku, empresaId, client);
+                if (atualizado) {
+                    produtoAtualizado = atualizado;
+                    await historicoSkuRepository.registrar({
+                        empresa_id: empresaId,
+                        produto_id: id,
+                        sku: resultadoSku.sku,
+                        configuracao_id: resultadoSku.configuracao.id,
+                        usuario_id: usuarioId,
+                        acao: 'gerado',
+                        motivo: 'SKU gerado automaticamente pela categorização do produto'
+                    }, client);
+                }
+            } catch (error) {
+                if (error.code === '23505') {
+                    throw new AppError('Erro ao gerar SKU, tente novamente', 409);
+                }
+                throw error;
+            }
+        }
+
+        await client.query('COMMIT');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+
+    const categoriasVinculadas = await produtosRepository.buscarCategoriasDoProduto(id, empresaId);
+
+    return { ...comMargem(produtoAtualizado), categorias: categoriasVinculadas };
 }
 
 async function giro(empresaId) {
@@ -174,6 +250,7 @@ module.exports = {
     atualizar,
     remover,
     ajustarPreco,
+    categorizar,
     giro,
     parados,
     pricingProfissional,

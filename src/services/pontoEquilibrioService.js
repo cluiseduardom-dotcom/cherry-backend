@@ -1,6 +1,7 @@
 const pontoEquilibrioRepository = require('../repositories/pontoEquilibrioRepository');
 const despesasFixasRepository = require('../repositories/despesasFixasRepository');
 const configuracoesFinanceirasRepository = require('../repositories/configuracoesFinanceirasRepository');
+const { ratearCustoFixo } = require('../utils/rateioCustoFixo');
 
 function arredondar(valor, casas = 2) {
     const fator = 10 ** casas;
@@ -17,16 +18,16 @@ function arredondar(valor, casas = 2) {
 // quando a empresa não cobre nem o próprio custo variável com a receita
 // atual — devolver 0 (que soaria como "meta batida") seria enganoso.
 async function calcular({ dataInicio, dataFim }, empresaId) {
-    const [receitaRaw, custoVariavelProdutosRaw, custoFixoTotalRaw, configuracao] = await Promise.all([
+    const [receitaRaw, custoVariavelProdutosRaw, despesasVigentes, configuracao] = await Promise.all([
         pontoEquilibrioRepository.somarReceita(empresaId, dataInicio, dataFim),
         pontoEquilibrioRepository.somarCustoVariavelProdutos(empresaId, dataInicio, dataFim),
-        despesasFixasRepository.somarAtivas(empresaId),
+        despesasFixasRepository.listarVigentesNoPeriodo(empresaId, dataInicio, dataFim),
         configuracoesFinanceirasRepository.obterOuCriar(empresaId)
     ]);
 
     const receita = Number(receitaRaw);
     const custoVariavelProdutos = Number(custoVariavelProdutosRaw);
-    const custoFixoTotal = Number(custoFixoTotalRaw);
+    const custoFixoTotal = ratearCustoFixo(despesasVigentes, dataInicio, dataFim);
     const aliquotaImposto = Number(configuracao.aliquota_imposto);
 
     const impostos = receita * aliquotaImposto;
@@ -45,7 +46,15 @@ async function calcular({ dataInicio, dataFim }, empresaId) {
         custoFixoTotal: arredondar(custoFixoTotal),
         pontoEquilibrio: pontoEquilibrio === null ? null : arredondar(pontoEquilibrio),
         faltaParaAtingir,
-        inviavel
+        inviavel,
+        // Sobre a LISTA vir vazia (zero despesas fixas encontradas), não sobre
+        // a soma dar zero — uma despesa cadastrada com valor: 0 não deve
+        // disparar isso. Com despesas_fixas vazia, custoFixoTotal também dá 0,
+        // e pontoEquilibrio = 0 leria como "meta batida" sem nunca ter havido
+        // despesa nenhuma pra bater contra — falso e enganoso. O frontend usa
+        // este campo pra trocar a mensagem de meta batida por uma orientando
+        // o cadastro.
+        semDespesasFixas: despesasVigentes.length === 0
     };
 }
 

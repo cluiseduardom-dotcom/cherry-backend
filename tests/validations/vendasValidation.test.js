@@ -104,4 +104,90 @@ describe('criarVendaSchema', () => {
     const result = criarVendaSchema.safeParse({ ...valid, forma_pagamento: 'prazo', meses_prazo: 0 });
     expect(result.success).toBe(false);
   });
+
+  describe('kit_id', () => {
+    test('accepts an item without kit_id (avulso, unchanged behaviour)', () => {
+      expect(criarVendaSchema.safeParse(valid).success).toBe(true);
+    });
+
+    test('accepts an item with kit_id explicitly null (avulso)', () => {
+      const result = criarVendaSchema.safeParse({
+        ...valid,
+        itens: [{ produto_id: 1, quantidade: 2, kit_id: null }]
+      });
+      expect(result.success).toBe(true);
+    });
+
+    test('accepts a kit with 2 components sharing the same kit_id', () => {
+      const result = criarVendaSchema.safeParse({
+        ...valid,
+        itens: [
+          { produto_id: 1, quantidade: 1, kit_id: 1 },
+          { produto_id: 2, quantidade: 1, kit_id: 1 }
+        ]
+      });
+      expect(result.success).toBe(true);
+    });
+
+    test('accepts two kits plus an avulso item in the same payload (non-contiguous, distinct kit_ids)', () => {
+      const result = criarVendaSchema.safeParse({
+        ...valid,
+        itens: [
+          { produto_id: 1, quantidade: 1, kit_id: 5 },
+          { produto_id: 2, quantidade: 1, kit_id: 5 },
+          { produto_id: 3, quantidade: 1, kit_id: 9 },
+          { produto_id: 4, quantidade: 1, kit_id: 9 },
+          { produto_id: 5, quantidade: 1 }
+        ]
+      });
+      expect(result.success).toBe(true);
+    });
+
+    test('accepts the same produto repeated with quantidade > 1 inside a kit', () => {
+      const result = criarVendaSchema.safeParse({
+        ...valid,
+        itens: [
+          { produto_id: 1, quantidade: 2, kit_id: 1 },
+          { produto_id: 1, quantidade: 3, kit_id: 1 }
+        ]
+      });
+      expect(result.success).toBe(true);
+    });
+
+    test('rejects a kit with only 1 component', () => {
+      const result = criarVendaSchema.safeParse({
+        ...valid,
+        itens: [
+          { produto_id: 1, quantidade: 1, kit_id: 1 },
+          { produto_id: 2, quantidade: 1 }
+        ]
+      });
+      expect(result.success).toBe(false);
+      expect(result.error.issues[0].message).toBe('Kit precisa ter ao menos 2 componentes');
+    });
+
+    test('rejects kit_id = 0', () => {
+      const result = criarVendaSchema.safeParse({
+        ...valid,
+        itens: [{ produto_id: 1, quantidade: 1, kit_id: 0 }]
+      });
+      expect(result.success).toBe(false);
+    });
+
+    test('rejects a negative kit_id', () => {
+      const result = criarVendaSchema.safeParse({
+        ...valid,
+        itens: [{ produto_id: 1, quantidade: 1, kit_id: -1 }]
+      });
+      expect(result.success).toBe(false);
+    });
+
+    test('rejects a non-numeric kit_id', () => {
+      const result = criarVendaSchema.safeParse({
+        ...valid,
+        itens: [{ produto_id: 1, quantidade: 1, kit_id: 'abc' }]
+      });
+      expect(result.success).toBe(false);
+    });
+  });
 });
