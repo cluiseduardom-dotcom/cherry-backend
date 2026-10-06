@@ -2,6 +2,8 @@ const db = require('../config/db');
 const estoqueRepository = require('./estoqueRepository');
 const contasPagarRepository = require('./contasPagarRepository');
 const AppError = require('../errors/AppError');
+const { MAX_DIAS_PRAZO } = require('../constants/limites');
+const { inteiroNoIntervalo } = require('../utils/numeros');
 
 // Usa os getters LOCAIS do Date (não toISOString/UTC) de propósito: a mesma
 // armadilha de fuso horário documentada em 006_contas_pagar.sql. data_compra
@@ -28,6 +30,10 @@ function calcularDataVencimento(dataCompra, diasPrazo) {
 // vendasRepository.criar gerando contas_receber. Qualquer falha em qualquer
 // parte reverte a compra inteira.
 async function criar({ fornecedor_id, data_compra, nota_fiscal, forma_pagamento, dias_prazo, usuario_id, empresa_id, itens }) {
+    if (dias_prazo != null) {
+        inteiroNoIntervalo(dias_prazo, { min: 1, max: MAX_DIAS_PRAZO }, `Prazo em dias deve estar entre 1 e ${MAX_DIAS_PRAZO}`);
+    }
+
     const client = await db.connect();
 
     try {

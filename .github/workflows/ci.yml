@@ -51,6 +51,9 @@ jobs:
       - name: Apply database migrations
         run: npm run db:migrate
 
+      - name: Generate ephemeral seed password
+        run: echo "SEED_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+
       - name: Seed database
         run: node src/database/seed.js
 

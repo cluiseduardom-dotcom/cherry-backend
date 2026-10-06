@@ -7,6 +7,8 @@ const parcelasPagamentoRepository = require('./parcelasPagamentoRepository');
 const estornosPagamentoRepository = require('./estornosPagamentoRepository');
 const { executarComLock } = require('./shared/transacoes');
 const AppError = require('../errors/AppError');
+const { MAX_PARCELAS, MAX_MESES_PRAZO } = require('../constants/limites');
+const { inteiroNoIntervalo } = require('../utils/numeros');
 
 // Usa os getters LOCAIS do Date (não toISOString/UTC) de propósito: a mesma
 // armadilha de fuso horário documentada em 006_contas_pagar.sql — o driver pg
@@ -104,7 +106,30 @@ function validarSomaPagamentos(pagamentos, total) {
     return soma === Math.round(Number(total) * 100);
 }
 
+// numero_parcelas controla um loop de INSERTs: o teto precisa valer aqui também,
+// não só no Zod, para qualquer chamador futuro do repository.
+function validarLimitesDeParcelamento(pagamentos, meses_prazo) {
+    const mensagemParcelas = `Número de parcelas deve estar entre 1 e ${MAX_PARCELAS}`;
+    const mensagemPrazo = `Prazo em meses deve estar entre 1 e ${MAX_MESES_PRAZO}`;
+
+    if (meses_prazo != null) {
+        inteiroNoIntervalo(meses_prazo, { min: 1, max: MAX_MESES_PRAZO }, mensagemPrazo);
+    }
+
+    for (const pagamento of pagamentos ?? []) {
+        if (pagamento.numero_parcelas != null) {
+            inteiroNoIntervalo(pagamento.numero_parcelas, { min: 1, max: MAX_PARCELAS }, mensagemParcelas);
+        }
+
+        if (pagamento.meses_prazo != null) {
+            inteiroNoIntervalo(pagamento.meses_prazo, { min: 1, max: MAX_MESES_PRAZO }, mensagemPrazo);
+        }
+    }
+}
+
 async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null }) {
+    validarLimitesDeParcelamento(pagamentos, meses_prazo);
+
     const client = await db.connect();
 
     try {

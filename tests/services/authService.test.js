@@ -44,14 +44,64 @@ describe('authService.login', () => {
     const result = await authService.login('a@x.com', 'senha123');
 
     expect(jwt.sign).toHaveBeenCalledWith(
-      { id: 1, role: 'admin' },
+      { id: 1, role: 'admin', empresa_id: undefined, tv: 0 },
       process.env.JWT_SECRET,
-      { expiresIn: '8h' }
+      { expiresIn: '8h', algorithm: 'HS256' }
     );
     expect(result).toEqual({
       token: 'signed-token',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'admin' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'admin', empresa_id: undefined }
     });
+  });
+
+  test('embute a token_version atual do usuário no token', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue({
+      id: 1, nome: 'Ana', email: 'a@x.com', senha: 'hash', papel: 'admin', empresa_id: 7, token_version: 3, ativo: true, empresa_status: 'ativa'
+    });
+    bcrypt.compare.mockResolvedValue(true);
+    jwt.sign.mockReturnValue('signed-token');
+
+    await authService.login('a@x.com', 'senha123');
+
+    expect(jwt.sign).toHaveBeenCalledWith(
+      expect.objectContaining({ empresa_id: 7, tv: 3 }),
+      process.env.JWT_SECRET,
+      expect.any(Object)
+    );
+  });
+
+  test('usuário inativo não autentica, mesmo com a senha correta, e a resposta é igual à de senha errada', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue({
+      id: 1, senha: 'hash', papel: 'admin', empresa_id: 1, ativo: false, empresa_status: 'ativa'
+    });
+    bcrypt.compare.mockResolvedValue(true);
+
+    await expect(authService.login('a@x.com', 'senha-correta')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Email ou senha inválidos'
+    });
+    expect(jwt.sign).not.toHaveBeenCalled();
+  });
+
+  test('empresa inativa não autentica, mesmo com a senha correta', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue({
+      id: 1, senha: 'hash', papel: 'admin', empresa_id: 1, ativo: true, empresa_status: 'inativa'
+    });
+    bcrypt.compare.mockResolvedValue(true);
+
+    await expect(authService.login('a@x.com', 'senha-correta')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Email ou senha inválidos'
+    });
+    expect(jwt.sign).not.toHaveBeenCalled();
+  });
+
+  test('e-mail inexistente ainda paga um bcrypt.compare (sem diferença de tempo observável)', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue(null);
+    bcrypt.compare.mockResolvedValue(false);
+
+    await expect(authService.login('missing@x.com', 'qualquer')).rejects.toMatchObject({ statusCode: 401 });
+    expect(bcrypt.compare).toHaveBeenCalledTimes(1);
   });
 });
 

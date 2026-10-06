@@ -33,6 +33,9 @@
     "testEnvironment": "node",
     "setupFiles": [
       "<rootDir>/tests/setup.js"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setupSessao.js"
     ]
   }
 }

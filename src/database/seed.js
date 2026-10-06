@@ -5,6 +5,26 @@ const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const NOME_EMPRESA_SEED = 'Cherry Semijoias';
+const AMBIENTES_PROIBIDOS = ['production', 'staging'];
+const TAMANHO_MINIMO_SENHA_SEED = 12;
+
+// O seed cria um admin com e-mail conhecido: nunca em ambiente publicado, e a
+// senha vem do ambiente (SEED_PASSWORD) — não existe senha padrão no código.
+function validarAmbienteDoSeed(env = process.env) {
+    if (AMBIENTES_PROIBIDOS.includes(env.NODE_ENV)) {
+        throw new Error(`O seed não pode rodar em NODE_ENV=${env.NODE_ENV}`);
+    }
+}
+
+function obterSenhaDoSeed(env = process.env) {
+    const senha = env.SEED_PASSWORD;
+
+    if (!senha || senha.length < TAMANHO_MINIMO_SENHA_SEED) {
+        throw new Error(`Defina SEED_PASSWORD com pelo menos ${TAMANHO_MINIMO_SENHA_SEED} caracteres`);
+    }
+
+    return senha;
+}
 const ESTOQUE_INICIAL = 100;
 
 // markup é sempre relativo ao custo, margem sempre relativa ao preço de
@@ -17,6 +37,8 @@ function calcularMarkupEMargem(custo, precoVenda) {
 }
 
 async function main() {
+    validarAmbienteDoSeed();
+
     const client = await pool.connect();
 
     const jaExiste = await client.query('SELECT id FROM empresas WHERE nome = $1', [NOME_EMPRESA_SEED]);
@@ -28,7 +50,7 @@ async function main() {
         return;
     }
 
-    const senhaHash = await bcrypt.hash('senha123', 10);
+    const senhaHash = await bcrypt.hash(obterSenhaDoSeed(), 10);
 
     await client.query('BEGIN');
 
@@ -169,7 +191,11 @@ async function main() {
     }
 }
 
-main().catch((err) => {
-    console.error('ERRO no seed:', err.message);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch((err) => {
+        console.error('ERRO no seed:', err.message);
+        process.exit(1);
+    });
+}
+
+module.exports = { validarAmbienteDoSeed, obterSenhaDoSeed };

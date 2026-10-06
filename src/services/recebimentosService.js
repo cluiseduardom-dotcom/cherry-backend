@@ -1,5 +1,6 @@
 const AppError = require('../errors/AppError');
 const repository = require('../repositories/recebimentosRepository');
+const { numeroFinito } = require('../utils/numeros');
 
 const TRANSICOES = {
     RASCUNHO: ['EM_CONFERENCIA', 'CANCELADO'],
@@ -17,10 +18,10 @@ function validarTransicao(atual, proximo) {
 }
 
 async function criar(dados) {
-    if (!(Number(dados.pedido_compra_id) > 0)) {
+    if (!Number.isInteger(Number(dados.pedido_compra_id)) || Number(dados.pedido_compra_id) <= 0) {
         throw new AppError('Pedido de compra é obrigatório', 400);
     }
-    if (!(Number(dados.fornecedor_id) > 0)) {
+    if (!Number.isInteger(Number(dados.fornecedor_id)) || Number(dados.fornecedor_id) <= 0) {
         throw new AppError('Fornecedor é obrigatório', 400);
     }
     if (!dados.numero || !String(dados.numero).trim()) {
@@ -49,9 +50,14 @@ async function adicionarItem(recebimentoId, dados, usuario) {
         throw new AppError('Descrição do item é obrigatória', 400);
     }
 
-    const quantidade = Number(dados.quantidade_recebida);
+    const quantidade = numeroFinito(dados.quantidade_recebida, 'Quantidade recebida deve ser maior que zero');
     if (!(quantidade > 0)) {
         throw new AppError('Quantidade recebida deve ser maior que zero', 400);
+    }
+
+    if (dados.preco_unitario != null) {
+        const preco = numeroFinito(dados.preco_unitario, 'Preço unitário inválido');
+        if (preco < 0) throw new AppError('Preço unitário inválido', 400);
     }
 
     const jaRecebida = await repository.quantidadeJaRecebida(
@@ -64,6 +70,7 @@ async function adicionarItem(recebimentoId, dados, usuario) {
 
     return repository.adicionarItem({
         ...dados,
+        quantidade_recebida: quantidade,
         recebimento_id: recebimentoId,
         empresa_id: usuario.empresa_id,
         quantidade_pedida: Number(pedidoItem.quantidade),

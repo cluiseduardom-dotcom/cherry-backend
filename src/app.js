@@ -2,8 +2,24 @@ require('dotenv').config({ quiet: true });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const AppError = require('./errors/AppError');
+const rejeitarNumerosNaoFinitos = require('./middlewares/rejeitarNumerosNaoFinitos');
 
 const app = express();
+
+// Atrás do proxy do Render, req.ip precisa vir do X-Forwarded-For; sem isso
+// todos os clientes parecem ter o IP do proxy e dividem o mesmo rate limit.
+// Número de proxies confiáveis configurável (TRUST_PROXY_HOPS); padrão 1 em
+// production/staging. Nunca `true`: aceitaria IP forjado pelo cliente.
+function obterSaltosProxyConfiaveis() {
+    const configurado = Number.parseInt(process.env.TRUST_PROXY_HOPS, 10);
+
+    if (Number.isInteger(configurado) && configurado >= 0) return configurado;
+
+    return ['production', 'staging'].includes(process.env.NODE_ENV) ? 1 : 0;
+}
+
+app.set('trust proxy', obterSaltosProxyConfiaveis());
 
 function obterOrigensPermitidas() {
     return (process.env.CORS_ORIGINS || '')
@@ -30,7 +46,7 @@ function configurarCors() {
                 return callback(null, true);
             }
 
-            return callback(new Error('Origem não permitida pelo CORS'));
+            return callback(new AppError('Origem não permitida pelo CORS', 403));
         }
     };
 }
@@ -38,6 +54,7 @@ function configurarCors() {
 app.use(helmet());
 app.use(cors(configurarCors()));
 app.use(express.json());
+app.use(rejeitarNumerosNaoFinitos);
 
 // Health-check público pra monitoramento de uptime: sem auth, sem tocar no
 // banco — só confirma que o processo Node está de pé.
@@ -70,13 +87,14 @@ const onboardingRoutes = require('./routes/onboarding');
 const authMiddleware = require('./middlewares/authMiddleware');
 const requireAdmin = require('./middlewares/requireAdmin');
 const requireEstoquista = require('./middlewares/requireEstoquista');
+const requireVendedor = require('./middlewares/requireVendedor');
 const errorHandler = require('./middlewares/errorHandler');
 
 app.use('/auth', authRoutes);
 app.use('/onboarding', onboardingRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);
 app.use('/vendas', authMiddleware, vendasRoutes);
-app.use('/clientes', authMiddleware, clientesRoutes);
+app.use('/clientes', authMiddleware, requireVendedor, clientesRoutes);
 app.use('/canais-venda', authMiddleware, canaisVendaRoutes);
 app.use('/dashboard', authMiddleware, requireAdmin, dashboardRoutes);
 app.use('/contas-pagar', authMiddleware, requireAdmin, contasPagarRoutes);
