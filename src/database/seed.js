@@ -17,26 +17,29 @@ function calcularMarkupEMargem(custo, precoVenda) {
 }
 
 async function main() {
-    const jaExiste = await pool.query('SELECT id FROM empresas WHERE nome = $1', [NOME_EMPRESA_SEED]);
+    const client = await pool.connect();
+
+    const jaExiste = await client.query('SELECT id FROM empresas WHERE nome = $1', [NOME_EMPRESA_SEED]);
 
     if (jaExiste.rows.length) {
         console.log(`Seed pulado: empresa '${NOME_EMPRESA_SEED}' já existe (id ${jaExiste.rows[0].id}).`);
+        client.release();
         await pool.end();
         return;
     }
 
     const senhaHash = await bcrypt.hash('senha123', 10);
 
-    await pool.query('BEGIN');
+    await client.query('BEGIN');
 
     try {
-        const empresaResult = await pool.query(
+        const empresaResult = await client.query(
             `INSERT INTO empresas (nome, cnpj, status) VALUES ($1, NULL, 'ativa') RETURNING id`,
             [NOME_EMPRESA_SEED]
         );
         const empresaId = empresaResult.rows[0].id;
 
-        const canaisResult = await pool.query(
+        const canaisResult = await client.query(
             `INSERT INTO canais_venda (empresa_id, nome, ativo) VALUES
                 ($1, 'loja_fisica', true),
                 ($1, 'online', true)
@@ -45,7 +48,7 @@ async function main() {
         );
         const canalLojaFisicaId = canaisResult.rows.find((c) => c.nome === 'loja_fisica').id;
 
-        const usuariosResult = await pool.query(
+        const usuariosResult = await client.query(
             `INSERT INTO usuarios (empresa_id, nome, email, senha, papel) VALUES
                 ($1, $2, $3, $4, 'admin'),
                 ($1, $5, $6, $7, 'vendedor'),
@@ -60,7 +63,7 @@ async function main() {
         );
         const adminId = usuariosResult.rows.find((u) => u.papel === 'admin').id;
 
-        const clientesResult = await pool.query(
+        const clientesResult = await client.query(
             `INSERT INTO clientes (empresa_id, nome, telefone, email) VALUES
                 ($1, 'João Pereira', '11999990001', 'joao@example.com'),
                 ($1, 'Maria Santos', '11999990002', 'maria@example.com'),
@@ -83,9 +86,10 @@ async function main() {
 
         const produtoIds = [];
         const estoqueAtual = {};
+        const custoPorProduto = {};
 
         for (const p of produtosSeed) {
-            const { rows } = await pool.query(
+            const { rows } = await client.query(
                 `INSERT INTO produtos (empresa_id, sku, nome, preco_venda, custo, estoque_atual)
                  VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
                 [empresaId, p.sku, p.nome, p.preco_venda, p.custo, ESTOQUE_INICIAL]
@@ -93,15 +97,16 @@ async function main() {
             const produtoId = rows[0].id;
             produtoIds.push(produtoId);
             estoqueAtual[produtoId] = ESTOQUE_INICIAL;
+            custoPorProduto[produtoId] = p.custo;
 
-            await pool.query(
+            await client.query(
                 `INSERT INTO movimentacoes_estoque (empresa_id, produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id)
                  VALUES ($1, $2, 'entrada', $3, $3, 'Estoque inicial (seed)', $4)`,
                 [empresaId, produtoId, ESTOQUE_INICIAL, adminId]
             );
 
             const { markup, margem } = calcularMarkupEMargem(p.custo, p.preco_venda);
-            await pool.query(
+            await client.query(
                 `INSERT INTO precos_produto (empresa_id, produto_id, canal_id, preco_venda, markup_percentual, margem_percentual, usuario_id)
                  VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                 [empresaId, produtoId, canalLojaFisicaId, p.preco_venda, markup, margem, adminId]
@@ -123,7 +128,7 @@ async function main() {
         for (const venda of vendasSeed) {
             const total = venda.itens.reduce((soma, [, quantidade, preco]) => soma + quantidade * preco, 0);
 
-            const vendaResult = await pool.query(
+            const vendaResult = await client.query(
                 `INSERT INTO vendas (empresa_id, cliente_id, canal_id, usuario_id, total, status, data)
                  VALUES ($1, $2, $3, $4, $5, 'finalizada', NOW() - $6::interval)
                  RETURNING id`,
@@ -132,20 +137,20 @@ async function main() {
             const vendaId = vendaResult.rows[0].id;
 
             for (const [produtoId, quantidade, precoUnitario] of venda.itens) {
-                await pool.query(
-                    `INSERT INTO itens_venda (empresa_id, venda_id, produto_id, quantidade, preco_unitario)
-                     VALUES ($1, $2, $3, $4, $5)`,
-                    [empresaId, vendaId, produtoId, quantidade, precoUnitario]
+                await client.query(
+                    `INSERT INTO itens_venda (empresa_id, venda_id, produto_id, quantidade, preco_unitario, custo_unitario)
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [empresaId, vendaId, produtoId, quantidade, precoUnitario, custoPorProduto[produtoId]]
                 );
 
                 estoqueAtual[produtoId] -= quantidade;
 
-                await pool.query(
+                await client.query(
                     `UPDATE produtos SET estoque_atual = $1 WHERE id = $2`,
                     [estoqueAtual[produtoId], produtoId]
                 );
 
-                await pool.query(
+                await client.query(
                     `INSERT INTO movimentacoes_estoque (empresa_id, produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id)
                      VALUES ($1, $2, 'saida', $3, $4, $5, $6)`,
                     [empresaId, produtoId, quantidade, estoqueAtual[produtoId], `Venda #${vendaId}`, adminId]
@@ -153,12 +158,13 @@ async function main() {
             }
         }
 
-        await pool.query('COMMIT');
+        await client.query('COMMIT');
         console.log(`Seed concluído: empresa '${NOME_EMPRESA_SEED}' (id ${empresaId}), 3 usuarios, 4 clientes, 6 produtos, 6 vendas.`);
     } catch (err) {
-        await pool.query('ROLLBACK');
+        await client.query('ROLLBACK');
         throw err;
     } finally {
+        client.release();
         await pool.end();
     }
 }
