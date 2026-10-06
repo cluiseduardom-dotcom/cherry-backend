@@ -1,321 +1,110 @@
-# Cherry ERP — Backend
+# VERTUMNO / Cherry Backend — Claude Code
 
-ERP para empresa de semijoias. Este arquivo é lido a cada sessão: mantenha-o curto.
+Este arquivo é o contrato operacional do Claude Code para este repositório. Deve permanecer curto, atual e coerente com o código real. Regras históricas, bugs já corrigidos e decisões temporárias não devem ser acumulados aqui; documente detalhes na PR, issue ou SDD quando necessário.
 
-**Multi-tenant desde a migration `007_multi_tenant.sql`**: existe tabela `empresas`; toda tabela de dado de negócio tem `empresa_id` (FK NOT NULL, indexada), e toda a camada de aplicação (controllers/services/repositories) já filtra por ele. `empresa_id` vem do JWT (`req.usuario.empresa_id`, setado no login) — nunca do body/query da requisição. Toda tabela nova precisa da coluna `empresa_id` desde a criação, e toda query nova (SELECT/UPDATE/DELETE/INSERT) precisa considerar `empresa_id` — nunca confiar só no id do recurso.
+## 1. Papéis
+- Product Owner: define/valida regras de negócio e aprova o merge.
+- GPT: arquitetura, especificação, auditoria e gate técnico.
+- Claude Code: investigação, implementação, testes, revisão do próprio diff e abertura da PR.
+- GitHub Actions: validação automatizada.
+- Claude Code não faz merge da própria PR e não altera master diretamente.
 
-## Stack
-
+## 2. Stack e arquitetura
 - Node.js + Express
-- PostgreSQL (Neon, região sa-east-1) — acesso via `pg`
-- Auth: `bcrypt` + `jsonwebtoken`
-- Testes: Jest
-- Deploy: Render
-- Frontend separado, em pasta irmã `cherry-frontend` (React + Vite + TypeScript + Tailwind)
+- PostgreSQL / Neon
+- pg
+- JWT + bcrypt
+- Jest
+- Deploy atual: Render
+- Frontend separado: cherry-frontend (React/Vite/TypeScript/Tailwind)
+- O sistema é multi-tenant. Dados de negócio pertencem a empresa_id.
 
-## Variáveis de ambiente
+## 3. Regras invioláveis
 
-`DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN` (8h).
-`.env` está no `.gitignore` e **nunca** deve ser commitado, ecoado no terminal ou colado em log.
+### Multi-tenant
+- empresa_id vem do JWT (req.usuario.empresa_id), nunca do body/query do cliente.
+- Toda tabela de negócio nova deve ter empresa_id quando aplicável.
+- Toda operação de leitura/escrita por recurso deve filtrar por empresa_id na própria query.
+- Referências entre recursos devem ser validadas dentro do mesmo tenant.
+- Nunca usar apenas o id do recurso como fronteira de segurança.
 
-## Papéis e permissões
+### Segurança e RBAC
+- O frontend nunca é fronteira de segurança.
+- Toda rota protegida deve validar autenticação e autorização no backend.
+- Papéis atuais: admin, vendedor, estoquista.
+- vendedor nunca recebe custo, margem ou lucro em respostas da API.
+- estoquista não acessa vendas nem financeiro.
+- Criação/remoção de usuários: somente admin.
+- Nunca commitar, logar ou expor secrets, tokens, senhas, .env ou DATABASE_URL.
+- Credenciais de teste devem usar hashes/segredos próprios de CI/dev e nunca credenciais reais.
 
-Três papéis, gravados no JWT junto com o id do usuário:
+### Integridade
+- Operações que alteram estoque, vendas ou dinheiro devem usar transação.
+- Operações concorrentes sobre estoque/financeiro devem usar locks apropriados.
+- Nunca permitir estoque negativo.
+- Histórico operacional/financeiro não deve ser apagado para esconder uma operação; usar cancelamento/soft delete conforme a regra do módulo.
+- Idempotência deve ser considerada em operações que possam ser repetidas por retry, webhook ou concorrência.
 
-| Papel | Acesso |
-|---|---|
-| `admin` | Total |
-| `vendedor` | Vendas e produtos |
-| `estoquista` | Estoque e movimentações |
+### Banco e migrations
+- Alterações de schema entram em migration versionada.
+- Não alterar migration já aplicada/mergeada para corrigir histórico; criar migration corretiva.
+- schema.sql deve acompanhar o estado consolidado do schema quando a convenção do projeto exigir.
+- Nunca executar SQL destrutivo em produção sem autorização explícita.
+- Não fazer alteração direta em produção como parte de uma tarefa de código.
 
-**Regra inviolável:** `vendedor` NUNCA vê `preco_custo` nem `margem`, em nenhuma resposta, em nenhum endpoint, nem dentro de objetos aninhados. Filtre no serializador antes de responder — nunca confie só no front.
+### Datas e valores
+- Colunas DATE devem preservar YYYY-MM-DD sem conversão indevida para Date/UTC.
+- Usar nomes de banco/API em português, snake_case, conforme o padrão existente (criado_em, atualizado_em).
+- Valores financeiros devem ser validados como números finitos e tratados de forma consistente.
 
-Outras regras:
-- `estoquista` não acessa vendas nem financeiro.
-- Criação/remoção de usuários: apenas `admin`.
-- Toda rota é protegida pelo middleware de auth, salvo `POST /auth/login`.
+## 4. CI e ambientes
+A CI é isolada e não deve depender de banco persistente de produção, staging ou Neon.
+- GitHub Actions usa PostgreSQL efêmero para testes.
+- DATABASE_URL da CI aponta para o PostgreSQL do próprio job.
+- JWT_SECRET da CI é exclusivo e não é segredo de produção.
+- A sequência mínima da CI é: instalar dependências; validar sintaxe; aplicar migrations; executar seed; executar testes; executar o quality gate configurado.
+- A CI não deve escrever em bancos reais.
+- O seed de CI/dev deve ser idempotente.
+- Antes de alterar CI, verificar o workflow real em .github/workflows/ci.yml; este arquivo não substitui a configuração executável.
 
-## Convenções de API
+## 5. Fluxo de desenvolvimento
+1. Partir de master atualizado.
+2. Criar uma branch por tarefa: feat/<modulo>, fix/<modulo> ou chore/<modulo>.
+3. Investigar o código existente antes de implementar.
+4. Não duplicar serviços, repositories, rotas, componentes ou regras existentes.
+5. Implementar somente o escopo solicitado.
+6. Testar a alteração e os fluxos afetados.
+7. Revisar o diff completo.
+8. Abrir PR com evidências.
+9. Se a CI falhar, corrigir na mesma branch/PR.
+10. Merge somente após CI verde, revisão arquitetural e aprovação do Product Owner.
+- Nunca usar push --force em branch compartilhada sem autorização.
 
-- Respostas: `{ success: true, data }` ou `{ success: false, message }`. Sem exceções.
-- Códigos: 400 validação, 401 sem token/token inválido, 403 papel sem permissão, 404 não encontrado, 409 conflito de regra de negócio, 500 erro inesperado.
-- Listagens têm paginação simples (`page`, `limit`).
-- Nomes de rotas, colunas e campos em **português**, sem acento e em snake_case (`preco_custo`, `estoque_minimo`). Isso vale também pra timestamp: colunas novas são `criado_em`/`atualizado_em`, nunca `created_at`/`updated_at` — decisão já tomada e reafirmada em fornecedores (ver abaixo), não reabrir.
-
-## Estado atual dos módulos
-
-Prontos:
-- **Auth** — `POST /auth/login` com `bcrypt.compare`, geração de JWT (id + role), middleware de validação e middleware de autorização por papel.
-- **Produtos/SKUs** — CRUD com soft delete via `ativo`. Escrita só admin, leitura para todos os papéis autenticados.
-- **`produtos.categoria` (texto livre) está deprecado** desde a migration `019_categorias_produto.sql` — substituído pela categorização estruturada (`categorias_produto`/`produtos_categorias`, ver módulo abaixo). Não ler nem escrever esse campo em código novo; a coluna continua existindo só por compatibilidade de contrato de API, sem UI própria. Remoção planejada para antes do carregamento do catálogo real.
-- **Análises de precificação de produto** (`GET /produtos/mais-vendidos`, `/curva-abc`, `/reposicao`, `/sugestao-preco`, `/giro`, `/parados`, `/pricing`, `/pricing-profissional`, `/lucro`, `/alerta-prejuizo`, `/inteligencia`, `/dashboard`) — cluster paralelo ao módulo Dashboard, montado só atrás de `authMiddleware` (sem `requireAdmin`/`requireEstoquista`); RBAC é por campo, não por rota — `produtosController.filtrarDadosAnaliticos` remove `custo`/`custo_total`/`margem_percentual`/`lucro`/`lucro_unitario` da resposta pra quem não é admin, mesmo padrão de `filtrarParaRole`. Ver `## Regras já decididas em custo congelado` pra qual fonte de custo cada rota usa. `getAcoes`/`produtosService.acoes` existe no repository/service mas não tem rota montada — função morta, candidata a limpeza numa branch própria, não removida por estar fora do escopo de quem a encontrou.
-- **Movimentações de estoque** — tabela `movimentacoes_estoque` como ledger **append-only** (`produto_id`, `tipo`, `quantidade`, `estoque_resultante`, `motivo`, `usuario_id`, `criado_em`).
-- **Precificação** — preço por canal (`precos_produto`), ledger append-only (nunca UPDATE, só INSERT de nova linha vigente).
-- **PDV/vendas** — `POST /vendas` trava o preço vigente do canal (`preco_unitario`) **e o custo do produto** (`custo_unitario`, migration `015_custo_congelado_itens_venda.sql`) no momento da venda; `PATCH /vendas/:id/cancelar` estorna estoque. Ver `## Regras já decididas em custo congelado`.
-- **Dashboard analítico** — curva ABC, giro, cobertura em dias, margem por produto e canal (margem aqui é **prospectiva**, não histórica — ver seção abaixo). Admin-only. `GET /dashboard/giro-cobertura` (mesmo cluster, mesmo acesso) é um relatório agregado por cima do giro/cobertura por produto — total da empresa, quebra por nível de categoria e rankings de maior/menor giro. Ver `## Regras já decididas no relatório agregado de giro e cobertura` abaixo.
-- **Financeiro: contas a pagar** — primeira etapa do módulo financeiro, lançamento manual, sem vínculo com vendas. CRUD completo em `/contas-pagar`.
-- **Financeiro: contas a receber** — segunda etapa, com vínculo automático a vendas (migration `009_contas_receber.sql`). Sem CRUD manual: nasce de `POST /vendas` com `forma_pagamento: 'prazo'`, é cancelada junto com a venda. `/contas-receber` só lê e marca como recebida.
-- **Financeiro: despesas fixas e Ponto de Equilíbrio** (migrations `011_ponto_equilibrio.sql`, `016_vigencia_despesas_fixas.sql`) — CRUD de `despesas_fixas` (categoria/descrição/valor/vigência, soft delete via `deletado_em`, pausa via `ativo`), admin-only. `GET /financeiro/ponto-equilibrio` calcula receita, custo variável (produtos, congelado — ver seção de custo congelado), custo fixo **rateado por dia dentro do período** (não soma mensal cheia) e margem de contribuição pro período informado (`data_inicio`/`data_fim`, default mês corrente). Ver `## Regras já decididas em rateio e vigência de despesas fixas` abaixo.
-- **Fornecedores** — Fase A do módulo de Produção (migration `010_fornecedores.sql`): cadastro simples, CRUD completo em `/fornecedores`, acesso admin+estoquista.
-- **Compras** — Fase B do módulo de Produção (migration `012_compras.sql`): entrada de mercadoria vinculada a fornecedor, CRUD em `/compras`, acesso admin+estoquista.
-- **Kit no PDV** — Fase C revisada do módulo de Produção (grilling 09/09/2026, substitui "Produção própria/ficha técnica" como prioridade atual): PR 1/2 mergeado — kit de produtos já prontos montado do zero em cada venda (`kit_id` em `itens_venda`, migration `017_kit_id_itens_venda.sql`), sem cadastro prévio; PR 2/2 (desconto no PDV) pendente. Ficha técnica com insumos (migration `013_producao.sql`) continua implementada, reservada para produção real futura — ver `## Regras já decididas em Fase C do módulo de Produção` abaixo.
-- **Relatórios (frontend, `cherry-frontend`)** — módulo completo: relatórios de Vendas, Estoque e Financeiro com dados reais e exportação em PDF (jsPDF + html2canvas). Sem rota nova no backend — reaproveita os endpoints analíticos já existentes. Mergeado em PR #6 do `cherry-frontend`.
-- **Anonimização de clientes (LGPD)** — migration `014_clientes_anonimizacao.sql`: `PATCH /clientes/:id/anonimizar` remove nome/telefone/email e marca `ativo = false`, preservando `vendas.cliente_id`. Admin-only.
-- **Hub de clientes: dados cadastrais + edição** — migration `043_clientes_dados_cadastrais.sql`: CPF/CNPJ, endereço completo, data de nascimento e observações em `clientes`; `PATCH /clientes/:id` (novo, sem restrição de papel) edita esses campos e `nome`/`telefone`/`email`/`ativo`. Ver `## Regras já decididas no hub de clientes` abaixo.
-- **Categorias de produto + SKU automático** — migration `019_categorias_produto.sql`: CRUD de categorias em `/categorias` (admin+estoquista), geração automática e imutável de SKU via `PATCH /produtos/:id/categoria`. Ver `## Regras já decididas em categorias de produto + SKU automático` abaixo.
-- **Rótulos de nível de categoria** — migration `020_niveis_categoria.sql`: tabela `niveis_categoria` (`empresa_id`, `nivel`, `nome`, `UNIQUE(empresa_id, nivel)`) permite cada empresa nomear o que cada `categorias_produto.nivel` significa (ex.: Cherry usa 1=família, 2=material, 3=gênero). CRUD em `/niveis-categoria`, admin+estoquista (mesma permissão de `/categorias`). Ver `## Regras já decididas em rótulos de nível de categoria` abaixo.
-
-Regras já decididas no estoque (não reabrir):
-- `tipo`: `entrada` soma, `saida` subtrai, `ajuste` fixa valor absoluto (correção de contagem física).
-- Escrita: admin e estoquista. Leitura: todos os papéis.
-- Saída que zeraria negativo é bloqueada com 409, dentro de transação com lock de linha.
-- Movimentação em produto inativo é bloqueada com 400.
-- `estoque_atual` **não** pode ser alterado via `PUT /produtos/:id` — só muda por movimentação auditada.
-
-Regras já decididas em contas a pagar (não reabrir):
-- Acesso: **admin apenas** (`authMiddleware` + `requireAdmin` no mount da rota em `app.js`, igual ao dashboard). Nem vendedor nem estoquista acessam, nem para leitura.
-- `status` tem só 3 valores reais: `pendente`, `pago`, `cancelado`. **`atrasado` não é status persistido** — é campo calculado na resposta (`status = 'pendente' AND data_vencimento < hoje`), no mesmo espírito de `produtosService.comMargem`. Não existe job/cron no projeto pra manter um 4º status sincronizado com a data atual; recalcular na leitura é mais simples e sempre correto.
-- `PATCH /:id/pagar` e `DELETE /:id` (que **cancela**, não faz `DELETE` de linha — mesma filosofia do soft delete de produtos e do cancelamento de vendas) só funcionam a partir de `pendente`; a checagem de status mora no repository, dentro de transação com `SELECT ... FOR UPDATE`, igual a `vendasRepository.cancelar` — evita corrida entre duas requisições concorrentes.
-- `fornecedor` é texto livre (`VARCHAR`), não referência a tabela: não existe entidade de fornecedor no sistema ainda.
-- `PUT /:id` (editar) não tem restrição de status — pode editar conta paga ou cancelada. Não foi pedido bloqueio nisso; se quiser travar edição de conta já paga/cancelada, é decisão de negócio a confirmar antes de implementar.
-- **Armadilha de fuso horário com colunas `DATE`**: o driver `pg` serializa um `Date` do Node pra uma coluna `DATE`/`TIMESTAMP` usando os métodos de **fuso horário local** do processo (`getFullYear`/`getMonth`/`getDate`), não UTC. `z.coerce.date('2026-08-10')` gera meia-noite UTC, que em qualquer servidor com fuso negativo (ex: `America/Sao_Paulo`, UTC-3) vira 09/08 21h local — grava um dia a menos. Corrigido usando `z.iso.date()` (mantém string `'YYYY-MM-DD'` do início ao fim, nunca vira `Date`). Vale lembrar disso pra qualquer coluna `DATE` futura.
-
-Regras já decididas na migração multi-tenant (não reabrir):
-- Tabela `empresas`: `id`, `nome`, `cnpj` (opcional), `status` (`ativa`/`inativa`), `criado_em`. Campo pedido como `created_at` foi renomeado pra `criado_em` pra seguir a convenção de nomes do projeto (português, snake_case) já usada em todas as outras tabelas.
-- `empresa_id` foi adicionado (FK NOT NULL + índice) em `usuarios`, `clientes`, `produtos`, `vendas`, `itens_venda`, `movimentacoes_estoque`, `contas_pagar` (lista original) **e também** em `canais_venda` e `precos_produto` (não estavam na lista original, mas ficaram de fora seria inconsistente: canal de venda pode variar por empresa no futuro, e `precos_produto` é dado transacional). Confirmado com o usuário antes de implementar.
-- Todas as linhas existentes foram migradas pra um registro seed único em `empresas`: nome "Cherry Semijoias" (placeholder, nome real não encontrado no repo), `cnpj` NULL. **Pendência:** ajustar nome/CNPJ reais quando o usuário informar.
-- **Não foram alteradas** as UNIQUE constraints existentes (`usuarios.email`, `produtos.sku`) para incluir `empresa_id` — continuavam únicas globalmente, não por empresa, até a migration `019_categorias_produto.sql` (2026-09-12), que tornou **`produtos.sku` único por empresa** (`(empresa_id, sku) WHERE sku IS NOT NULL`, constraint global `produtos_sku_key` removida). Motivo: SKU passou a ser gerado automaticamente por uma sequência isolada por empresa (ver módulo "Categorias de produto + SKU automático" abaixo) — manter unicidade global bloquearia uma empresa de gerar um SKU só porque outra empresa, sem relação alguma, já tinha gerado o mesmo texto. `usuarios.email` continua único globalmente, decisão não reaberta.
-- **`canais_venda.nome` foi corrigido** (migration `008_canais_venda_unique_por_empresa.sql`): a constraint `UNIQUE(nome)` global ficou pra trás na migration 007 e travava qualquer empresa além da primeira — como não existe endpoint pra criar `canais_venda` e os dois canais padrão (`loja_fisica`, `online`) já pertenciam à empresa 1, nenhuma segunda empresa conseguia ter canal com esses nomes, o que quebrava produtos (listagem resolve canal sempre), vendas/PDV e precificação inteiros pra qualquer empresa nova — não era só uma questão de isolamento, era módulo não-funcional. Agora é `UNIQUE(empresa_id, nome)`. Achado e corrigido durante a validação de isolamento multi-tenant (2026-07-29), antes de rodar o teste de isolamento.
-- Continua **não existindo endpoint pra criar `empresas` nem `canais_venda`** — toda empresa/canal usado em teste ou onboarding real precisa ser inserido direto no banco por enquanto. Fora do escopo desta tarefa criar esses endpoints.
-
-Regras já decididas no filtro de `empresa_id` na aplicação (não reabrir):
-- `empresa_id` só existe no JWT (setado em `authService.login`, lido em `authMiddleware` como `req.usuario.empresa_id`). Controllers sempre passam `req.usuario.empresa_id` explicitamente pros services — nunca inferido de outro lugar.
-- `POST /auth/register`: o novo usuário é criado na **mesma empresa do admin que está logado** (não existe campo de escolher empresa no body). Não há endpoint de "criar empresa" ainda — só o registro seed da migration.
-- Toda leitura por id (`buscarPorId`, `FOR UPDATE`, etc.) filtra por `id AND empresa_id` na mesma query, nunca busca por id e checa depois em JS — evita corrida e é mais barato.
-- Referência cruzada (ex: `cliente_id` numa venda, `produto_id` num item, `canal_id` num preço) é validada contra a mesma `empresa_id` de quem está fazendo a requisição, dentro da própria transação quando aplicável (`vendasRepository.criar` valida cliente e cada produto). Referência a recurso de outra empresa responde como se o recurso não existisse (404), nunca 403 — mesmo padrão já usado em `vendasService.buscarPorId` pra vendedor vendo venda de outro usuário (não confirma a existência do id).
-- `itens_venda` e `movimentacoes_estoque` recebem `empresa_id` diretamente (denormalizado), não só via join — decisão já tomada na migration 007, mantida aqui pra evitar joins extras em toda leitura.
-
-Regras já decididas em contas a receber (não reabrir):
-- Acesso: **admin apenas** (mesmo padrão de contas a pagar/dashboard). Nem vendedor nem estoquista acessam.
-- Vínculo é automático, não manual: `vendas` ganhou `forma_pagamento` (`a_vista`/`prazo`, default `a_vista`). Só venda `prazo` gera uma linha em `contas_receber`, dentro da mesma transação de `vendasRepository.criar` — venda à vista já é dinheiro recebido na hora, não entra no fluxo de "a receber". Não existe `POST`/`PUT` manual em `/contas-receber`: toda linha nasce de uma venda.
-- `data_vencimento` vem de `dias_prazo` (número, obrigatório só quando `forma_pagamento = 'prazo'`, validado com `.refine` em `criarVendaSchema`) somado à data da venda — não é uma data explícita no payload. Cálculo usa getters locais do `Date` (`getFullYear`/`getMonth`/`getDate`), nunca `toISOString`, pela mesma armadilha de fuso horário já documentada em contas a pagar.- `valor` é copiado de `vendas.total` no momento da criação e travado (nunca recalculado a partir da venda depois) — mesma filosofia de `preco_unitario` em `itens_venda`.
-- `PATCH /vendas/:id/cancelar` cancela a conta a receber vinculada automaticamente, mas **só se ainda estiver `pendente`**. Se já foi `recebido`, o dinheiro já entrou: o cancelamento da **venda inteira** é bloqueado com 409 (`Venda com conta a receber já recebida não pode ser cancelada`), mesmo padrão de mensagem/status code do bloqueio de edição em `contasPagarRepository.atualizar`. Essa checagem roda logo após validar que a venda está `finalizada` e antes de estornar estoque ou atualizar o status da venda (`contasReceberRepository.cancelarPorVendaId`, dentro da mesma transação, reaproveitando o client externo, mesmo padrão de `estoqueRepository.criarMovimentacao`) — se bloquear, a transação inteira roda `ROLLBACK` e nada (estoque, status da venda) fica parcialmente alterado. Venda à vista nunca gerou conta, então é no-op.
-- `status` segue o mesmo padrão de contas a pagar: só 3 valores persistidos (`pendente`, `recebido`, `cancelado`); `atrasado` é campo calculado na leitura, nunca gravado.
-- `PATCH /contas-receber/:id/receber` marca como recebida, só a partir de `pendente`, com `FOR UPDATE` — mesmo padrão de `contasPagarRepository.marcarComoPaga`. Não existe cancelamento manual de conta a receber fora do cancelamento da venda: se for necessário no futuro (ex: perdão de dívida), é decisão de negócio a confirmar antes de implementar.
-- **Bug encontrado e corrigido (29/08/2026, fora deste repo)**: a função `criarVenda` em `cherry-frontend/src/services/vendas.js` desestruturava só `canal`, `cliente_id` e `itens` — `forma_pagamento` e `dias_prazo`, já capturados pelo toggle "À vista/A prazo" da tela de Venda, nunca chegavam no payload enviado ao backend. Como `criarVendaSchema` trata `forma_pagamento` como opcional, toda venda feita pelo PDV caía no default `'a_vista'` sem erro visível na tela, e nenhuma conta a receber era gerada mesmo quando o usuário selecionava "A prazo". O backend estava correto — as regras desta seção sempre foram respeitadas; o bug era só no frontend, silenciosamente descartando os dois campos. Corrigido incluindo-os no payload; validado manualmente pelo PDV (venda a prazo grava `forma_pagamento: 'prazo'` e gera a linha em `contas_receber` com o vencimento esperado). Mergeado em PR #6 do `cherry-frontend`. Vale lembrar disso ao investigar qualquer caso futuro de "conta a receber não foi gerada" — checar primeiro se o payload do frontend está repassando os dois campos antes de suspeitar do backend.
-
-Regras já decididas em fornecedores (não reabrir):
-- Acesso: **admin e estoquista** (`authMiddleware` + `requireEstoquista` no mount da rota em `app.js` — o mesmo middleware já usado em `POST /produtos/:id/movimentacoes`). Vendedor recebe 403 em toda rota do módulo, inclusive leitura. Diferente de contas a pagar/receber (admin apenas): fornecedor é dado operacional de estoque/compras, não financeiro.
-- CRUD completo em `/fornecedores`: `GET /` (paginado, filtro opcional `nome` via `ILIKE`), `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`. `DELETE` **não apaga a linha** — faz soft delete via `ativo = false`, mesma filosofia do soft delete de produtos (não a de contas a pagar/receber, que usam `status = 'cancelado'` em vez de uma flag `ativo`).
-- Único campo obrigatório é `nome`; `contato`, `telefone`, `email`, `cnpj_cpf`, `observacoes` são opcionais. `cnpj_cpf` valida só quantidade de dígitos (11 = CPF, 14 = CNPJ, ignorando pontuação) — sem checar dígito verificador, decisão explícita pra não sobre-engenhar validação de documento nesta fase.
-- Multi-tenancy: `fornecedoresRepository` filtra `id AND empresa_id` na mesma query em toda leitura/escrita (listar, buscar por id, atualizar, desativar), mesmo padrão do resto do sistema. Fornecedor de outra empresa responde 404 (nunca 403) em `GET/PUT/DELETE /:id`.
-- **Nomenclatura de timestamp**: `criado_em`/`atualizado_em` (português), não `created_at`/`updated_at` — mesma convenção já usada em `contas_pagar`/`contas_receber` (ver `## Convenções de API`). A tarefa original pedia `created_at`/`updated_at`; segui o padrão do projeto e avisei a divergência em vez de assumir. **Vale pra qualquer tabela nova daqui pra frente, não é específico de fornecedores — não reabrir esta discussão.**
-- `produtos.fornecedor` (texto livre, `VARCHAR`) **não foi tocado** — continua existindo em paralelo à nova tabela `fornecedores`. Hoje um produto não tem `fornecedor_id`; a migração de dados (ligar produto ao fornecedor por FK) fica pra uma sessão futura, depois de validação manual do cadastro.
-- Esta foi a Fase A do módulo de Produção (cadastro). Compras (Fase B) foi implementada normalmente. A Fase C original (Produção própria com ficha técnica) foi implementada e depois teve seu escopo revisado em 09/09/2026 — virou "Kit + Desconto no PDV"; ficha técnica fica reservada para produção real futura. Ver as seções "Regras já decididas em compras" e "Regras já decididas em Fase C do módulo de Produção" logo abaixo, e `MAPA_CHERRY_ERP.md` §8 pra decisões de schema mais detalhadas.
-
-Regras já decididas na transação compartilhada (não reabrir):
-- `src/repositories/shared/transacoes.js` concentra o esqueleto `BEGIN → SELECT ... FOR UPDATE → callback → COMMIT/ROLLBACK/release` que antes era reimplementado à mão em cada repository. Duas funções: `executarComLock(tabela, { coluna, valor }, empresa_id, clienteExterno, callback)` trava a linha e devolve a decisão inteira (o que fazer com not-found, com status errado, com efeitos colaterais) pra callback — o primitivo não sabe nada sobre status ou regra de negócio, só sobre lock/transação; `transicionarStatus(tabela, id, empresa_id, { statusEsperado, mensagemNaoEncontrado, mensagemStatusInvalido, sets })` é um wrapper fino sobre ele pro caso uniforme (existe → status bate → escreve `sets` fixo, senão 404/409).
-- **Toda função nova que precise de `SELECT ... FOR UPDATE` dentro de uma transação usa `executarComLock`, nunca reimplementa BEGIN/COMMIT/ROLLBACK/release à mão.** Se a ramificação for o caso uniforme (um status esperado, um SET fixo), usa `transicionarStatus` direto. Se for irregular (no-op silencioso, efeitos colaterais entre o lock e a escrita, múltiplos status possíveis com comportamentos diferentes — como `contasReceberRepository.cancelarPorVendaId` ou `vendasRepository.cancelar`), chama `executarComLock` e escreve a ramificação própria na callback. Não force um caso irregular a caber em `transicionarStatus` — foi tentado deixar tudo num único helper genérico e rejeitado de propósito: a interface incharia até ficar tão complexa quanto os chamadores.
-- `criarMovimentacao` (estoque) e `contasReceberRepository.criar` (INSERT puro, sem lock) **não** usam `executarComLock` — a dança `clienteExterno || await db.connect()` pra participar de transação externa em INSERTs sem lock continua ad hoc por enquanto. Unificar isso é um refactor separado (candidato 2 do `/improve-codebase-architecture`, ainda não feito), fora do escopo desta decisão.
-- Migrado de `contasPagarRepository` (`marcarComoPaga`, `cancelar`, `atualizar`), `contasReceberRepository` (`marcarComoRecebida`, `cancelarPorVendaId`) e `vendasRepository` (`cancelar`) em 2026-09-01, sem mudança de comportamento. Testes: mecânica de lock/not-found/rollback é coberta uma vez em `tests/repositories/shared/transacoes.test.js`; os testes de cada repository encolheram pra wiring (mockam `executarComLock`/`transicionarStatus` e checam tabela/coluna/status/mensagem corretos), não fakeiam mais `pg.Client` sniffando SQL por string.
-
-Regras já decididas em compras — Fase B do módulo de Produção (não reabrir):
-- Acesso: **admin e estoquista** (`authMiddleware` + `requireEstoquista` no mount de `/compras` em `app.js`), mesmo padrão de fornecedores/produção — vendedor recebe 403 em toda rota do módulo.
-- Uma compra registrada já é uma movimentação de estoque imediata (uma compra = uma entrada), não um pedido em aberto. `status` existe desde o schema inicial (default `'recebido'`, aceita também `'pendente'`/`'cancelado'`) pra permitir evoluir pra um fluxo de pedido formal sem reescrever a tabela depois — decisão tomada antes da implementação, `'pendente'` não é usado ainda (toda compra hoje nasce `'recebido'`).
-- `DELETE` não existe; `PATCH /compras/:id/cancelar` cancela (soft, via `status`), nunca `DELETE` físico — mesma filosofia do resto do sistema (soft delete de produtos/fornecedores, cancelamento de vendas/contas).
-- `contas_pagar.compra_id` (FK única) liga a compra à conta gerada, mas não há vínculo automático obrigatório: uma compra pode existir sem gerar conta a pagar.
-- **Cancelamento bloqueia se houver movimentação de estoque POSTERIOR à entrada da própria compra, em qualquer produto dela** (migration `042_compra_id_movimentacoes_estoque.sql`, issue #79). Saldo atual insuficiente não é mais o único critério — antes disso, um produto revendido e reabastecido por outra via podia ter saldo suficiente pra estornar e mesmo assim já ter perdido a rastreabilidade daquela entrada específica.
-  - `movimentacoes_estoque` ganhou `compra_id` (nullable, sem `UNIQUE` — uma compra com vários itens gera várias movimentações), preenchido por um `UPDATE` logo após cada `estoqueRepository.criarMovimentacao(tipo: 'entrada')` em `comprasRepository.criar`. `estoqueRepository` continua 100% genérico (usado por vendas/produção/ajuste manual) — não ganhou parâmetro `compra_id`; o vínculo é escrito pelo chamador, mesmo espírito de `contas_pagar.compra_id` já ser preenchido só por quem cria a compra.
-  - A checagem em `comprasRepository.cancelar` roda dentro da mesma transação, **antes** do loop que estorna estoque (mas depois do lock da compra e do bloqueio de conta a pagar já paga — ordem não importava pro pedido, manteve a sequência existente): agrupa por `produto_id` o `MAX(id)` das movimentações com `compra_id` da compra sendo cancelada, e bloqueia com 409 se existir qualquer outra movimentação do mesmo produto com `id` maior — **qualquer tipo** (`entrada`/`saida`/`ajuste`), não só venda. Usa `id` (não `criado_em`) pra comparar, evitando empate de timestamp; usa `MAX(id)` por produto (não a linha individual) pra não se autobloquear quando a própria compra tem mais de um item do mesmo produto.
-  - Mensagem: `Não é possível cancelar esta compra porque o estoque dos produtos já sofreu movimentações posteriores ao recebimento. Para preservar a rastreabilidade, utilize a operação de devolução ou ajuste apropriada.` Não existe operação de devolução/ajuste dedicada ainda — fora do escopo desta tarefa (a mensagem já antecipa a necessidade, mas nada foi implementado além do bloqueio).
-  - `comprasRepository.cancelar` continua com transação escrita à mão (`BEGIN`/`COMMIT`/`ROLLBACK` direto no client), **não** migrada pra `executarComLock` nesta tarefa — já divergia do padrão antes desta mudança (não estava na lista de repositories migrados em 2026-09-01, ver `## Regras já decididas na transação compartilhada`) e migrá-la não fazia parte do pedido; fica registrado como candidato a arrumar numa branch própria.
-  - **Migration pendente de aplicação manual** em `ci-test` e produção — mesma rotina de sempre (aplicada localmente com `node src/database/migrate.js` durante esta implementação).
-  - **`tests/routes/multiTenantIsolation.test.js` precisou de ajuste de ordem no `afterAll`**: a nova FK `movimentacoes_estoque_compra_id_fkey` bloqueava `DELETE FROM compras` enquanto ainda existissem `movimentacoes_estoque` apontando pra ela — o cleanup já deletava `movimentacoes_estoque`, só que depois de `compras`. Corrigido movendo o `DELETE FROM movimentacoes_estoque` pra antes do `DELETE FROM compras` (achado na CI do PR #80, não localmente — a suíte real do `ci-test` está seedada corretamente; o ambiente de dev local usado nesta tarefa está com a empresa seed sem `clientes`, gap de dado pré-existente e sem relação com esta mudança).
-
-Regras já decididas em Fase C do módulo de Produção — Kit + Desconto no PDV, escopo revisado em sessão de grilling (09/09/2026) (não reabrir):
-
-A Fase C original ("Produção própria / ficha técnica") foi revisada. Motivo: hoje a Cherry não produz semijoia com transformação física (banho, montagem industrial) — o que existe é composição de produtos já prontos (colar + pingente = kit), decidida pelo cliente na hora da venda. Ficha técnica com insumos, versionamento em ledger e cálculo de custo por receita é o modelo certo pra produção de verdade (ex: confeitaria), não pra semijoia hoje.
-
-- **PR 1/2 — Kit no PDV: ✅ Mergeado (#18, 09/09/2026).** Migration `017_kit_id_itens_venda.sql` (`itens_venda.kit_id`), kit montado do zero a cada venda (sem cadastro prévio), baixa de estoque direta por componente.
-- **PR 2/2 — Desconto no PDV: pendente.** Passos fixos de 1% a 8%, distribuído proporcionalmente no `preco_unitario`, PIN de 4 dígitos do admin, bloqueia se derrubar item abaixo do custo, recibo mostra preço cheio + linha de desconto.
-- **Ficha técnica / produção real (confeitaria) — decisões preservadas para quando esse vertical entrar:** insumo com quantidade decimal + unidade de medida, quantidade produzida inteira com fator multiplicador decimal (meia receita), `produtos.tipo` (acabado/insumo) reservado, `fichas_tecnicas` versionada em ledger append-only, papel "operador" fica para essa fase.
-
-**Decisões de schema como implementado hoje** (migration `013_producao.sql`), mantidas por referência técnica — descrevem o código que já existe, não o desenho de produção real listado acima:
-- Acesso: **admin e estoquista** (`authMiddleware` + `requireEstoquista` no mount de `/producoes` em `app.js`, e nas sub-rotas `/produtos/:id/ficha-tecnica`), mesmo padrão de fornecedores/compras. `GET /produtos/:id/ficha-tecnica/historico` é a única exceção, **admin apenas** (via `requireAdmin`) — histórico completo de versões é dado mais sensível que a vigente.
-- **Insumo é um `produto` com `tipo = 'insumo'`, não uma tabela separada.** `produtos` ganhou a coluna `tipo` (`'acabado'` | `'insumo'`, default `'acabado'`) — insumo compartilha todo o resto do schema de produto (estoque, custo, soft delete, `empresa_id`) em vez de duplicar esse controle numa tabela `insumos` à parte.
-- **Ficha técnica é versionada, ledger append-only, mas com mecanismo próprio** (não é o de `precos_produto`, que resolve "vigente" só por `criado_em` mais recente): nunca `UPDATE`, uma nova versão é sempre `INSERT` em `fichas_tecnicas` com a anterior marcada `vigente = false` na mesma transação; índice único parcial (`vigente = true` por `empresa_id + produto_id`) garante só uma vigente por produto.
-- **Produção parcial é calculada automaticamente, não rejeitada**: cada insumo da ficha limita `quantidade_produzida` a `floor(estoque_atual do insumo / quantidade_necessaria)`; vence o mínimo entre todos os insumos e a `quantidade_solicitada`. Zero produzível bloqueia com 409 sem criar nada. Cancelamento (`PATCH /producoes/:id/cancelar`) estorna proporcional ao que foi **produzido**, nunca ao solicitado.
-- **`custo_sugerido`/`custo_total` são calculados na leitura** (soma `quantidade × preco_custo` de cada insumo no momento da consulta) e **nunca sobrescrevem `produtos.preco_custo`** do produto acabado — ajustar o custo de venda com base nisso continua sendo decisão manual do usuário.
-- **RBAC de custo aqui é decisão de negócio adicional, não extensão direta da regra inviolável**: a regra inviolável protege `vendedor`, que nem acessa este módulo (403). Quem perde `custo_sugerido`/`custo_total`/`custo_unitario`/`subtotal_custo` nas respostas é a `estoquista` (`filtrarCustoParaRole` em `fichasTecnicasController` e `producoesController`, mesmo padrão de `produtosController.filtrarParaRole`).
-- `quantidade_necessaria` é `INTEGER`, igual a `produtos.estoque_atual`/`movimentacoes_estoque.quantidade` — consumo fracionário de insumo não é suportado (decisão consciente, exigiria repensar o ledger de estoque inteiro).
-- Ver `MAPA_CHERRY_ERP.md` §8 pra decisões de schema mais detalhadas.
-
-Regras já decididas em anonimização de clientes (LGPD) — migration `014_clientes_anonimizacao.sql` (não reabrir):
-- Acesso: **admin apenas** (`requireAdmin` só na rota `PATCH /clientes/:id/anonimizar`, não no mount de `/clientes` em `app.js` — as outras rotas do módulo continuam abertas a todos os papéis autenticados). Ação irreversível e sensível.
-- **Divergência de schema encontrada e corrigida**: a tarefa pedia `ativo → false (mesmo padrão de soft delete já usado no projeto)`, mas `clientes` não tinha coluna `ativo` (nem `criado_em`/`atualizado_em`) — só `id, empresa_id, nome, telefone, email`. Adicionada `ativo BOOLEAN NOT NULL DEFAULT true` na mesma migration que adiciona `anonimizado`/`anonimizado_em`, já que a operação depende dela. `criado_em`/`atualizado_em` não foram adicionados — fora do pedido desta tarefa.
-- **`GET /clientes` não filtra por `ativo`** — mesmo padrão observado hoje em `produtos` (soft delete marca a flag, mas a listagem simples não filtra; só consultas analíticas específicas como `dashboardRepository`/`precosRepository` filtram `ativo = true`). Um cliente anonimizado continua aparecendo em `GET /clientes` (com `nome = 'Cliente removido'`) até essa decisão ser confirmada — não implementado por ser mudança de comportamento em endpoint existente, fora do escopo pedido.
-- Checagem `anonimizado = true` → 409 é um caso **irregular** (não é `status` batendo um valor esperado): usa `executarComLock` direto, não `transicionarStatus` (que hardcoda a coluna `status`), mesmo critério documentado em `shared/transacoes.js`.
-- Resposta é deliberadamente estreita (`{ id, anonimizado, anonimizado_em }`), montada no service, não a linha inteira do repository — evita qualquer chance de vazar campo pessoal residual na resposta, mesmo que já nulo/false no banco.
-- `vendas.cliente_id` nunca é tocado — histórico de vendas e relatórios continuam intactos após a anonimização.
-
-Regras já decididas no hub de clientes — migration `043_clientes_dados_cadastrais.sql`, issue #81 (não reabrir):
-
-Conclui o contrato de backend que o frontend (`cherry-frontend` PR #46 / Issue #45) já assumia (documentado em `cherry-frontend/docs/ai/CLIENTES-HUB-BACKEND-CONTRACT.md`): até esta migration, os campos abaixo eram descartados silenciosamente no `POST /clientes` e não existia `PATCH /clientes/:id`.
-
-- `clientes` ganhou `cpf_cnpj`, `cep`, `endereco`, `numero`, `complemento`, `bairro`, `cidade`, `uf`, `data_nascimento`, `observacoes` — todos opcionais, aditivos. **Sem `criado_em`/`atualizado_em`** — decisão do Product Owner reafirmada nesta issue (mesma pendência já registrada na migration `014_clientes_anonimizacao.sql`, ainda não resolvida).
-- **`PATCH /clientes/:id`, novo, espelha o padrão de `fornecedoresRepository`/`fornecedoresService`/`fornecedoresController`/`fornecedoresValidation`** (`atualizar` com `UPDATE` dinâmico só dos campos presentes, `.strict().refine(objeto não vazio)`, pré-checagem via `buscarPorId` no service antes de chamar o repository) — única diferença real é que o `UPDATE` de clientes **não** seta `atualizado_em = NOW()` (coluna não existe, ver acima). Mesmo middleware do resto do módulo (`authMiddleware` apenas, sem `requireAdmin`/`requireEstoquista`) — a issue pediu explicitamente pra não inventar papel novo; hoje qualquer papel autenticado lê/cria/edita cliente.
-- **`criarClienteSchema` e `atualizarClienteSchema` passaram a usar `.strict()`** (antes só `atualizarFornecedorSchema` tinha; `criarClienteSchema` não era `.strict()`). Decisão tomada nesta sessão: antes, um campo desconhecido em `POST /clientes` era ignorado em silêncio pelo zod — exatamente o comportamento que a issue pediu pra eliminar pros 10 campos novos. `.strict()` generaliza essa garantia pra qualquer campo (400 em vez de descarte silencioso), alinhado ao padrão já usado em fornecedores. Mudança de comportamento pequena e reversível em uma rota já existente — qualquer chamador que hoje envia campo desconhecido em `POST /clientes` passa a receber 400 em vez de tê-lo ignorado.
-- `cpf_cnpj` usa o mesmo validador de `fornecedoresValidation.cnpjCpf` (11 ou 14 dígitos, sem checar dígito verificador) — duplicado localmente em `clientesValidation.js` como função pura, mesmo padrão de pequenos helpers de validation já duplicados por arquivo neste projeto (ex.: `dataISO`, presente em 8 arquivos de validation).
-- `data_nascimento` usa `z.iso.date()` (nunca `z.coerce.date`/`z.string()` livre) — mesma armadilha de fuso horário do lado da ESCRITA já documentada em CLAUDE.md pra `contas_pagar`/`contas_receber`/`despesas_fixas`. **Do lado da LEITURA, não há conversão de volta pra string** (`clientesRepository` devolve a linha crua do `pg`, que parseia `DATE` como `Date` à meia-noite local): decisão consciente de seguir o mesmo padrão já usado por `contas_pagar.data_vencimento` (sem conversão), não o de `despesas_fixas` (que converte, mas só porque `ratearCustoFixo` exige string de entrada — não existe consumidor equivalente aqui).
-- **`clientesRepository.anonimizar` passou a zerar também os 10 campos cadastrais novos, incluindo `observacoes`**: a issue pedia pra "avaliar" `observacoes` — decisão tomada de zerar, já que é texto livre preenchido por vendedor/atendente com alto risco de conter dado pessoal não estruturado (preferências, aniversário, endereço de terceiro), coerente com o propósito de LGPD do endpoint.
-- `GET /clientes/:id/historico` ganhou `v.total AS total_venda` no `SELECT`, sem remover/renomear nada existente — mesmo SQL do contrato do frontend, que já tem fallback somando `total_item` quando o campo não vier (funciona hoje sem desconto/juros, passa a usar o valor exato sem precisar de nova mudança no frontend).
-- **`clientesRepository.buscarPorId` é novo, mas só um helper interno** usado pela pré-checagem de `atualizar` (mesmo papel que tem em fornecedores) — **não** virou rota `GET /clientes/:id` nova, não foi pedido.
-- Migration pendente de aplicação manual em `ci-test` e produção — mesma rotina de sempre.
-
-## Regras já decididas em custo congelado (itens_venda) — não reabrir
-
-Migration `015_custo_congelado_itens_venda.sql`: `itens_venda` ganhou `custo_unitario` (`NUMERIC(10,2) NOT NULL CHECK >= 0`), congelando `produtos.custo` no momento da venda — mesmo padrão já usado em `preco_unitario`. Antes disso, margem e ponto de equilíbrio usavam `produtos.custo` (atual) via join, o que reescrevia resultado de vendas já fechadas toda vez que o custo de um produto mudava. Backfill da migration usou o custo atual (seguro por construção: 22 itens, 9 produtos, custo sempre preenchido, zero compras registradas na base no momento da migration — nenhum custo tinha mudado ainda).
-
-- **`custo_unitario` é capturado no mesmo `SELECT ... FOR UPDATE` que já trava o produto pra validar/baixar estoque** (`estoqueRepository.criarMovimentacao`, que agora devolve `custo` no resultado), não numa query separada — evita janela de inconsistência entre o custo lido e o vigente no instante da baixa. `vendasRepository.criar` lê esse valor e grava junto do `INSERT INTO itens_venda`. Contrato da API não muda: o cliente nunca envia custo.
-- **Existem DOIS tipos de margem no sistema, e todo cálculo novo de margem precisa declarar a qual pertence antes de escolher a fonte de custo:**
-  - **Margem PROSPECTIVA** ("se eu vender hoje") = `produtos.custo` (atual) + preço vigente. Usada em: `GET /dashboard/margem` (`precosRepository.listarMargemPorProdutoECanal`), `GET /produtos/pricing`, `/pricing-profissional`, `/sugestao-preco`, `/inteligencia`, `/alerta-prejuizo`. Nenhuma dessas junta `itens_venda` — são simuladores de precificação atual, não análise de venda fechada. Congelar essas em `custo_unitario` cegaria o próprio propósito da rota (ex: `alerta-prejuizo` existe pra reagir a mudança de custo/preço *hoje*).
-  - **Margem HISTÓRICA** ("o que já foi vendido") = `iv.custo_unitario` (congelado) + `iv.preco_unitario` (congelado). Usada em: `pontoEquilibrioRepository.somarCustoVariavelProdutos`, `GET /produtos/lucro` (`produtosRepository.getLucroPorProduto`), e por extensão qualquer relatório de venda no frontend que reaproveite esses endpoints (`cherry-frontend`, módulo Relatórios — sem rota própria no backend).
-  - As duas fontes **não são intercambiáveis**. Trocar uma pela outra muda o significado do endpoint, não só a origem do dado — decisão de negócio, não refactor.
-- **`produtosRepository.getLucroPorProduto` (`GET /produtos/lucro`) usa `iv.preco_unitario` (travado), não `p.preco_venda` (atual)**, pro cálculo de `faturamento`/`lucro`/`margem_percentual` — corrigido junto (2026-09-08), mesma mutabilidade histórica que o custo, agora fechada dos dois lados. Não precisou de migration: `preco_unitario` já existia e já era gravado desde a criação de vendas. Escopo dessa correção foi só esta função — o restante do cluster `/produtos/pricing` continua em `produtos.custo`/`preco_venda` atuais por ser margem prospectiva (ver tabela acima).
-- **`GET /produtos/pricing`, `/pricing-profissional`, `/lucro`, `/alerta-prejuizo`, `/inteligencia`, `/sugestao-preco` não têm `requireAdmin`/`requireEstoquista` na rota** — RBAC é só por campo (`produtosController.filtrarDadosAnaliticos`, que remove `custo`/`custo_total`/`margem_percentual`/`lucro`/`lucro_unitario` da resposta pra quem não é admin). Confirmado (2026-09-08) que o filtro está de fato aplicado em todas as 11 funções analíticas do módulo e coberto em `tests/routes/produtos.test.js` — a nota antiga em `MAPA_CHERRY_ERP.md` §6 dizendo que essas rotas "devolvem o resultado cru sem nenhum filtro" estava desatualizada e foi corrigida.
-- **RBAC de `custo_unitario` em `/vendas`**: `vendasController.filtrarParaRole` (mesmo padrão de `produtosController.filtrarParaRole`) remove `custo_unitario` de `itens` pra `vendedor`, aplicado em `POST /vendas`, `GET /vendas` e `GET /vendas/:id`. Rota não ganhou `requireAdmin` — padrão do projeto é filtrar campo, não negar rota.
-- **Débito de UI conhecido, não corrigido aqui**: o rótulo "Margem" no Dashboard do frontend não indica que é prospectiva — fica pra um ajuste de UI em branch separado.
-- Ver `MAPA_CHERRY_ERP.md` §8 pra mais detalhe sobre o cluster `/produtos/*` (rotas, achado de RBAC, decisão de manter/converter cada função).
-
-## Regras já decididas em rateio e vigência de despesas fixas — não reabrir
-
-Migration `016_vigencia_despesas_fixas.sql`: `despesas_fixas` ganhou `vigencia_inicio` (`DATE NOT NULL`) e `vigencia_fim` (`DATE`, `NULL` = em vigor, sem data de término), com `CHECK (vigencia_fim IS NULL OR vigencia_fim >= vigencia_inicio)`. Corrige dois bugs do Ponto de Equilíbrio: custo fixo comparava soma mensal cheia contra período arbitrário (7 dias contra um mês inteiro, ou 3 meses contra só um), e não existia vigência — cadastrar/desativar uma despesa hoje mudava o resultado de meses já fechados (mesma classe de bug já corrigida pro custo/preço de venda na migration 015).
-
-- **`vigencia_inicio`/`vigencia_fim` são a fonte de verdade cronológica pro Ponto de Equilíbrio; `ativo` é pausa de exceção manual, e os dois convivem** (não é uma substituição): `ativo = true` é sempre checado primeiro no WHERE de `despesasFixasRepository.listarVigentesNoPeriodo` — uma despesa com `ativo = false` **nunca conta**, mesmo que a vigência cubra o período inteiro. Uma despesa com `ativo = true` e vigência cobrindo o período conta, independente de quando foi cadastrada ou alterada depois. Não existe nenhuma lógica automática que mude `vigencia_fim` ao desativar/excluir uma despesa — vigência é editada manualmente pelo usuário no formulário.
-- **Caso de uso original de `ativo` (despesa sazonal, ex: 13º salário) passa a ser modelado por vigência**, não por ligar/desligar o toggle todo ano: cadastra-se a despesa com `vigencia_inicio`/`vigencia_fim` cobrindo exatamente o período em que ela existiu, e cadastra-se de novo no ciclo seguinte se for recorrente. Não muda nenhum código — é só a explicação de por que vigência manda sobre `ativo` pra fins cronológicos.
-- **Custo fixo do Ponto de Equilíbrio é rateado por dia, não mais soma mensal cheia**: `src/utils/rateioCustoFixo.js` (`ratearCustoFixo`, função pura) divide o período em segmentos por mês calendário e, pra cada despesa vigente, calcula a interseção entre segmento/período/vigência, distribuindo `valor` proporcional a `dias_overlap / dias_no_mes` (dias reais do mês — fevereiro bissexto inclusive). `pontoEquilibrioService.calcular` chama `despesasFixasRepository.listarVigentesNoPeriodo` (substituiu `somarAtivas`, que não existe mais) + `ratearCustoFixo`.
-- **`semDespesasFixas: true`** é campo novo na resposta de `GET /financeiro/ponto-equilibrio`: `true` quando `listarVigentesNoPeriodo` devolve lista **vazia** (zero despesas fixas vigentes no período) — não quando a soma dá zero (uma despesa cadastrada com `valor: 0`, tecnicamente permitido pelo `CHECK (valor >= 0)`, não deve disparar isso). Sem essa distinção, `custoFixoTotal = 0` faz `pontoEquilibrio = 0`, que a tela lia como "Meta batida ✅" mesmo sem nenhuma despesa fixa cadastrada — falso e enganoso. No frontend (`cherry-frontend`), `PontoEquilibrio.jsx` dá prioridade a `semDespesasFixas` sobre `inviavel`/`metaBatida`: quando `true`, não mostra valor de PE nenhum, só uma mensagem orientando o cadastro com link pra `/despesas-fixas`.
-- **Armadilha de fuso timezone, agora do lado da LEITURA de uma coluna `DATE`** (a de contas a pagar/receber é do lado da escrita): o driver `pg` parseia `DATE` como `Date` à meia-noite **local** do processo, não UTC — `despesasFixasRepository` converte de volta pra string `'YYYY-MM-DD'` com getters locais (`getFullYear`/`getMonth`/`getDate`, nunca `toISOString`) antes de devolver a linha, em toda função que lê `vigencia_inicio`/`vigencia_fim` (`listar`, `criar`, `atualizar`, `deletar`, `alternarAtivo`, `listarVigentesNoPeriodo`). Sem isso, tanto o input `type="date"` do frontend quanto `ratearCustoFixo` (que espera string, não `Date`) quebrariam.
-- **`ratearCustoFixo` em si usa `Date.UTC` em toda conversão, não getters locais** — diferente da regra acima: a função é aritmética pura entre datas que já chegam como string `'YYYY-MM-DD'` (não há "agora" envolvido, ao contrário de converter um `Date` de "agora" pra string), então UTC consistente nas duas pontas evita qualquer problema de fuso sem precisar de getters locais. Vale lembrar dessa distinção (getters locais só quando um `Date` de "agora"/do banco está envolvido; UTC quando é só aritmética entre strings de data já fixas) pra qualquer utilitário de data futuro.
-- Testes de componente frontend não são criados pra isso — não é convenção existente no projeto (não há testes de `.jsx` na suíte atual do `cherry-frontend`).
-
-## Regras já decididas em categorias de produto + SKU automático — não reabrir
-
-Migration `019_categorias_produto.sql`: `categorias_produto` (configurável por empresa, `nivel`/`codigo`/`nome`, soft delete via `deletado_em`), `produtos_categorias` (vínculo N:N produto↔categoria), `sequencias_sku` (contador atômico por combinação). Ver `docs/superpowers/specs/2026-09-12-categorias-sku-design.md` pro racional completo.
-
-- **SKU é sempre gerado automaticamente, nunca digitado manualmente** — `POST/PUT /produtos` não aceita mais o campo `sku`. `produtos.sku` é `NULL` até o produto ser categorizado (na criação ou retroativamente); uma vez gravado, **é imutável pra sempre**, mesmo que a categoria mude depois (`produtosRepository.definirSkuSeNulo` só escreve `WHERE sku IS NULL` — a própria query é a garantia, não só uma checagem em JS antes dela).
-- **Categorizar um produto é `PATCH /produtos/:id/categoria`, admin+estoquista, schema `.strict()`** (só aceita `{ categoria_ids }` — não é caminho alternativo pra editar outros campos do produto). `PUT /produtos/:id` continua admin-only e nunca aceitou campos de categoria estruturada.
-- **Formato do SKU, fechado**: concatenação sem separador — bloco de códigos com QUALQUER letra primeiro (ordenados por `nivel` ascendente entre si), depois bloco de códigos puramente numéricos (idem), depois a sequência com `padStart(3, '0')` (`007`, `042`, cresce naturalmente pra `1000+` sem migração). Ex.: nível 1 `BR`, nível 2 `01`, sequência 7 → `BR01007`.
-- **A chave da sequência (`sequencias_sku.chave_combinacao`) é o TEXTO dos códigos (maiúsculo, ordenados por nível), nunca o `id` da categoria.** Isso é uma correção de bug, não estilo: ancorar no `id` permite que uma categoria soft-deletada e recriada com o mesmo código reinicie a sequência em 1 e gere um SKU visualmente idêntico a um já existente (colisão real, ver spec). Por isso `categorias_produto.codigo` e `.nivel` são **imutáveis após a criação** (só `nome` é editável via `PUT /categorias/:id`; mandar `codigo`/`nivel` no body é 400 explícito, não ignorado em silêncio) — editar esses campos numa categoria já usada reabriria a mesma classe de colisão por outro caminho. Errou o código ao cadastrar? Soft-delete + criar de novo — seguro sob este modelo.
-- **`produtos.sku` passou a ser único POR EMPRESA** (`(empresa_id, sku) WHERE sku IS NOT NULL`), revertendo a decisão da migration 007 que o mantinha único globalmente — ver nota atualizada na seção da migração multi-tenant acima. Mesmo assim, o service captura qualquer violação de unicidade na escrita do SKU (`error.code === '23505'`) e responde 409 limpo (`Erro ao gerar SKU, tente novamente`) em vez de 500 — rede de segurança, não deveria ser alcançável em uso normal com a chave corrigida.
-- **`produtos.categoria` (texto livre) está deprecado** — ver nota na seção "Estado atual dos módulos". Não se comunica com a categorização estruturada; as duas nunca aparecem juntas na tela de produto do frontend.
-- **`GET /produtos`/`GET /produtos/:id` passam a incluir `categorias`** (`[{ id, nivel, codigo, nome }]`) por produto — necessário pra tela de edição mostrar o que já foi categorizado antes de uma nova chamada a `PATCH /:id/categoria`. Categoria soft-deletada continua aparecendo aqui se ainda vinculada a um produto (vínculo não cascade-deleta).
-- **Migration pendente de aplicação manual em `ci-test`, dev (fora desta sessão) e produção** — só foi aplicada no banco de dev local usado durante esta implementação. Aplicar antes do merge/deploy, como de costume neste projeto (não existe runner automático de migration).
-- Fora do escopo desta etapa: código de barras, geração de etiqueta, leitura de código de barras no PDV.
-
-## Regras já decididas em rótulos de nível de categoria — não reabrir
-
-Migration `020_niveis_categoria.sql`: `niveis_categoria` (`empresa_id`, `nivel`, `nome`, `UNIQUE(empresa_id, nivel)`) deixa cada empresa nomear o que um `categorias_produto.nivel` significa pra ela — Cherry usa 1=família, 2=material, 3=gênero; outra empresa do sistema (perfumes/eletrônicos) usa outros conceitos. Sem isso a UI só podia mostrar "Nível 1/2/3" ou cravar rótulos fixos no frontend, o que anularia a configurabilidade por empresa já construída em `categorias_produto`.
-
-- **`niveis_categoria` é uma tabela INDEPENDENTE de `categorias_produto` — sem FK entre `categorias_produto.nivel` e esta tabela.** Decisão tomada nesta sessão (não havia decisão prévia). Motivo: hoje é possível criar uma categoria em qualquer nível sem rótulo pré-cadastrado; uma FK passaria a exigir o rótulo antes da categoria — mudança de comportamento que quebraria fluxos e dados já existentes (toda empresa hoje tem `niveis_categoria` vazia). Se essa decisão for revisitada no futuro (ex.: exigir rótulo obrigatório), precisa de backfill explícito e de uma decisão de negócio sobre o que fazer com níveis já em uso sem rótulo — não é automático.
-- **Sem soft delete.** Diferente de `categorias_produto`, um rótulo de nível não tem histórico a preservar — `DELETE /niveis-categoria/:id` remove a linha de verdade. Não cascateia: categorias em `categorias_produto` naquele nível continuam funcionando normalmente, só voltam a aparecer sem nome (mesmo estado de hoje, antes de qualquer rótulo existir).- **Renomear (`PUT /niveis-categoria/:id`, só `{ nome }`, `.strict()`) nunca toca SKU nem `categorias_produto`.** O rótulo é puramente display — a `chave_combinacao` da sequência de SKU continua ancorada no texto de `categorias_produto.codigo` (decisão 7 do spec de categorias/SKU), nunca no nome do nível. Mandar `nivel` no body de `PUT` é 400 explícito (mesmo padrão de `PUT /categorias/:id` rejeitando `codigo`/`nivel`), não ignorado em silêncio.
-- **Acesso: admin+estoquista** (`requireEstoquista`, mesmo padrão de `/categorias`) — vendedor recebe 403 em toda rota do módulo, princípio de não divergir de um recurso irmão sem motivo.
-- **`GET /categorias` e a geração de SKU continuam funcionando para empresa sem nenhum rótulo cadastrado** — nível sem rótulo não é erro, é o estado padrão de toda empresa hoje (inclusive todas as que já usam categorias antes desta migration). Coberto por teste dedicado em `tests/repositories/categoriasRepository.test.js` e `tests/routes/categorias.test.js`.
-- Mesmo padrão de nomenclatura do projeto: `criado_em`/`atualizado_em`, não `created_at`/`updated_at`.
-- **Migration pendente de aplicação manual** em `ci-test`, dev e produção — mesma rotina de sempre (não existe runner automático de migration neste projeto).
-
-## Regras já decididas no relatório agregado de giro e cobertura — não reabrir
-
-`GET /dashboard/giro-cobertura` (mesmo mount `/dashboard`, portanto já `requireAdmin`) devolve `total` (giro/cobertura do estoque inteiro da empresa), `por_nivel` (quebra por categoria de cada nível configurado, incluindo bucket explícito "Sem categoria"), `top_giro`/`menor_giro` (10 produtos de maior/menor giro) e `rupturas` (produtos com estoque zerado que venderam no período — ver bullet próprio abaixo). Não altera `getGiroECobertura` nem `GET /dashboard/giro`/`/cobertura` existentes — é um cluster novo ao lado.
-
-- **Giro/cobertura de grupo é SEMPRE soma/soma, nunca média dos giros individuais**: `giro_do_grupo = SOMA(vendido) / SOMA(estoque)`, `cobertura_do_grupo = SOMA(estoque) / (SOMA(vendido) / dias)`. Média de razões distorce o resultado — um produto de giro alto e estoque baixo não pode "puxar a média" de um grupo dominado por produtos de estoque alto.
-- **A aritmética de agregação vive em `src/utils/agregacaoGiroCobertura.js`, função pura, testada sem banco** — mesmo padrão já usado em `src/utils/rateioCustoFixo.js` pro Ponto de Equilíbrio. O repository (`dashboardRepository.getVendasEstoquePorProduto`) devolve valores CRUS por produto (sem giro/cobertura calculados em SQL); calcular em SQL faria por produto individual, que é exatamente a média de razões proibida no nível de grupo.
-- **Não existe teste de agregação em `tests/repositories/`** para este endpoint — a correção da agregação (soma/soma, não-inflação de somas com produto multi-nível, exclusão de NULL) é responsabilidade do util puro e está coberta em `tests/utils/agregacaoGiroCobertura.test.js`; o repository só tem teste de wiring de SQL (`tests/repositories/dashboardRepository.test.js`), mesmo critério já usado pros repositories que migraram pra `executarComLock`.
-- **Nenhuma migration nova**: `idx_produtos_categorias_empresa_id` e `idx_categorias_produto_empresa_id` já existem desde a migration `019_categorias_produto.sql` e cobrem os padrões de acesso das duas queries novas (`getVinculosCategoriasProdutos`, `getNiveisExistentes`).
-- **`por_nivel` não vem de `niveis_categoria`, vem de `categorias_produto`**: um nível "existe" no relatório quando tem pelo menos uma categoria ATIVA cadastrada (`categorias_produto.deletado_em IS NULL`), independente de já ter produto vinculado a ele. `niveis_categoria` só fornece o `rotulo` (nome) de cada nível quando cadastrado — nível sem rótulo aparece com `rotulo: null`, não é erro (mesma regra de "rótulos de nível de categoria" documentada acima). Nenhum rótulo de nível (`família`/`material`/`gênero`) é hardcoded em código.
-- **Vínculo com categoria soft-deletada continua contando** no grupo dela no relatório (`getVinculosCategoriasProdutos` não filtra `deletado_em`) — mesma regra já usada em `GET /produtos`, que também continua mostrando a categoria vinculada mesmo depois dela ser soft-deletada; vínculo não cascade-deleta.
-- **`menor_giro` exclui produtos com giro `NULL`** (estoque atual zerado) — "sem estoque não há capital parado", que é o propósito dessa visão. `top_giro` também exclui, pelo mesmo motivo técnico (giro `null` não é ordenável) — a exclusão de `menor_giro` é regra de negócio explícita, a de `top_giro` é consequência direta de `null` não poder ser "o maior".
-- **`giro_alto_por_falta_de_estoque` é relativo à venda do período** (`estoque_atual < quantidade_vendida_periodo`), não um limiar fixo de unidades — o mesmo produto pode disparar a flag num período de 30 dias e não disparar num período de 365, dependendo do ritmo de venda.
-- **`rupturas` existe porque `menor_giro`/`top_giro` excluem giro `NULL`** — um produto que vendeu no período e zerou o estoque (`estoque_atual = 0 AND quantidade_vendida_periodo > 0`, o caso mais grave de venda perdida) nunca apareceria em nenhum dos dois rankings, já que giro não é calculável com estoque zero. `rupturas` reusa `getVendasEstoquePorProduto` (nenhuma query nova) e não calcula giro/cobertura pra essas linhas — não há o que calcular, é exatamente por isso que a visão existe separada. Ordenado por `quantidade_vendida_periodo` decrescente (quem mais vendeu e zerou é o caso mais urgente de repor). **Sem limite de itens** — diferente de `top_giro`/`menor_giro` (que cortam em 10), ruptura é lista de ação, não ranking: se houver 30 produtos zerados, a resposta traz os 30. Não "corrigir" isso pra impor um corte igual aos outros rankings — a ausência de limite é intencional (documentado também no código, `montarRupturas`).
-- **Agregação em JS é adequada até a ordem de ~50 mil produtos ativos por empresa; acima disso, reavaliar migração pra agregação em SQL.** Motivo: o volume real de catálogo de varejo (semijoias, perfumes, eletrônicos — os clientes-alvo do sistema) não chega perto disso; o gargalo de performance provável é o histórico de `itens_venda`/`vendas` crescendo com os anos, não o catálogo, e isso se resolve com índice quando aparecer, não com reescrita da agregação. `tests/utils/agregacaoGiroCobertura.performance.test.js` é um teste de carga sensor (50 mil produtos sintéticos, limite de 2s — ver comentário no arquivo pro motivo do número), separado dos testes de corretude de propósito: ele não corrige nada hoje, só avisa no dia em que essa suposição deixar de valer.
-
-## Banco
-
-- Alterações de schema vão em migration versionada, nunca em SQL solto direto no banco.
-- Toda operação que envolve estoque ou dinheiro roda em transação.
-- Seed (`src/database/seed.js`) cria a empresa "Cherry Semijoias" com usuários de teste dos três papéis (senhas com hash bcrypt), clientes, produtos (com preço em `precos_produto` e estoque via movimentação auditada) e vendas. **Idempotente**: pula silenciosamente se essa empresa já existir — seguro rodar contra um banco já seedado (dev local ou o branch `ci-test` da CI, que é persistente entre runs).
-- `schema.sql` é mantido como referência do estado atual consolidado (fora das migrations incrementais); ao criar uma migration nova, replicar a mudança lá também.
-- Dados de teste sempre limpos do banco ao fim da tarefa — exceto o seed acima, que é dado de baseline permanente, não "dado de teste temporário".
-
-## CI
-
-- `.github/workflows/ci.yml`: `npm ci` → syntax check → seed (`node src/database/seed.js`, idempotente) → `npm test`. Os steps de seed e teste recebem `DATABASE_URL`/`JWT_SECRET` via secrets do GitHub, apontando pro branch `ci-test` do Neon — um banco dedicado só pra CI, separado do banco de dev. `tests/routes/multiTenantIsolation.test.js` é o único teste que fala com banco de verdade (sem mock) e por isso é o único que depende desses secrets/seed; o resto da suíte roda mockada e não precisa de banco.
-
-## Testes
-
-- Cada endpoint novo cobre os três papéis (permitido, negado, e o caso de borda da regra de negócio).
-- Rode a suíte uma vez ao final. Não repita testes já validados só para confirmar.
-
-## Como trabalhar comigo
-
-- **Claude Code é o executor técnico do projeto.** Recebe a especificação, investiga o código existente, implementa, testa e prepara o PR.
-- **GPT é o arquiteto/revisor.** A especificação técnica, decisões de arquitetura e auditoria de PR devem seguir o SDD e o estado real do repositório.
-- **Usuário é o Product Owner.** Aprova mudanças de negócio e decide o merge.
-- Antes de implementar, investigue o código existente e confirme se a funcionalidade já existe. Não duplicar serviços, repositories, rotas, migrations ou regras.
-- Escopo fechado: faça o que foi pedido, teste, pare. Se aparecer uma melhoria fora do escopo, anote no resumo final em vez de implementar.
-- Decisões pequenas e reversíveis: decida e siga, documentando no commit. Decisões irreversíveis ou que mudam regra de negócio: pare e peça confirmação.
-- Toda mudança de schema exige migration versionada e atualização de `schema.sql` conforme a convenção existente.
-- Toda funcionalidade nova deve preservar multi-tenant, RBAC, transações e auditoria já existentes.
-- Ao terminar: executar testes relevantes, lint/syntax/build quando aplicável, revisar o diff e abrir um PR com resumo, riscos e evidências dos testes.
-- Não fazer merge da própria PR.
-- Não alterar `master` diretamente.
-
-## Fluxo de branches
-
-- Todo trabalho começa a partir de `master` atualizado.
-- Criar uma branch por tarefa, seguindo `feat/<modulo>`, `fix/<modulo>` ou `chore/<modulo>`.
-- O executor pode fazer commit e push da própria branch de trabalho e abrir a PR.
-- **Nunca** fazer push para `master`.
-- Merge somente após CI verde, revisão arquitetural e aprovação do Product Owner.
-- Se a CI falhar, corrigir na mesma branch e atualizar a PR; não criar uma segunda PR para a mesma tarefa.
-- Nunca reescrever histórico compartilhado com `push --force` sem autorização explícita.
-
-## Contrato de entrega para PR
-
-Toda PR do executor deve informar:
-
+## 6. Contrato de entrega da PR
+Toda PR deve informar:
 1. objetivo;
 2. arquivos/migrations alterados;
-3. regras de negócio implementadas;
-4. isolamento por `empresa_id`;
-5. permissões/RBAC;
-6. testes executados e resultado;
-7. migrations que precisam ser aplicadas;
-8. riscos ou pontos pendentes;
-9. confirmação de que não houve alteração fora do escopo.
+3. regras de negócio;
+4. impacto em multi-tenant/RBAC;
+5. testes executados e resultado;
+6. migrations que precisam ser aplicadas;
+7. riscos/pontos pendentes;
+8. confirmação de que não houve alteração fora do escopo.
 
-## Segurança operacional
+## 7. Regra para novas funcionalidades
+Antes de codificar:
+- confirmar se a funcionalidade já existe;
+- identificar contrato real da API;
+- identificar tabelas/migrations existentes;
+- preservar isolamento, RBAC, transações e auditoria;
+- confirmar se a mudança é de código, regra de negócio ou schema.
+Se a mudança for irreversível ou alterar regra de negócio já aprovada, parar e pedir confirmação.
 
-- Nunca imprimir, commitar ou expor `.env`, secrets, tokens, senhas ou `DATABASE_URL`.
-- Nunca executar SQL destrutivo em produção.
-- Não alterar migrations já mergeadas para corrigir histórico; criar migration corretiva.
-- Não fazer deploy manual como parte de uma tarefa de código sem autorização explícita.
+## 8. Estado do produto
+Este repositório é o backend do VERTUMNO, inicialmente validado com a operação da Cherry Semijoias.
+Detalhes de regras específicas dos módulos devem permanecer no SDD/issues/PRs ou em documentação específica, não crescer indefinidamente neste arquivo.
 
-## Estado do fluxo de IA
+## 9. Fluxo de IA
+Product Owner → GPT (especificação/arquitetura/auditoria) → Claude Code (implementação/testes/PR) → GitHub Actions (CI) → GPT (revisão técnica) → Product Owner (aprovação) → Merge.
 
-```
-Product Owner
-     ↓
-GPT — arquitetura / especificação / auditoria
-     ↓
-Claude Code — implementação / testes / PR
-     ↓
-GitHub Actions — CI
-     ↓
-GPT — revisão técnica
-     ↓
-Product Owner — aprovação
-     ↓
-Merge
-```
-
+Regra final: código que funciona não é automaticamente código pronto para produção. O gate considera funcionalidade, segurança, isolamento de tenant, integridade transacional, testes, observabilidade, recuperação e manutenção.
