@@ -45,7 +45,7 @@ describe('segurança HTTP', () => {
       .get('/health')
       .set('Origin', 'https://origem-qualquer.com');
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(403);
 
     process.env.NODE_ENV = originalNodeEnv;
     process.env.CORS_ORIGINS = originalCorsOrigins;
