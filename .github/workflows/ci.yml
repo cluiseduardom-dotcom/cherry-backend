@@ -10,6 +10,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: cherry
+          POSTGRES_PASSWORD: cherry
+          POSTGRES_DB: cherry_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U cherry -d cherry_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      DATABASE_URL: postgresql://cherry:cherry@localhost:5432/cherry_ci
+      JWT_SECRET: ci-only-secret-not-for-production
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -31,21 +50,14 @@ jobs:
 
       - name: Apply database migrations
         run: npm run db:migrate
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Seed database
         run: node src/database/seed.js
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Run tests
         run: npm test -- --runInBand
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
       - name: Quality gate summary
         run: |
           echo "Backend quality gate passed."
-          echo "Required checks: install, syntax, migrations, seed and tests."
+          echo "Required checks: install, syntax, database bootstrap, seed and tests."
