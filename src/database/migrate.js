@@ -88,12 +88,16 @@ async function inicializarBanco(client, migrations) {
             const schema = await fs.readFile(SCHEMA_FILE, 'utf8');
             await client.query(schema);
 
-            for (const migration of migrations) {
+            // schema.sql só representa o schema consolidado até a migration de
+            // baseline; as posteriores precisam rodar de verdade.
+            const baseline = migrations.filter((migration) => migration.versao <= BASELINE_MIGRATION_VERSION);
+
+            for (const migration of baseline) {
                 await registrarMigration(client, migration);
             }
 
             await client.query('COMMIT');
-            console.log('Schema inicial aplicado a partir de schema.sql; ' + migrations.length + ' migrations registradas como baseline.');
+            console.log('Schema inicial aplicado a partir de schema.sql; ' + baseline.length + ' migrations registradas como baseline.');
         } catch (error) {
             await client.query('ROLLBACK');
             throw error;

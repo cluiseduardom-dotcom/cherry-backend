@@ -3,6 +3,7 @@ const request = require('supertest');
 describe('POST /auth/login - rate limiting (config de produção)', () => {
 
     const originalNodeEnv = process.env.NODE_ENV;
+    const originalTrustProxyHops = process.env.TRUST_PROXY_HOPS;
     let app;
     let authService;
     let AppError;
@@ -11,6 +12,7 @@ describe('POST /auth/login - rate limiting (config de produção)', () => {
 
         jest.resetModules();
         process.env.NODE_ENV = 'production';
+        process.env.TRUST_PROXY_HOPS = '2';
         jest.doMock('../../src/services/authService');
 
         authService = require('../../src/services/authService');
@@ -22,6 +24,8 @@ describe('POST /auth/login - rate limiting (config de produção)', () => {
     afterEach(() => {
 
         process.env.NODE_ENV = originalNodeEnv;
+        if (originalTrustProxyHops === undefined) delete process.env.TRUST_PROXY_HOPS;
+        else process.env.TRUST_PROXY_HOPS = originalTrustProxyHops;
         jest.resetModules();
 
     });

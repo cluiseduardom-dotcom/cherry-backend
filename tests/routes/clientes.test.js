@@ -109,15 +109,14 @@ describe('PATCH /clientes/:id', () => {
     expect(res.body.data).toEqual({ id: 1, nome: 'Novo Nome' });
   });
 
-  test('returns 200 for an estoquista (no role restriction on this route)', async () => {
-    clientesService.atualizar.mockResolvedValue({ id: 1, nome: 'Novo Nome' });
-
+  test('returns 403 for an estoquista (PII de clientes é só de admin/vendedor — #87)', async () => {
     const res = await request(app)
       .patch('/clientes/1')
       .set('Authorization', `Bearer ${estoquistaToken}`)
       .send({ nome: 'Novo Nome' });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(clientesService.atualizar).not.toHaveBeenCalled();
   });
 
   test('returns 400 for an empty payload', async () => {

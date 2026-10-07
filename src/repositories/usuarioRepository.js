@@ -2,7 +2,11 @@ const db = require('../config/db');
 
 async function buscarPorEmail(email) {
     const { rows } = await db.query(
-        'SELECT * FROM usuarios WHERE email = $1 LIMIT 1',
+        `SELECT u.*, e.status AS empresa_status
+         FROM usuarios u
+         JOIN empresas e ON e.id = u.empresa_id
+         WHERE u.email = $1
+         LIMIT 1`,
         [email]
     );
 

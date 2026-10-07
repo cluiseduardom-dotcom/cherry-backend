@@ -138,3 +138,34 @@ describe('listarComprasSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('criarCompraSchema — limites de segurança (#87)', () => {
+  const base = {
+    fornecedor_id: 1,
+    data_compra: '2026-08-10',
+    itens: [{ produto_id: 1, quantidade: 2, custo_unitario: 10 }]
+  };
+
+  test.each([366, 1000000000, 'Infinity', 'NaN'])('rejects dias_prazo %p', (dias_prazo) => {
+    expect(criarCompraSchema.safeParse({ ...base, forma_pagamento: 'prazo', dias_prazo }).success).toBe(false);
+  });
+
+  test('accepts dias_prazo at the ceiling (365)', () => {
+    expect(criarCompraSchema.safeParse({ ...base, forma_pagamento: 'prazo', dias_prazo: 365 }).success).toBe(true);
+  });
+
+  test.each([
+    ['quantidade acima do teto', { produto_id: 1, quantidade: 100001, custo_unitario: 10 }],
+    ['quantidade Infinity', { produto_id: 1, quantidade: 'Infinity', custo_unitario: 10 }],
+    ['custo_unitario NaN', { produto_id: 1, quantidade: 1, custo_unitario: 'NaN' }],
+    ['custo_unitario absurdo', { produto_id: 1, quantidade: 1, custo_unitario: 1e15 }]
+  ])('rejects item with %s', (_, item) => {
+    expect(criarCompraSchema.safeParse({ ...base, itens: [item] }).success).toBe(false);
+  });
+
+  test('rejects more than 200 itens', () => {
+    const itens = Array.from({ length: 201 }, () => ({ produto_id: 1, quantidade: 1, custo_unitario: 1 }));
+
+    expect(criarCompraSchema.safeParse({ ...base, itens }).success).toBe(false);
+  });
+});
