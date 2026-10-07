@@ -11,6 +11,9 @@
 jest.setTimeout(20000);
 
 const bcrypt = require('bcrypt');
+// Este teste usa a sessão real (usuário/empresa/token_version no banco).
+jest.unmock('../../src/repositories/sessaoRepository');
+
 const request = require('supertest');
 const app = require('../../src/app');
 const db = require('../../src/config/db');
@@ -62,7 +65,7 @@ beforeAll(async () => {
     const vendaE1 = await db.query('SELECT id FROM vendas WHERE empresa_id = $1 ORDER BY id LIMIT 1', [empresa1Id]);
     vendaE1Id = vendaE1.rows[0].id;
 
-    empresa1AdminToken = await loginComo('ana@cherry.com', 'senha123');
+    empresa1AdminToken = await loginComo('ana@cherry.com', process.env.SEED_PASSWORD);
 
     // snapshot da empresa 1 ANTES de a empresa 2 existir, pra comparar depois
     baseline = {

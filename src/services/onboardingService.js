@@ -1,9 +1,7 @@
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const tokenService = require('./tokenService');
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
-
-const JWT_EXPIRES_IN = '8h';
 
 async function criarTenant({ empresa_nome, cnpj, nome_admin, email_admin, senha_admin }) {
     const client = await db.connect();
@@ -50,11 +48,7 @@ async function criarTenant({ empresa_nome, cnpj, nome_admin, email_admin, senha_
 
         const usuario = usuarioResult.rows[0];
 
-        const token = jwt.sign(
-            { id: usuario.id, role: usuario.papel, empresa_id: usuario.empresa_id },
-            process.env.JWT_SECRET,
-            { expiresIn: JWT_EXPIRES_IN }
-        );
+        const token = tokenService.emitirToken(usuario);
 
         await client.query('COMMIT');
 

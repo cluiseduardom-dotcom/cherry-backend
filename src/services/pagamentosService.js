@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
+const { numeroFinito } = require('../utils/numeros');
 const pagamentosRepository = require('../repositories/pagamentosVendaRepository');
 const parcelasRepository = require('../repositories/parcelasPagamentoRepository');
 const recebimentosRepository = require('../repositories/recebimentosContaRepository');
@@ -12,6 +13,7 @@ function hoje() {
 }
 
 async function receberParcela(id, { valor, forma_pagamento = 'dinheiro', observacao = null }, usuario) {
+    const valorInformado = numeroFinito(valor, 'Valor do recebimento inválido');
     const client = await db.connect();
 
     try {
@@ -33,7 +35,7 @@ async function receberParcela(id, { valor, forma_pagamento = 'dinheiro', observa
             throw new AppError('Parcela não pode receber pagamento neste estado', 409);
         }
 
-        const valorReceber = Number(Number(valor).toFixed(2));
+        const valorReceber = Number(valorInformado.toFixed(2));
         if (valorReceber <= 0) throw new AppError('Valor do recebimento deve ser maior que zero', 400);
 
         const recebidoAnterior = await recebimentosRepository.somarPorParcela(id, usuario.empresa_id, client);
@@ -96,6 +98,7 @@ async function receberParcela(id, { valor, forma_pagamento = 'dinheiro', observa
 }
 
 async function estornarPagamento(id, { valor, motivo }, usuario) {
+    const valorInformado = numeroFinito(valor, 'Valor do estorno inválido');
     const client = await db.connect();
 
     try {
@@ -106,7 +109,7 @@ async function estornarPagamento(id, { valor, motivo }, usuario) {
         if (pagamento.status === 'cancelado') throw new AppError('Pagamento cancelado não pode ser estornado', 409);
 
         const totalEstornado = await pagamentosRepository.somarEstornos(id, usuario.empresa_id, client);
-        const valorEstorno = Number(Number(valor).toFixed(2));
+        const valorEstorno = Number(valorInformado.toFixed(2));
         const saldoEstornavel = Number((Number(pagamento.valor) - totalEstornado).toFixed(2));
 
         if (valorEstorno <= 0) throw new AppError('Valor do estorno deve ser maior que zero', 400);
