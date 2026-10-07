@@ -9,14 +9,31 @@ const app = express();
 
 // Atrás do proxy do Render, req.ip precisa vir do X-Forwarded-For; sem isso
 // todos os clientes parecem ter o IP do proxy e dividem o mesmo rate limit.
-// Número de proxies confiáveis configurável (TRUST_PROXY_HOPS); padrão 1 em
-// production/staging. Nunca `true`: aceitaria IP forjado pelo cliente.
-function obterSaltosProxyConfiaveis() {
-    const configurado = Number.parseInt(process.env.TRUST_PROXY_HOPS, 10);
+// TRUST_PROXY_HOPS é o número de proxies confiáveis à frente do app e é
+// OBRIGATÓRIO em production/staging: não existe padrão seguro, porque um valor
+// menor que o real faz o app ler o IP de um nó de borda que muda a cada
+// requisição (rate limit ineficaz) e um maior aceita IP forjado pelo cliente.
+// Nunca `true`. Em development/test, ausente vale 0.
+function obterSaltosProxyConfiaveis(env = process.env) {
+    const exigido = ['production', 'staging'].includes(env.NODE_ENV);
+    const valor = env.TRUST_PROXY_HOPS === undefined ? '' : String(env.TRUST_PROXY_HOPS).trim();
 
-    if (Number.isInteger(configurado) && configurado >= 0) return configurado;
+    if (valor === '') {
+        if (exigido) {
+            throw new Error(
+                `TRUST_PROXY_HOPS deve ser configurado em ${env.NODE_ENV} ` +
+                '(número de proxies confiáveis à frente do app; atrás do Cloudflare e do proxy do Render o valor validado foi 2)'
+            );
+        }
 
-    return ['production', 'staging'].includes(process.env.NODE_ENV) ? 1 : 0;
+        return 0;
+    }
+
+    if (!/^\d+$/.test(valor)) {
+        throw new Error('TRUST_PROXY_HOPS inválido: informe um número inteiro maior ou igual a 0');
+    }
+
+    return Number(valor);
 }
 
 app.set('trust proxy', obterSaltosProxyConfiaveis());

@@ -39,7 +39,9 @@ Variáveis mínimas:
 - `JWT_SECRET` com pelo menos 32 caracteres
 - `CORS_ORIGINS`
 
-Opcional: `TRUST_PROXY_HOPS` — número de proxies confiáveis à frente do app (padrão `1` em production/staging, `0` nos demais). Define de onde vem `req.ip`, usado pelo rate limit de login/onboarding. Validar em staging que o IP lido é o do cliente real (e não o do proxy) antes de promover.
+`TRUST_PROXY_HOPS` — **obrigatória em staging e production** (o app não sobe sem ela; não há valor padrão). É o número de proxies confiáveis à frente do app e define de onde vem `req.ip`, usado pelo rate limit de login/onboarding. Em development/test, ausente vale `0`; valor que não seja inteiro ≥ 0 é rejeitado em qualquer ambiente.
+
+No Render, o tráfego passa pelo Cloudflare e depois pelo proxy do Render: o valor **validado em ambiente temporário foi `2`**. Com `1` o app lê o IP do nó de borda do Cloudflare, que muda a cada requisição, e o rate limit deixa de funcionar; valor maior que o real aceitaria IP forjado pelo cliente. Depois de definir a variável, validar com dois IPs reais (mesmo e-mail bloqueado em um IP não pode bloquear o outro) e repetir a validação se o serviço passar a usar domínio próprio ou outra camada de proxy.
 
 O processo de inicialização falha quando uma configuração obrigatória de produção estiver ausente.
 

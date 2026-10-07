@@ -205,6 +205,8 @@ describe('configuração de produção (CORS, trust proxy, rate limit)', () => {
   function carregarApp(env) {
     jest.resetModules();
     jest.doMock('../../src/services/authService');
+    // Ausência da variável precisa ser real (process.env coage undefined em 'undefined').
+    delete process.env.TRUST_PROXY_HOPS;
     Object.assign(process.env, env);
     appProd = require('../../src/app');
     return appProd;
@@ -216,7 +218,7 @@ describe('configuração de produção (CORS, trust proxy, rate limit)', () => {
   });
 
   test('origem não permitida responde 403 (não 500) com mensagem genérica', async () => {
-    carregarApp({ NODE_ENV: 'production', CORS_ORIGINS: 'https://app.exemplo.com' });
+    carregarApp({ NODE_ENV: 'production', CORS_ORIGINS: 'https://app.exemplo.com', TRUST_PROXY_HOPS: '2' });
 
     const res = await request(appProd).get('/health').set('Origin', 'https://evil.exemplo.com');
 
@@ -224,17 +226,47 @@ describe('configuração de produção (CORS, trust proxy, rate limit)', () => {
     expect(res.body).toEqual({ success: false, message: 'Origem não permitida pelo CORS' });
   });
 
-  test.each([
-    [{ NODE_ENV: 'production', TRUST_PROXY_HOPS: '' }, 1],
-    [{ NODE_ENV: 'staging', TRUST_PROXY_HOPS: '' }, 1],
-    [{ NODE_ENV: 'development', TRUST_PROXY_HOPS: '' }, 0],
-    [{ NODE_ENV: 'production', TRUST_PROXY_HOPS: '2' }, 2],
-    [{ NODE_ENV: 'production', TRUST_PROXY_HOPS: 'true' }, 1],
-    [{ NODE_ENV: 'production', TRUST_PROXY_HOPS: '-1' }, 1]
-  ])('trust proxy com %j é %p (nunca `true`)', (env, esperado) => {
-    carregarApp({ CORS_ORIGINS: 'https://app.exemplo.com', ...env });
+  describe('TRUST_PROXY_HOPS é obrigatório em production/staging (sem fallback silencioso)', () => {
+    test.each(['production', 'staging'])('%s sem TRUST_PROXY_HOPS falha ao carregar o app', (NODE_ENV) => {
+      expect(() => carregarApp({ NODE_ENV, CORS_ORIGINS: 'https://app.exemplo.com' }))
+        .toThrow(/TRUST_PROXY_HOPS deve ser configurado em/);
+    });
 
-    expect(appProd.get('trust proxy')).toBe(esperado);
+    test.each(['production', 'staging'])('%s com TRUST_PROXY_HOPS vazio falha ao carregar o app', (NODE_ENV) => {
+      expect(() => carregarApp({ NODE_ENV, CORS_ORIGINS: 'https://app.exemplo.com', TRUST_PROXY_HOPS: '   ' }))
+        .toThrow(/TRUST_PROXY_HOPS deve ser configurado em/);
+    });
+
+    test.each(['true', 'false', '-1', '1.5', 'abc', '2 proxies', '0x2'])(
+      'valor inválido %p é rejeitado (nunca vira `true` nem é aceito pela metade)',
+      (TRUST_PROXY_HOPS) => {
+        expect(() => carregarApp({ NODE_ENV: 'production', CORS_ORIGINS: 'https://app.exemplo.com', TRUST_PROXY_HOPS }))
+          .toThrow(/TRUST_PROXY_HOPS inválido/);
+      }
+    );
+
+    test('valor inválido também é rejeitado fora de production/staging', () => {
+      expect(() => carregarApp({ NODE_ENV: 'development', TRUST_PROXY_HOPS: 'true' }))
+        .toThrow(/TRUST_PROXY_HOPS inválido/);
+    });
+
+    test.each([
+      [{ NODE_ENV: 'production', TRUST_PROXY_HOPS: '2' }, 2],
+      [{ NODE_ENV: 'staging', TRUST_PROXY_HOPS: '2' }, 2],
+      [{ NODE_ENV: 'production', TRUST_PROXY_HOPS: '1' }, 1],
+      [{ NODE_ENV: 'production', TRUST_PROXY_HOPS: ' 3 ' }, 3],
+      [{ NODE_ENV: 'production', TRUST_PROXY_HOPS: '0' }, 0]
+    ])('valor explícito %j é respeitado como %p', (env, esperado) => {
+      carregarApp({ CORS_ORIGINS: 'https://app.exemplo.com', ...env });
+
+      expect(appProd.get('trust proxy')).toBe(esperado);
+    });
+
+    test.each(['development', 'test'])('%s sem TRUST_PROXY_HOPS usa 0 (sem proxy)', (NODE_ENV) => {
+      carregarApp({ NODE_ENV });
+
+      expect(appProd.get('trust proxy')).toBe(0);
+    });
   });
 
   test('em produção, falhas de um IP/e-mail não bloqueiam outro usuário atrás do mesmo proxy', async () => {

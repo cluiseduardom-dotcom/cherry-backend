@@ -13,9 +13,11 @@ describe('segurança HTTP', () => {
   test('permite origem configurada', async () => {
     const originalNodeEnv = process.env.NODE_ENV;
     const originalCorsOrigins = process.env.CORS_ORIGINS;
+    const originalTrustProxyHops = process.env.TRUST_PROXY_HOPS;
 
     process.env.NODE_ENV = 'production';
     process.env.CORS_ORIGINS = 'https://app.cherry.com.br';
+    process.env.TRUST_PROXY_HOPS = '2';
 
     jest.resetModules();
     const secureApp = require('../../src/app');
@@ -29,5 +31,7 @@ describe('segurança HTTP', () => {
 
     process.env.NODE_ENV = originalNodeEnv;
     process.env.CORS_ORIGINS = originalCorsOrigins;
+    if (originalTrustProxyHops === undefined) delete process.env.TRUST_PROXY_HOPS;
+    else process.env.TRUST_PROXY_HOPS = originalTrustProxyHops;
   });
 });
