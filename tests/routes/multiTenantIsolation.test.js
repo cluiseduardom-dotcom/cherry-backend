@@ -282,6 +282,9 @@ afterAll(async () => {
         await db.query('DELETE FROM compras WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM produtos_categorias WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM categorias_produto WHERE empresa_id = $1', [empresa2Id]);
+        // taxas_venda (migration 047) referencia vendas: as vendas criadas via
+        // API acima geram a taxa interna da plataforma e precisam sair antes.
+        await db.query('DELETE FROM taxas_venda WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM vendas WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM precos_produto WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM contas_pagar WHERE empresa_id = $1', [empresa2Id]);
