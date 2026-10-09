@@ -27,6 +27,7 @@ Este arquivo é o contrato operacional do Claude Code para este repositório. De
 - Toda operação de leitura/escrita por recurso deve filtrar por empresa_id na própria query.
 - Referências entre recursos devem ser validadas dentro do mesmo tenant.
 - Nunca usar apenas o id do recurso como fronteira de segurança.
+- Exceção deliberada: `politicas_taxa_plataforma` (taxa interna da plataforma) é global da GiroOne/VERTUMNO, sem `empresa_id`; nenhuma rota de tenant a escreve. A taxa de cada venda (`taxas_venda`) tem `empresa_id` e nunca aparece na API de vendas, no PDV, em recibo ou em documento fiscal.
 
 ### Segurança e RBAC
 - O frontend nunca é fronteira de segurança.
