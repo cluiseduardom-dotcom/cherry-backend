@@ -8,8 +8,28 @@ const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 const SCHEMA_FILE = path.join(__dirname, 'schema.sql');
 const BASELINE_MIGRATION_VERSION = 19;
 
-function criarPool() {
-    return new Pool({ connectionString: process.env.DATABASE_URL });
+// Conexão de MIGRAÇÃO, separada da de runtime. As tabelas pertencem ao papel que
+// as criou (dono do schema); o papel restrito de runtime (DATABASE_URL) não tem
+// e não deve ter propriedade para alterá-las. Com DATABASE_MIGRATION_URL definida,
+// só o executor de migrations usa esse papel; as consultas da API continuam no
+// pool de src/config/db.js (DATABASE_URL). Sem ela, usa DATABASE_URL, como antes.
+// Devolve só o NOME da variável usada (nunca o valor) para mensagens e logs.
+function obterConexaoMigracao(env = process.env) {
+    const urlMigracao = env.DATABASE_MIGRATION_URL && env.DATABASE_MIGRATION_URL.trim();
+
+    if (urlMigracao) {
+        return { url: urlMigracao, origem: 'DATABASE_MIGRATION_URL' };
+    }
+
+    if (!env.DATABASE_URL) {
+        throw new Error('DATABASE_URL não configurada');
+    }
+
+    return { url: env.DATABASE_URL, origem: 'DATABASE_URL' };
+}
+
+function criarPool(url) {
+    return new Pool({ connectionString: url });
 }
 
 async function listarMigrations() {
@@ -25,6 +45,10 @@ async function listarMigrations() {
 }
 
 async function garantirTabelaMigrations(client) {
+    // Com tudo já migrado, o papel de runtime (sem CREATE no schema) não pode
+    // precisar de DDL só para "garantir" uma tabela que já existe.
+    if (await tabelaExiste(client, 'schema_migrations')) return;
+
     await client.query(`
         CREATE TABLE IF NOT EXISTS schema_migrations (
             version INTEGER PRIMARY KEY,
@@ -124,11 +148,9 @@ async function inicializarBanco(client, migrations) {
 }
 
 async function main() {
-    if (!process.env.DATABASE_URL) {
-        throw new Error('DATABASE_URL não configurada');
-    }
+    const { url, origem } = obterConexaoMigracao();
 
-    const pool = criarPool();
+    const pool = criarPool(url);
     const client = await pool.connect();
 
     try {
@@ -153,6 +175,11 @@ async function main() {
 
         const ultima = migrations.at(-1);
         console.log('Database atualizado até migration ' + ultima.nome + '.');
+    } catch (error) {
+        // Só o nome da variável de conexão (nunca a URL): ajuda a diagnosticar
+        // migration pendente rodando com o papel restrito de runtime.
+        error.message = `${error.message} (conexão de migração: ${origem})`;
+        throw error;
     } finally {
         client.release();
         await pool.end();
@@ -167,6 +194,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+    obterConexaoMigracao,
+    criarPool,
     listarMigrations,
     garantirTabelaMigrations,
     tabelaExiste,

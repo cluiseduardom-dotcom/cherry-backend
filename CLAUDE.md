@@ -67,6 +67,7 @@ A CI é isolada e não deve depender de banco persistente de produção, staging
 - A CI não deve escrever em bancos reais.
 - O seed de CI/dev deve ser idempotente.
 - Antes de alterar CI, verificar o workflow real em .github/workflows/ci.yml; este arquivo não substitui a configuração executável.
+- `DATABASE_MIGRATION_URL` (opcional) é usada só pelo executor de migrations; a API usa sempre `DATABASE_URL` (papel restrito). Detalhes e permissões em docs/ENVIRONMENTS.md.
 
 ## 5. Fluxo de desenvolvimento
 1. Partir de master atualizado.

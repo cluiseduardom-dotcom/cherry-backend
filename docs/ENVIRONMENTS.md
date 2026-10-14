@@ -48,6 +48,38 @@ No Render, o tráfego passa pelo Cloudflare e depois pelo proxy do Render: o val
 
 O processo de inicialização falha quando uma configuração obrigatória de produção estiver ausente.
 
+## Conexão de migração separada da de runtime
+
+Em ambientes em que o serviço roda com um papel de banco restrito (sem propriedade das tabelas), as migrations precisam de um papel com permissão de DDL. Duas variáveis, com responsabilidades distintas:
+
+| Variável | Quem usa | Papel esperado |
+|---|---|---|
+| `DATABASE_URL` | todas as consultas da API (`src/config/db.js`) | papel restrito de runtime (somente SELECT/INSERT/UPDATE/DELETE e uso de sequences) |
+| `DATABASE_MIGRATION_URL` (opcional) | **somente** o executor de migrations (`src/database/migrate.js`, chamado por `npm start`/`npm run db:migrate` e por `src/server.js`) | papel dono do schema, com permissão de DDL |
+
+Comportamento:
+
+- **`DATABASE_MIGRATION_URL` ausente ou em branco:** o executor usa `DATABASE_URL`, como sempre (compatível com CI, dev, staging e produção atuais; nada precisa mudar).
+- **Sem migrations pendentes:** o executor só lê (`to_regclass` e `SELECT` em `schema_migrations`); não emite DDL, `INSERT` nem transação. Por isso o serviço sobe normalmente só com o papel restrito, sem `DATABASE_MIGRATION_URL`.
+- **Com migration pendente e sem permissão** (ex.: `must be owner of table ...`): a transação da migration sofre `ROLLBACK`, a migration não é registrada, o processo encerra com código 1 e **o servidor não sobe** (`npm start` usa `&&`; `src/server.js` chama `process.exit(1)`). A mensagem de erro cita apenas o **nome** da variável de conexão usada, nunca a URL nem a senha.
+- A conexão de migração é fechada ao fim do executor; o pool de runtime é separado e nunca usa `DATABASE_MIGRATION_URL`.
+- Nenhum valor de connection string vai para código, logs, commits ou documentação. Configure as duas variáveis apenas no painel do serviço.
+
+Permissões do papel de runtime (configuradas uma vez no banco, fora do código; **não** conceder `SUPERUSER`, `BYPASSRLS`, `CREATEROLE` nem propriedade das tabelas). Como as tabelas novas passam a pertencer ao papel de migração, o runtime precisa de privilégios de DML sobre elas. Modelo (substitua os nomes pelos papéis reais do ambiente):
+
+```sql
+GRANT USAGE ON SCHEMA public TO <papel_runtime>;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO <papel_runtime>;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO <papel_runtime>;
+-- tabelas e sequences criadas por migrations futuras pelo papel de migração:
+ALTER DEFAULT PRIVILEGES FOR ROLE <papel_migracao> IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO <papel_runtime>;
+ALTER DEFAULT PRIVILEGES FOR ROLE <papel_migracao> IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO <papel_runtime>;
+```
+
+Sem o `ALTER DEFAULT PRIVILEGES`, uma migration que cria tabela deixa a API sem acesso a ela (erro `permission denied for table ...` em tempo de execução) até os `GRANT`s serem reaplicados.
+
 ## Promoção
 
 `feature branch → PR/CI → master → staging → validação manual → produção`
