@@ -7,18 +7,122 @@ const { reaisParaCentavos, calcularTaxaPlataformaCentavos, centavosParaReais } =
 // Brasília não cai no "dia seguinte" do UTC.
 const HOJE_SQL = `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date`;
 
-async function buscarPoliticaVigente(client) {
+const VIGENTE_SQL = `ativo = true
+           AND vigencia_inicio <= ${HOJE_SQL}
+           AND (vigencia_fim IS NULL OR vigencia_fim >= ${HOJE_SQL})`;
+
+const PLANO_PADRAO = 'sem_mensalidade';
+
+// Política global (sem empresa_id) vigente de UM plano.
+async function buscarPoliticaVigente(plano_id, client) {
     const { rows } = await client.query(
         `SELECT id, tipo, percentual
          FROM politicas_taxa_plataforma
-         WHERE ativo = true
-           AND vigencia_inicio <= ${HOJE_SQL}
-           AND (vigencia_fim IS NULL OR vigencia_fim >= ${HOJE_SQL})
+         WHERE plano_id = $1
+           AND ${VIGENTE_SQL}
          ORDER BY vigencia_inicio DESC, id DESC
-         LIMIT 1`
+         LIMIT 1`,
+        [plano_id]
     );
 
     return rows[0] ?? null;
+}
+
+// Condição individual negociada (exceção) vigente da empresa. Condição expirada
+// ou futura não casa: volta ao padrão do plano.
+async function buscarCondicaoVigente(empresa_id, client) {
+    const { rows } = await client.query(
+        `SELECT id, tipo, percentual
+         FROM condicoes_comerciais_empresa
+         WHERE empresa_id = $1
+           AND ${VIGENTE_SQL}
+         ORDER BY vigencia_inicio DESC, id DESC
+         LIMIT 1`,
+        [empresa_id]
+    );
+
+    return rows[0] ?? null;
+}
+
+// Plano vigente da empresa. Sem registro vigente (empresa nunca cadastrada,
+// plano encerrado/expirado): padrão sem mensalidade, com origem explícita
+// 'padrao_sem_plano' (empresa_plano_id nulo). Plano inativo é configuração
+// inválida e NÃO cai no padrão em silêncio.
+async function buscarPlanoDaEmpresa(empresa_id, client) {
+    const { rows } = await client.query(
+        `SELECT ep.id AS empresa_plano_id, p.id AS plano_id, p.codigo, p.ativo
+         FROM empresa_planos ep
+         JOIN planos_comerciais p ON p.id = ep.plano_id
+         WHERE ep.empresa_id = $1
+           AND ep.ativo = true
+           AND ep.vigencia_inicio <= ${HOJE_SQL}
+           AND (ep.vigencia_fim IS NULL OR ep.vigencia_fim >= ${HOJE_SQL})
+         ORDER BY ep.vigencia_inicio DESC, ep.id DESC
+         LIMIT 1`,
+        [empresa_id]
+    );
+
+    if (rows.length) {
+        if (!rows[0].ativo) {
+            throw new AppError(
+                `Plano comercial inativo (empresa ${empresa_id}, plano ${rows[0].codigo})`,
+                500
+            );
+        }
+
+        return { ...rows[0], origem: 'plano_padrao' };
+    }
+
+    const { rows: padraoRows } = await client.query(
+        `SELECT id AS plano_id, codigo, ativo FROM planos_comerciais WHERE codigo = $1`,
+        [PLANO_PADRAO]
+    );
+
+    if (!padraoRows.length || !padraoRows[0].ativo) {
+        throw new AppError(`Plano comercial padrão ausente ou inativo (empresa ${empresa_id})`, 500);
+    }
+
+    return { ...padraoRows[0], empresa_plano_id: null, origem: 'padrao_sem_plano' };
+}
+
+// Decide a regra da venda, sempre pela empresa autenticada (nunca por dado do
+// cliente). Prioridade: condição individual > política do plano > padrão sem
+// mensalidade. A política do plano é sempre exigida (é a "política aplicada"
+// congelada na taxa); sem ela, erro 500 e rollback da venda.
+async function resolverRegra(empresa_id, client) {
+    const plano = await buscarPlanoDaEmpresa(empresa_id, client);
+    const politica = await buscarPoliticaVigente(plano.plano_id, client);
+
+    if (!politica) {
+        throw new AppError(
+            `Nenhuma política de taxa da plataforma vigente para o plano ${plano.codigo} (empresa ${empresa_id})`,
+            500
+        );
+    }
+
+    const condicao = await buscarCondicaoVigente(empresa_id, client);
+
+    if (condicao) {
+        return {
+            origem: 'excecao_empresa',
+            plano_id: plano.plano_id,
+            empresa_plano_id: plano.empresa_plano_id,
+            politica_id: politica.id,
+            condicao_id: condicao.id,
+            tipo: condicao.tipo,
+            percentual: condicao.percentual
+        };
+    }
+
+    return {
+        origem: plano.origem,
+        plano_id: plano.plano_id,
+        empresa_plano_id: plano.empresa_plano_id,
+        politica_id: politica.id,
+        condicao_id: null,
+        tipo: politica.tipo,
+        percentual: politica.percentual
+    };
 }
 
 // Gera a taxa da venda DENTRO da transação da venda (client obrigatório).
@@ -30,31 +134,29 @@ async function apurar({ venda_id, empresa_id, total }, client) {
         throw new Error('taxasPlataformaRepository.apurar exige o client da transação da venda');
     }
 
-    const politica = await buscarPoliticaVigente(client);
-
-    if (!politica) {
-        throw new AppError(
-            `Nenhuma política de taxa da plataforma vigente (venda ${venda_id}, empresa ${empresa_id})`,
-            500
-        );
-    }
+    const regra = await resolverRegra(empresa_id, client);
 
     const baseCentavos = reaisParaCentavos(total);
-    const valorCentavos = calcularTaxaPlataformaCentavos(baseCentavos, politica.percentual);
+    const valorCentavos = calcularTaxaPlataformaCentavos(baseCentavos, regra.percentual);
 
     const { rows } = await client.query(
         `INSERT INTO taxas_venda
-            (venda_id, empresa_id, politica_id, tipo, percentual, base_calculo, valor)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (venda_id, empresa_id, politica_id, tipo, percentual, base_calculo, valor,
+             plano_id, empresa_plano_id, condicao_id, origem)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id`,
         [
             venda_id,
             empresa_id,
-            politica.id,
-            politica.tipo,
-            politica.percentual,
+            regra.politica_id,
+            regra.tipo,
+            regra.percentual,
             centavosParaReais(baseCentavos),
-            centavosParaReais(valorCentavos)
+            centavosParaReais(valorCentavos),
+            regra.plano_id,
+            regra.empresa_plano_id,
+            regra.condicao_id,
+            regra.origem
         ]
     );
 
@@ -126,6 +228,9 @@ async function listarPaginado({ limit, offset, empresa_id, data_inicio, data_fim
 
 module.exports = {
     buscarPoliticaVigente,
+    buscarCondicaoVigente,
+    buscarPlanoDaEmpresa,
+    resolverRegra,
     apurar,
     estornarPorVendaId,
     listarPaginado

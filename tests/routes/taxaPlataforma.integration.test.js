@@ -115,10 +115,15 @@ afterAll(async () => {
 
 afterEach(() => jest.restoreAllMocks());
 
-describe('política global da plataforma (migration 046)', () => {
-    test('existe a política inicial: 0,15% percentual, sem fim, ativa, sem empresa_id', async () => {
+const planoId = async (client, codigo) =>
+    (await client.query('SELECT id FROM planos_comerciais WHERE codigo = $1', [codigo])).rows[0].id;
+
+describe('política global da plataforma (migrations 046/048)', () => {
+    test('existe a política inicial: 0,15% percentual do plano sem mensalidade, sem fim, ativa, sem empresa_id', async () => {
         const { rows } = await db.query(
-            `SELECT tipo, percentual::text, vigencia_inicio::text, vigencia_fim, ativo FROM politicas_taxa_plataforma ORDER BY id`
+            `SELECT t.tipo, t.percentual::text, t.vigencia_inicio::text, t.vigencia_fim, t.ativo, p.codigo AS plano
+             FROM politicas_taxa_plataforma t JOIN planos_comerciais p ON p.id = t.plano_id
+             WHERE p.codigo = 'sem_mensalidade' ORDER BY t.id`
         );
         const inicial = rows[0];
 
@@ -134,13 +139,14 @@ describe('política global da plataforma (migration 046)', () => {
         const client = await db.connect();
         try {
             await client.query('BEGIN');
+            const sem = await planoId(client, 'sem_mensalidade');
             await expect(
-                client.query(`INSERT INTO politicas_taxa_plataforma (percentual, vigencia_inicio, ativo) VALUES (1, DATE '2027-01-01', true)`)
+                client.query(`INSERT INTO politicas_taxa_plataforma (percentual, vigencia_inicio, ativo, plano_id) VALUES (1, DATE '2027-01-01', true, $1)`, [sem])
             ).rejects.toMatchObject({ code: '23P01' });
             await client.query('ROLLBACK');
 
             await client.query('BEGIN');
-            await client.query(`INSERT INTO politicas_taxa_plataforma (percentual, vigencia_inicio, ativo) VALUES (1, DATE '2027-01-01', false)`);
+            await client.query(`INSERT INTO politicas_taxa_plataforma (percentual, vigencia_inicio, ativo, plano_id) VALUES (1, DATE '2027-01-01', false, $1)`, [sem]);
             await client.query('ROLLBACK');
         } finally {
             client.release();
@@ -150,13 +156,14 @@ describe('política global da plataforma (migration 046)', () => {
     test('rejeita percentual fora de 0..100 e vigência invertida', async () => {
         const client = await db.connect();
         try {
+            const sem = await planoId(client, 'sem_mensalidade');
             for (const sql of [
-                `INSERT INTO politicas_taxa_plataforma (percentual, vigencia_inicio, ativo) VALUES (100.0001, DATE '2030-01-01', false)`,
-                `INSERT INTO politicas_taxa_plataforma (percentual, vigencia_inicio, ativo) VALUES (-1, DATE '2030-01-01', false)`,
-                `INSERT INTO politicas_taxa_plataforma (percentual, vigencia_inicio, vigencia_fim, ativo) VALUES (1, DATE '2030-02-01', DATE '2030-01-01', false)`
+                `INSERT INTO politicas_taxa_plataforma (percentual, vigencia_inicio, ativo, plano_id) VALUES (100.0001, DATE '2030-01-01', false, $1)`,
+                `INSERT INTO politicas_taxa_plataforma (percentual, vigencia_inicio, ativo, plano_id) VALUES (-1, DATE '2030-01-01', false, $1)`,
+                `INSERT INTO politicas_taxa_plataforma (percentual, vigencia_inicio, vigencia_fim, ativo, plano_id) VALUES (1, DATE '2030-02-01', DATE '2030-01-01', false, $1)`
             ]) {
                 await client.query('BEGIN');
-                await expect(client.query(sql)).rejects.toMatchObject({ code: '23514' });
+                await expect(client.query(sql, [sem])).rejects.toMatchObject({ code: '23514' });
                 await client.query('ROLLBACK');
             }
         } finally {
@@ -170,7 +177,7 @@ describe('política global da plataforma (migration 046)', () => {
             await client.query('BEGIN');
             await client.query('UPDATE politicas_taxa_plataforma SET ativo = false');
 
-            expect(await taxasPlataformaRepository.buscarPoliticaVigente(client)).toBeNull();
+            expect(await taxasPlataformaRepository.buscarPoliticaVigente(await planoId(client, 'sem_mensalidade'), client)).toBeNull();
             await expect(
                 taxasPlataformaRepository.apurar({ venda_id: 1, empresa_id: 1, total: 100 }, client)
             ).rejects.toMatchObject({ statusCode: 500 });
@@ -188,13 +195,14 @@ describe('política global da plataforma (migration 046)', () => {
         const client = await db.connect();
         try {
             await client.query('BEGIN');
+            const sem = await planoId(client, 'sem_mensalidade');
             await client.query(`UPDATE politicas_taxa_plataforma SET vigencia_inicio = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date + 1`);
-            expect(await taxasPlataformaRepository.buscarPoliticaVigente(client)).toBeNull(); // ainda não começou
+            expect(await taxasPlataformaRepository.buscarPoliticaVigente(sem, client)).toBeNull(); // ainda não começou
 
             await client.query(
                 `UPDATE politicas_taxa_plataforma SET vigencia_inicio = DATE '2026-01-01', vigencia_fim = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 1`
             );
-            expect(await taxasPlataformaRepository.buscarPoliticaVigente(client)).toBeNull(); // já terminou
+            expect(await taxasPlataformaRepository.buscarPoliticaVigente(sem, client)).toBeNull(); // já terminou
             await client.query('ROLLBACK');
         } finally {
             client.release();
@@ -229,7 +237,10 @@ describe('venda com pagamentos mistos: UMA taxa de 0,15% sobre vendas.total', ()
             percentual: '0.1500',
             base_calculo: '120.00',
             valor: '0.18',
-            status: 'apurada'
+            status: 'apurada',
+            origem: 'padrao_sem_plano', // empresa sem plano cadastrado -> padrão sem mensalidade
+            condicao_id: null,
+            empresa_plano_id: null
         });
         expect(taxas[0].estornado_em).toBeNull();
     });
@@ -265,8 +276,8 @@ describe('venda com pagamentos mistos: UMA taxa de 0,15% sobre vendas.total', ()
             await client.query('BEGIN');
             await expect(
                 client.query(
-                    `INSERT INTO taxas_venda (venda_id, empresa_id, politica_id, tipo, percentual, base_calculo, valor)
-                     SELECT venda_id, empresa_id, politica_id, tipo, percentual, base_calculo, valor FROM taxas_venda WHERE venda_id = $1`,
+                    `INSERT INTO taxas_venda (venda_id, empresa_id, politica_id, tipo, percentual, base_calculo, valor, plano_id, origem)
+                     SELECT venda_id, empresa_id, politica_id, tipo, percentual, base_calculo, valor, plano_id, origem FROM taxas_venda WHERE venda_id = $1`,
                     [vendaMistaId]
                 )
             ).rejects.toMatchObject({ code: '23505' });
