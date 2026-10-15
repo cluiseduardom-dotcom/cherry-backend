@@ -16,6 +16,8 @@ const {
     formatarFalha,
 } = require('../seguranca/validarBancoDeTeste');
 
+const { avaliarMarca, validarConteudoDoBanco } = require('../seguranca/validarConteudoDoBanco');
+
 module.exports = async function globalSetup() {
     const testUrl = process.env.TEST_DATABASE_URL;
 
@@ -44,6 +46,24 @@ module.exports = async function globalSetup() {
                     destino: resultado.destino,
                 })
             );
+        }
+
+        // Camadas A e B: somente SELECT. Nada é escrito antes de o banco provar que é descartável.
+        const marca = await client.query(
+            `SELECT shobj_description(oid, 'pg_database') AS comentario FROM pg_database WHERE datname = current_database()`
+        );
+        const semMarca = avaliarMarca(marca.rows[0].comentario);
+        if (!semMarca.ok) {
+            throw new Error(formatarFalha({ motivo: semMarca.motivo, destino: resultado.destino }));
+        }
+
+        // Só depois da marca: lê as empresas (sem a marca o banco nem é inspecionado).
+        const existeEmpresas = (await client.query(`SELECT to_regclass('public.empresas') AS t`)).rows[0].t;
+        const empresas = existeEmpresas ? (await client.query('SELECT id, nome FROM empresas ORDER BY id')).rows : [];
+
+        const conteudo = validarConteudoDoBanco({ comentario: marca.rows[0].comentario, empresas });
+        if (!conteudo.ok) {
+            throw new Error(formatarFalha({ motivo: conteudo.motivo, destino: resultado.destino }));
         }
     } finally {
         await client.end().catch(() => {});

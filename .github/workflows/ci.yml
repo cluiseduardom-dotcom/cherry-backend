@@ -63,6 +63,11 @@ jobs:
       - name: Run unit tests (sem banco)
         run: npm test -- --runInBand
 
+      - name: Mark disposable test database
+        # Declara, de propósito, que o Postgres descartável do job é um banco de testes
+        # (os testes de integração se recusam a rodar em banco sem esta marca).
+        run: node tests/integration/marcarBancoDescartavel.js
+
       - name: Run integration tests (banco de testes isolado)
         run: npm run test:integration
 
