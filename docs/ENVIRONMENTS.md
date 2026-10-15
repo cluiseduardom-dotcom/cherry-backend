@@ -13,6 +13,7 @@ O backend deve operar com ambientes isolados. Nunca reutilizar banco, segredo JW
 
 - Banco PostgreSQL dedicado ao CI.
 - `DATABASE_URL` do CI nunca deve ser o banco de staging ou produção.
+- Os testes de integração só usam `TEST_DATABASE_URL` (o Postgres descartável do job, `cherry_ci`); nenhum teste lê o `.env` nem usa o banco de dev/produção. Veja `docs/TESTES.md`.
 - O pipeline executa `npm run db:migrate` antes do seed e dos testes.
 - O seed é específico da base de CI e exige `SEED_PASSWORD` (mín. 12 caracteres); o workflow gera uma senha aleatória por execução. Não há senha padrão no código e o seed recusa rodar com `NODE_ENV=production` ou `staging`.
 

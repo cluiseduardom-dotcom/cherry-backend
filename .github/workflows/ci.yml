@@ -27,6 +27,9 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://cherry:cherry@localhost:5432/cherry_ci
+      # Banco de testes ISOLADO (Postgres descartável do próprio job). Os testes de integração
+      # só usam TEST_DATABASE_URL, nunca o DATABASE_URL (veja tests/integration/globalSetup.js).
+      TEST_DATABASE_URL: postgresql://cherry:cherry@localhost:5432/cherry_ci
       JWT_SECRET: ci-only-secret-not-for-production
 
     steps:
@@ -57,10 +60,13 @@ jobs:
       - name: Seed database
         run: node src/database/seed.js
 
-      - name: Run tests
+      - name: Run unit tests (sem banco)
         run: npm test -- --runInBand
+
+      - name: Run integration tests (banco de testes isolado)
+        run: npm run test:integration
 
       - name: Quality gate summary
         run: |
           echo "Backend quality gate passed."
-          echo "Required checks: install, syntax, database bootstrap, seed and tests."
+          echo "Required checks: install, syntax, database bootstrap, seed, unit tests and integration tests."

@@ -9,6 +9,11 @@ const bcrypt = require('bcrypt');
 const request = require('supertest');
 const db = require('../../src/config/db');
 const app = require('../../src/app');
+const { criarRegistroDeEmpresas } = require('../helpers/limpezaEmpresasTeste');
+
+// A empresa é registrada LOGO APÓS o INSERT: se a preparação falhar depois disso, o
+// afterAll ainda sabe o que remover (nada fica residual no banco de testes).
+const registro = criarRegistroDeEmpresas(db);
 
 const senha = crypto.randomBytes(12).toString('hex');
 const email = `revogacao-${crypto.randomBytes(4).toString('hex')}@teste.invalid`;
@@ -26,7 +31,7 @@ beforeAll(async () => {
   const empresa = await db.query(
     `INSERT INTO empresas (nome, status) VALUES ('Teste Revogacao #87', 'ativa') RETURNING id`
   );
-  empresaId = empresa.rows[0].id;
+  empresaId = registro.registrar(empresa.rows[0].id);
 
   const usuario = await db.query(
     `INSERT INTO usuarios (empresa_id, nome, email, senha, papel) VALUES ($1, 'Admin Revogacao', $2, $3, 'admin') RETURNING id`,
@@ -36,9 +41,19 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.query('DELETE FROM usuarios WHERE empresa_id = $1', [empresaId]);
-  await db.query('DELETE FROM empresas WHERE id = $1', [empresaId]);
-  await db.end();
+  try {
+    if (empresaId) {
+      await db.query('DELETE FROM usuarios WHERE empresa_id = $1', [empresaId]);
+      await db.query('DELETE FROM empresas WHERE id = $1', [empresaId]);
+    }
+  } finally {
+    // Rede de segurança: remove o que a limpeza acima deixou (ou tudo, se ela falhou).
+    try {
+      await registro.limpar();
+    } finally {
+      await db.end();
+    }
+  }
 });
 
 beforeEach(async () => {
