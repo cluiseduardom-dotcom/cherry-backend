@@ -32,6 +32,20 @@ Regra de nomenclatura: **toda suíte que usa o pool real (`src/config/db`) ou gr
 Só depois de passar é feita **uma** conexão de identidade (`SELECT current_database()`), sem escrita. As mensagens mostram
 host e banco, **nunca** usuário, senha ou a URL.
 
+### Duas travas de conteúdo (nome de banco não prova que ele é descartável)
+Ainda no `globalSetup`, na mesma conexão e **somente com SELECT**:
+
+- **Marca de banco descartável.** O banco precisa ter sido declarado, de propósito, como de testes:
+  `COMMENT ON DATABASE` com o texto `cherry-test-disposable`. Sem a marca, aborta (e nem lê as empresas). Marque **uma vez**,
+  num banco que você sabe ser só de testes: `TEST_DATABASE_URL=... node tests/integration/marcarBancoDescartavel.js`
+  (o script aplica o mesmo guard e a trava abaixo antes de marcar). O CI marca o Postgres do job em um passo próprio.
+- **Guarda de conteúdo.** As únicas empresas toleradas são as de teste (`Teste…`/`Empresa Teste…`, inclusive resíduos
+  de execuções anteriores) e **uma** empresa `Cherry Semijoias` (o seed de CI). Qualquer outra empresa indica dados reais e
+  aborta, mostrando só ids e contagem (nunca nomes).
+
+Juntas, elas cobrem o caso de alguém criar um banco `cherry_test` dentro do servidor compartilhado (ou restaurar uma cópia da
+`dev`) e apontar `TEST_DATABASE_URL` para ele: sem a marca, ou com empresas reais, a integração não escreve nada.
+
 > O `DATABASE_URL` do `.env` **nunca** é usado como alternativa. `TEST_DATABASE_URL` precisa estar no ambiente do shell
 > (não adianta colocá-la no `.env`: o `.env` não é lido pelos testes).
 
@@ -60,10 +74,11 @@ host e banco, **nunca** usuário, senha ou a URL.
      npm run db:migrate && SEED_PASSWORD="$(openssl rand -hex 16)" node src/database/seed.js
      ```
    (Mais seguro ainda: rode isso num clone/pasta **sem** `.env`.)
-3. Rode a integração apontando `TEST_DATABASE_URL` para o mesmo banco (o `SEED_PASSWORD` do passo 2 também é necessário
+3. Marque o banco (uma vez) e rode a integração apontando `TEST_DATABASE_URL` para o mesmo banco (o `SEED_PASSWORD` do passo 2 também é necessário
    para `multiTenantIsolation`):
    ```powershell
    $env:TEST_DATABASE_URL = 'postgresql://cherry:cherry@localhost:5433/cherry_test'
+   node tests/integration/marcarBancoDescartavel.js
    npm run test:integration
    ```
 4. Sem `TEST_DATABASE_URL`, `npm run test:integration` falha na hora com a mensagem `TESTES DE INTEGRAÇÃO BLOQUEADOS…`.
@@ -74,7 +89,7 @@ nem o mesmo servidor do `DATABASE_URL` do `.env`.
 
 ## CI
 O job sobe um Postgres próprio (`cherry_ci`, descartável) e define `TEST_DATABASE_URL` apontando para ele. Passos:
-migrations → seed → `npm test` (unitários) → `npm run test:integration`.
+migrations → seed → `npm test` (unitários) → marca o banco do job como descartável → `npm run test:integration`.
 
 ## Escrevendo testes de integração sem deixar resíduos
 Use `tests/helpers/limpezaEmpresasTeste.js`:
@@ -97,5 +112,5 @@ afterAll(async () => { try { await registro.limpar(); } finally { await db.end()
   por testes unitários com banco falso (`tests/seguranca/*`) e por execuções reais do Jest contra um servidor TCP falso
   que só conta conexões (`tests/seguranca/integracaoBloqueada.test.js`).
 - Quem tem acesso ao shell pode, de propósito, apontar `TEST_DATABASE_URL` para um banco **local** com nome de teste que
-  contenha dados reais. O guard bloqueia bancos compartilhados conhecidos, mas não consegue provar que um banco local é "vazio".
+  contenha dados reais. O guard bloqueia bancos compartilhados conhecidos, e as travas de conteúdo bloqueiam bancos sem a marca ou com empresas reais; mas quem marca de propósito um banco com dados fora de `empresas` assume essa responsabilidade.
 - A branch `dev` do Neon não está protegida na plataforma; considere marcá-la como protegida.
