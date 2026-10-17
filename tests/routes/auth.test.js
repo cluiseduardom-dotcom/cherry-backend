@@ -33,6 +33,22 @@ describe('POST /auth/login', () => {
     expect(authService.login).toHaveBeenCalledWith('a@x.com', 'senha123');
   });
 
+  test('tema, empresa_id e empresa enviados no corpo são ignorados: o serviço recebe só email e senha', async () => {
+    authService.login.mockResolvedValue({ token: 'tok', usuario: { id: 1 } });
+
+    await request(app)
+      .post('/auth/login')
+      .send({ email: 'a@x.com', senha: 'senha123', tema: 'cherry', empresa_id: 99, empresa: { tema: 'cherry' } });
+    await request(app)
+      .post('/auth/login?tema=cherry&empresa_id=99')
+      .set('X-Tema', 'cherry')
+      .send({ email: 'a@x.com', senha: 'senha123' });
+
+    expect(authService.login).toHaveBeenCalledTimes(2);
+    expect(authService.login).toHaveBeenNthCalledWith(1, 'a@x.com', 'senha123');
+    expect(authService.login).toHaveBeenNthCalledWith(2, 'a@x.com', 'senha123');
+  });
+
   test('propagates a service AppError with its status code', async () => {
     const AppError = require('../../src/errors/AppError');
     authService.login.mockRejectedValue(new AppError('Email ou senha inválidos', 401));
