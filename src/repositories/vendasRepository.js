@@ -5,6 +5,7 @@ const contasReceberRepository = require('./contasReceberRepository');
 const pagamentosVendaRepository = require('./pagamentosVendaRepository');
 const parcelasPagamentoRepository = require('./parcelasPagamentoRepository');
 const estornosPagamentoRepository = require('./estornosPagamentoRepository');
+const taxasPlataformaRepository = require('./taxasPlataformaRepository');
 const { executarComLock } = require('./shared/transacoes');
 const AppError = require('../errors/AppError');
 const { MAX_PARCELAS, MAX_MESES_PRAZO } = require('../constants/limites');
@@ -247,6 +248,12 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             'UPDATE vendas SET subtotal = $1, desconto = $2, juros = $3, total = $4 WHERE id = $5',
             [subtotal, descontoFinal, jurosFinal, total, venda.id]
         );
+
+        // Taxa interna da plataforma: UMA por venda (aqui, fora do laço de
+        // pagamentos), sobre vendas.total já final (subtotal - desconto + juros).
+        // Na mesma transação: sem política vigente ou qualquer falha, o ROLLBACK
+        // do catch desfaz a venda inteira. Nunca entra na resposta nem nos itens.
+        await taxasPlataformaRepository.apurar({ venda_id: venda.id, empresa_id, total }, client);
 
         const valores = itensProcessados.map((item) => [
             venda.id, item.produto_id, item.quantidade, item.preco_unitario,
@@ -497,6 +504,10 @@ async function cancelar(id, usuario_id, empresa_id) {
         // conta, e isso é um no-op — mesmo padrão de bloqueio de
         // contasPagarRepository.atualizar (checa e falha antes de escrever).
         await contasReceberRepository.cancelarPorVendaId(id, empresa_id, client);
+
+        // Taxa interna da plataforma: estornada, nunca apagada. Venda histórica
+        // sem taxa é no-op.
+        await taxasPlataformaRepository.estornarPorVendaId(id, empresa_id, client);
 
         const { rows: pagamentosRows } = await client.query(
             `SELECT * FROM pagamentos_venda WHERE venda_id = $1 AND empresa_id = $2 FOR UPDATE`,

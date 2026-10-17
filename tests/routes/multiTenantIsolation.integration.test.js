@@ -1,5 +1,6 @@
-// Teste de integração de verdade: roda contra o banco real do .env (sem
-// jest.mock em db/services), o único jeito de validar que o filtro por
+// Teste de integração de verdade: roda contra o banco de testes ISOLADO
+// (TEST_DATABASE_URL; nunca o .env nem um banco compartilhado) e sem
+// jest.mock em db/services, o único jeito de validar que o filtro por
 // empresa_id realmente isola os dados entre empresas fim a fim (rota ->
 // controller -> service -> repository -> Postgres).
 //
@@ -17,6 +18,12 @@ jest.unmock('../../src/repositories/sessaoRepository');
 const request = require('supertest');
 const app = require('../../src/app');
 const db = require('../../src/config/db');
+const { criarRegistroDeEmpresas } = require('../helpers/limpezaEmpresasTeste');
+
+// A empresa 2 é registrada LOGO APÓS o INSERT: se a preparação falhar depois disso, ou se
+// a limpeza explícita abaixo falhar (ex.: uma tabela nova com FK), o afterAll ainda remove
+// o que sobrou pelo schema.
+const registro = criarRegistroDeEmpresas(db);
 
 const SUFIXO = Date.now();
 const SENHA_TESTE = 'senhaTeste123!';
@@ -87,7 +94,7 @@ beforeAll(async () => {
     const empresaResult = await db.query(
         `INSERT INTO empresas (nome, cnpj, status) VALUES ('Empresa Teste Isolamento', NULL, 'ativa') RETURNING id`
     );
-    empresa2Id = empresaResult.rows[0].id;
+    empresa2Id = registro.registrar(empresaResult.rows[0].id);
 
     const canalResult = await db.query(
         `INSERT INTO canais_venda (empresa_id, nome, ativo) VALUES ($1, 'loja_fisica', true) RETURNING id`,
@@ -259,43 +266,53 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    if (empresa2Id) {
-        // As tabelas financeiras novas preservam histórico e possuem FKs
-        // próprias; a fixture de teste precisa removê-las antes de excluir
-        // a venda/empresa fictícia.
-        await db.query('DELETE FROM recebimentos_conta WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM estornos_pagamento WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM contas_receber WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM parcelas_pagamento WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM pagamentos_venda WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM idempotency_keys WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM niveis_categoria WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM producoes WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM itens_ficha_tecnica WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM fichas_tecnicas WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM itens_compra WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [empresa2Id]);
-        // movimentacoes_estoque.compra_id (migration 042) referencia compras:
-        // precisa ser removida antes de compras, senão a FK bloqueia o DELETE
-        // abaixo (issue #79).
-        await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM compras WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM produtos_categorias WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM categorias_produto WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM vendas WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM precos_produto WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM contas_pagar WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM fornecedores WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM despesas_fixas WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM produtos WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM clientes WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM canais_venda WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM configuracoes_financeiras WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM usuarios WHERE empresa_id = $1', [empresa2Id]);
-        await db.query('DELETE FROM empresas WHERE id = $1', [empresa2Id]);
+    try {
+        if (empresa2Id) {
+            // As tabelas financeiras novas preservam histórico e possuem FKs
+            // próprias; a fixture de teste precisa removê-las antes de excluir
+            // a venda/empresa fictícia.
+            await db.query('DELETE FROM recebimentos_conta WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM estornos_pagamento WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM contas_receber WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM parcelas_pagamento WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM pagamentos_venda WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM idempotency_keys WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM niveis_categoria WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM producoes WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM itens_ficha_tecnica WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM fichas_tecnicas WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM itens_compra WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [empresa2Id]);
+            // movimentacoes_estoque.compra_id (migration 042) referencia compras:
+            // precisa ser removida antes de compras, senão a FK bloqueia o DELETE
+            // abaixo (issue #79).
+            await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM compras WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM produtos_categorias WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM categorias_produto WHERE empresa_id = $1', [empresa2Id]);
+            // taxas_venda (migration 047) referencia vendas: as vendas criadas via
+            // API acima geram a taxa interna da plataforma e precisam sair antes.
+            await db.query('DELETE FROM taxas_venda WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM vendas WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM precos_produto WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM contas_pagar WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM fornecedores WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM despesas_fixas WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM produtos WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM clientes WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM canais_venda WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM configuracoes_financeiras WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM usuarios WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM empresas WHERE id = $1', [empresa2Id]);
+        }
+    } finally {
+        // Rede de segurança: remove o que a limpeza explícita deixou (ou tudo, se ela falhou).
+        try {
+            await registro.limpar();
+        } finally {
+            await db.end();
+        }
     }
-
-    await db.end();
 });
 
 describe('empresa 1 não é afetada pela existência da empresa 2', () => {

@@ -40,11 +40,14 @@ Set `CORS_ORIGINS` as a comma-separated list of browser origins allowed to call 
 ## Testing
 
 ```bash
-npm test            # run the test suite
-npm run test:coverage
+npm test                  # unit tests: no database, the .env is never read
+npm run test:coverage     # unit tests with coverage
+npm run test:integration  # integration tests: require TEST_DATABASE_URL (isolated test database)
 ```
 
-Tests use Jest and Supertest with the database layer mocked at the repository boundary — no live database or `.env` is required to run them.
+Unit tests use Jest and Supertest with the database layer mocked at the repository boundary — no live database or `.env` is required (a stub replaces `dotenv` and the connection is pointed at a refusing address).
+
+Integration tests (`*.integration.test.js`) write to a real database, so they only run against an **isolated test database** passed explicitly in `TEST_DATABASE_URL`. They abort before opening any connection if the variable is missing or points at a shared development/production database. See [docs/TESTES.md](docs/TESTES.md).
 
 ## Routes
 

@@ -27,6 +27,7 @@ Este arquivo é o contrato operacional do Claude Code para este repositório. De
 - Toda operação de leitura/escrita por recurso deve filtrar por empresa_id na própria query.
 - Referências entre recursos devem ser validadas dentro do mesmo tenant.
 - Nunca usar apenas o id do recurso como fronteira de segurança.
+- Exceção deliberada: `planos_comerciais` e `politicas_taxa_plataforma` (taxa interna da plataforma, por plano: 0,15% sem mensalidade, 0,10% com mensalidade) são globais da GiroOne/VERTUMNO, sem `empresa_id`; nenhuma rota de tenant as escreve. O plano e a condição individual negociada de cada empresa (`empresa_planos`, `condicoes_comerciais_empresa`) têm `empresa_id`, justificativa, responsável e vigência, e são administrados só pela GiroOne. A regra vem sempre da empresa do JWT (condição individual > plano > padrão sem mensalidade). A taxa de cada venda (`taxas_venda`) congela percentual, política, plano e condição, tem `empresa_id` e nunca aparece na API de vendas, no PDV, em recibo ou em documento fiscal.
 
 ### Segurança e RBAC
 - O frontend nunca é fronteira de segurança.
@@ -66,6 +67,7 @@ A CI é isolada e não deve depender de banco persistente de produção, staging
 - A CI não deve escrever em bancos reais.
 - O seed de CI/dev deve ser idempotente.
 - Antes de alterar CI, verificar o workflow real em .github/workflows/ci.yml; este arquivo não substitui a configuração executável.
+- `DATABASE_MIGRATION_URL` (opcional) é usada só pelo executor de migrations; a API usa sempre `DATABASE_URL` (papel restrito). Detalhes e permissões em docs/ENVIRONMENTS.md.
 
 ## 5. Fluxo de desenvolvimento
 1. Partir de master atualizado.
