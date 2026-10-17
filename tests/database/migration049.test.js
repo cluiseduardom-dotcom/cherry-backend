@@ -27,6 +27,10 @@ describe('migration 049 — arquivo', () => {
         expect(updates[0]).toMatch(/WHERE nome = 'Cherry Semijoias'/);
     });
 
+    test('a checagem de idempotência da constraint é escopada à tabela empresas (o nome é global no pg_constraint)', () => {
+        expect(EXECUTAVEL).toMatch(/conname = 'empresas_tema_visual_chk' AND conrelid = 'empresas'::regclass/);
+    });
+
     test('o CHECK do banco acompanha o conjunto fechado do código', () => {
         const lista = EXECUTAVEL.match(/CHECK \(tema_visual IN \(([^)]*)\)\)/)[1];
         const valores = lista.split(',').map((v) => v.trim().replace(/'/g, ''));

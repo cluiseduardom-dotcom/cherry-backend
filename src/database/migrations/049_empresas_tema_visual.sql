@@ -7,7 +7,8 @@ ALTER TABLE empresas
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'empresas_tema_visual_chk') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                       WHERE conname = 'empresas_tema_visual_chk' AND conrelid = 'empresas'::regclass) THEN
         ALTER TABLE empresas
             ADD CONSTRAINT empresas_tema_visual_chk CHECK (tema_visual IN ('vertumno', 'cherry'));
     END IF;
