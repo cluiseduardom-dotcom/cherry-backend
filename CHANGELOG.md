@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Identidade visual por empresa (cherry-frontend#63): migration `049` adiciona `empresas.tema_visual` (`vertumno` padrão, `cherry`; `CHECK` fechado) e `POST /auth/login` passa a devolver `usuario.empresa = { id, tema }`, lido do banco para a empresa do próprio usuário. Aditivo: o JWT e os campos existentes não mudam; tema ausente/inválido vira `vertumno`.
 - Jest + Supertest test suite (validations, middlewares, services, and routes), with the database mocked at the repository boundary so tests run without a live DB or secrets. `npm test` / `npm run test:coverage`, wired into CI.
 - Produtos/SKU module: `sku`, `descricao`, `categoria`, `estoque_atual`, `estoque_minimo`, `ativo` fields on `produtos`; `GET /produtos` now paginates; new `GET /produtos/:id`; `PUT /produtos/:id` and `DELETE /produtos/:id` (soft delete via `ativo`), both admin-only.
 - Stock movements module: `movimentacoes_estoque` ledger table; `POST /produtos/:id/movimentacoes` (`entrada`/`saida`/`ajuste`, admin or estoquista only); `GET /produtos/:id/movimentacoes` history; `GET /produtos/estoque-baixo` low-stock alert. Stock changes are transactional with row locking, and `saida` is rejected with 409 if it would go negative.

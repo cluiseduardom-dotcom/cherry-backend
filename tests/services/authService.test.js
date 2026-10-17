@@ -50,7 +50,10 @@ describe('authService.login', () => {
     );
     expect(result).toEqual({
       token: 'signed-token',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'admin', empresa_id: undefined }
+      usuario: {
+        id: 1, nome: 'Ana', email: 'a@x.com', papel: 'admin', empresa_id: undefined,
+        empresa: { id: undefined, tema: 'vertumno' }
+      }
     });
   });
 
@@ -102,6 +105,68 @@ describe('authService.login', () => {
 
     await expect(authService.login('missing@x.com', 'qualquer')).rejects.toMatchObject({ statusCode: 401 });
     expect(bcrypt.compare).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('authService.login — identidade visual da empresa', () => {
+  const usuarioBase = { id: 1, nome: 'Ana', email: 'a@x.com', senha: 'hash', papel: 'admin', empresa_id: 7, token_version: 0, ativo: true, empresa_status: 'ativa' };
+
+  beforeEach(() => {
+    bcrypt.compare.mockResolvedValue(true);
+    jwt.sign.mockReturnValue('signed-token');
+  });
+
+  test('devolve o tema da empresa do próprio usuário', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase, empresa_tema: 'cherry' });
+
+    const { usuario } = await authService.login('a@x.com', 'senha123');
+
+    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry' });
+  });
+
+  test.each([undefined, null, '', 'desconhecido', 'CHERRY', '__proto__', 42])(
+    'tema %p cai em vertumno e o login não quebra', async (tema) => {
+      usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase, empresa_tema: tema });
+
+      const { token, usuario } = await authService.login('a@x.com', 'senha123');
+
+      expect(token).toBe('signed-token');
+      expect(usuario.empresa).toEqual({ id: 7, tema: 'vertumno' });
+    }
+  );
+
+  test('o JWT não carrega o tema: payload inalterado', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase, empresa_tema: 'cherry' });
+
+    await authService.login('a@x.com', 'senha123');
+
+    expect(jwt.sign).toHaveBeenCalledWith(
+      { id: 1, role: 'admin', empresa_id: 7, tv: 0 },
+      process.env.JWT_SECRET,
+      { expiresIn: '8h', algorithm: 'HS256' }
+    );
+  });
+
+  test('empresa ou usuário inativo não recebe tema: 401 sem token nem dados', async () => {
+    for (const extra of [{ empresa_status: 'inativa' }, { ativo: false }]) {
+      usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase, empresa_tema: 'cherry', ...extra });
+
+      await expect(authService.login('a@x.com', 'senha123')).rejects.toMatchObject({
+        statusCode: 401, message: 'Email ou senha inválidos'
+      });
+    }
+    expect(jwt.sign).not.toHaveBeenCalled();
+  });
+
+  test('empresas diferentes recebem cada uma o seu tema', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValueOnce({ ...usuarioBase, empresa_id: 1, empresa_tema: 'cherry' });
+    usuarioRepository.buscarPorEmail.mockResolvedValueOnce({ ...usuarioBase, empresa_id: 2, empresa_tema: 'vertumno' });
+
+    const a = await authService.login('a@x.com', 'senha123');
+    const b = await authService.login('b@x.com', 'senha123');
+
+    expect(a.usuario.empresa).toEqual({ id: 1, tema: 'cherry' });
+    expect(b.usuario.empresa).toEqual({ id: 2, tema: 'vertumno' });
   });
 });
 
