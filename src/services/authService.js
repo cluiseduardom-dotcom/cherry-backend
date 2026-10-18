@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const tokenService = require('./tokenService');
 const usuarioRepository = require('../repositories/usuarioRepository');
 const AppError = require('../errors/AppError');
+const { resolverTemaVisual } = require('../constants/temasVisuais');
 
 // Hash descartável: quando o e-mail não existe, ainda pagamos um bcrypt.compare
 // para a resposta não denunciar (pelo tempo) se o usuário existe.
@@ -34,7 +35,9 @@ async function login(email, senha) {
             nome: usuario.nome,
             email: usuario.email,
             papel: usuario.papel,
-            empresa_id: usuario.empresa_id
+            empresa_id: usuario.empresa_id,
+            // Identidade visual da empresa do próprio usuário (lida do banco, nunca da requisição).
+            empresa: { id: usuario.empresa_id, tema: resolverTemaVisual(usuario.empresa_tema) }
         }
     };
 }
