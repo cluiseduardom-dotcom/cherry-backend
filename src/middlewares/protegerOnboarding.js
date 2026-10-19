@@ -1,18 +1,15 @@
 const crypto = require('node:crypto');
 
 /**
- * Protects tenant creation from unauthenticated public requests.
- * In staging/production, the endpoint is unavailable until ONBOARDING_SECRET
- * is configured in the backend environment. When configured, callers must
- * send the same value in the X-Onboarding-Secret header.
- *
- * Local development/test environments remain usable without the secret.
+ * Tenant creation is privileged. Only explicit local development/test
+ * environments may bypass the server-side onboarding secret.
+ * Any other environment fails closed when the secret is absent.
  */
 function protegerOnboarding(req, res, next) {
     const ambiente = process.env.NODE_ENV || 'development';
     const secretConfigurado = process.env.ONBOARDING_SECRET;
 
-    if (ambiente !== 'production' && ambiente !== 'staging') {
+    if (ambiente === 'development' || ambiente === 'test') {
         return next();
     }
 
