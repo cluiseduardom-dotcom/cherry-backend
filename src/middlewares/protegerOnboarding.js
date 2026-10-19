@@ -3,10 +3,10 @@ const crypto = require('node:crypto');
 /**
  * Tenant creation is privileged. Only explicit local development/test
  * environments may bypass the server-side onboarding secret.
- * Any other environment fails closed when the secret is absent.
+ * Missing NODE_ENV is treated as non-local and fails closed.
  */
 function protegerOnboarding(req, res, next) {
-    const ambiente = process.env.NODE_ENV || 'development';
+    const ambiente = process.env.NODE_ENV;
     const secretConfigurado = process.env.ONBOARDING_SECRET;
 
     if (ambiente === 'development' || ambiente === 'test') {
