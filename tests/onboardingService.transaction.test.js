@@ -1,6 +1,6 @@
 'use strict';
 
-jest.mock('../../src/config/db', () => ({
+jest.mock('../src/config/db', () => ({
     connect: jest.fn(),
 }));
 
@@ -8,14 +8,14 @@ jest.mock('bcrypt', () => ({
     hash: jest.fn().mockResolvedValue('hash-da-senha'),
 }));
 
-jest.mock('../../src/services/tokenService', () => ({
+jest.mock('../src/services/tokenService', () => ({
     emitirToken: jest.fn().mockReturnValue('token-de-teste'),
 }));
 
-const db = require('../../src/config/db');
+const db = require('../src/config/db');
 const bcrypt = require('bcrypt');
-const tokenService = require('../../src/services/tokenService');
-const { criarTenant } = require('../../src/services/onboardingService');
+const tokenService = require('../src/services/tokenService');
+const { criarTenant } = require('../src/services/onboardingService');
 
 describe('onboardingService.criarTenant transaction', () => {
     let client;
