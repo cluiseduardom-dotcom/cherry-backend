@@ -18,6 +18,42 @@ describe('POST /onboarding', () => {
         senha_admin: 'senha123'
     };
 
+    test('allows authorized production request and forwards validated payload', async () => {
+        const ambienteOriginal = process.env.NODE_ENV;
+        const secretOriginal = process.env.ONBOARDING_SECRET;
+        const secretTeste = 'segredo-de-teste-nao-real';
+
+        process.env.NODE_ENV = 'production';
+        process.env.ONBOARDING_SECRET = secretTeste;
+        onboardingService.criarTenant.mockResolvedValue({
+            token: 'token-simulado',
+            empresa: { id: 9, nome: 'Cherry Nova', cnpj: '12345678000199', status: 'ativa' },
+            usuario: { id: 12, nome: 'Eduardo', email: 'eduardo@nova.com', papel: 'admin', empresa_id: 9 }
+        });
+
+        try {
+            const res = await request(app)
+                .post('/onboarding')
+                .set('X-Onboarding-Secret', secretTeste)
+                .send(validBody);
+
+            expect(res.status).toBe(201);
+            expect(res.body.data.empresa.id).toBe(9);
+            expect(onboardingService.criarTenant).toHaveBeenCalledWith({
+                empresa_nome: 'Cherry Nova',
+                cnpj: '12345678000199',
+                nome_admin: 'Eduardo',
+                email_admin: 'eduardo@nova.com',
+                senha_admin: 'senha123'
+            });
+        } finally {
+            if (ambienteOriginal === undefined) delete process.env.NODE_ENV;
+            else process.env.NODE_ENV = ambienteOriginal;
+            if (secretOriginal === undefined) delete process.env.ONBOARDING_SECRET;
+            else process.env.ONBOARDING_SECRET = secretOriginal;
+        }
+    });
+
     test('returns 400 for an invalid body', async () => {
         const res = await request(app)
             .post('/onboarding')
