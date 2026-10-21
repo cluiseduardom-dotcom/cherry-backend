@@ -23,6 +23,13 @@ function criarPoolSeguro(connectionString) {
         throw new Error('URL de conexão PostgreSQL inválida');
     }
 
+    // Reject libpq/pg query overrides so TLS policy is based on the actual destination.
+    // A URL that looks local must never redirect to a remote host without verified TLS.
+    const destinationOverrides = ['host', 'hostaddr', 'port', 'dbname', 'user', 'password', 'service', 'socket'];
+    if (destinationOverrides.some((parameter) => url.searchParams.has(parameter))) {
+        throw new Error('URL de conexão PostgreSQL não pode sobrescrever o destino por parâmetro');
+    }
+
     const host = url.hostname.toLowerCase();
     const local = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(host);
 
