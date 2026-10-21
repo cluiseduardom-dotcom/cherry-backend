@@ -1,12 +1,12 @@
-// Teste de integração de verdade: roda contra o banco real do .env (sem
+// Teste de integração: roda contra o banco descartável de scripts/runIntegrationTests.js (sem
 // jest.mock em db/services), o único jeito de validar que o filtro por
 // empresa_id realmente isola os dados entre empresas fim a fim (rota ->
 // controller -> service -> repository -> Postgres).
 //
 // Cria uma empresa fictícia ("Empresa Teste Isolamento") com admin, canal,
 // produtos, cliente, movimentação de estoque, venda e conta a pagar próprios,
-// e apaga tudo isso no afterAll. A empresa 1 (a joalheria real) é só lida,
-// nunca escrita.
+// e apaga tudo isso no afterAll. As duas empresas são criadas aqui; nada
+// depende de registros preexistentes.
 
 jest.setTimeout(20000);
 
@@ -52,20 +52,63 @@ async function loginComo(email, senha) {
     return res.body.data.token;
 }
 
+async function criarTenantDeTeste(nome) {
+    const empresaResult = await db.query(
+        'INSERT INTO empresas (nome, cnpj, status) VALUES ($1, NULL, \'ativa\') RETURNING id',
+        [nome]
+    );
+    const empresaId = empresaResult.rows[0].id;
+    const canalResult = await db.query(
+        'INSERT INTO canais_venda (empresa_id, nome, ativo) VALUES ($1, \'loja_fisica\', true) RETURNING id',
+        [empresaId]
+    );
+    const email = `isolamento.admin.${SUFIXO}.${empresaId}@teste.local`;
+
+    await db.query(
+        'INSERT INTO usuarios (empresa_id, nome, email, senha, papel) VALUES ($1, $2, $3, $4, \'admin\')',
+        [empresaId, 'Admin Teste Isolamento', email, await bcrypt.hash(SENHA_TESTE, 10)]
+    );
+
+    return { empresaId, canalId: canalResult.rows[0].id, token: await loginComo(email, SENHA_TESTE) };
+}
+
 beforeAll(async () => {
-    const empresa1Row = await db.query(`SELECT id FROM empresas WHERE nome = 'Cherry Semijoias'`);
-    empresa1Id = empresa1Row.rows[0].id;
+    const tenant1 = await criarTenantDeTeste(`Empresa Teste Isolamento 1 ${SUFIXO}`);
+    empresa1Id = tenant1.empresaId;
+    empresa1AdminToken = tenant1.token;
 
-    const produtoE1 = await db.query('SELECT id FROM produtos WHERE empresa_id = $1 ORDER BY id LIMIT 1', [empresa1Id]);
-    produtoE1Id = produtoE1.rows[0].id;
+    const produtoE1Res = await request(app)
+        .post('/produtos')
+        .set('Authorization', `Bearer ${empresa1AdminToken}`)
+        .send({ nome: 'Produto Isolamento E1', preco_venda: 100, custo: 50, estoque_atual: 20, estoque_minimo: 2 });
+    if (produtoE1Res.status !== 201) throw new Error(`Falha ao criar produto e1: ${produtoE1Res.status}`);
+    produtoE1Id = produtoE1Res.body.data.id;
 
-    const clienteE1 = await db.query('SELECT id FROM clientes WHERE empresa_id = $1 ORDER BY id LIMIT 1', [empresa1Id]);
-    clienteE1Id = clienteE1.rows[0].id;
+    const precoE1Res = await request(app)
+        .put(`/produtos/${produtoE1Id}/precos/${tenant1.canalId}`)
+        .set('Authorization', `Bearer ${empresa1AdminToken}`)
+        .send({ preco_venda: 120 });
+    if (precoE1Res.status !== 201) throw new Error(`Falha ao definir preço e1: ${precoE1Res.status}`);
 
-    const vendaE1 = await db.query('SELECT id FROM vendas WHERE empresa_id = $1 ORDER BY id LIMIT 1', [empresa1Id]);
-    vendaE1Id = vendaE1.rows[0].id;
+    const clienteE1Res = await request(app)
+        .post('/clientes')
+        .set('Authorization', `Bearer ${empresa1AdminToken}`)
+        .send({ nome: `Cliente Isolamento E1 ${SUFIXO}`, email: `cliente.e1.${SUFIXO}@teste.local` });
+    if (clienteE1Res.status !== 201) throw new Error(`Falha ao criar cliente e1: ${clienteE1Res.status}`);
+    clienteE1Id = clienteE1Res.body.data.id;
 
-    empresa1AdminToken = await loginComo('ana@cherry.com', process.env.SEED_PASSWORD);
+    const vendaE1Res = await request(app)
+        .post('/vendas')
+        .set('Authorization', `Bearer ${empresa1AdminToken}`)
+        .send({ cliente_id: clienteE1Id, itens: [{ produto_id: produtoE1Id, quantidade: 1 }] });
+    if (vendaE1Res.status !== 201) throw new Error(`Falha ao criar venda e1: ${vendaE1Res.status}`);
+    vendaE1Id = vendaE1Res.body.data.id;
+
+    const configE1Res = await request(app)
+        .put('/configuracoes-financeiras')
+        .set('Authorization', `Bearer ${empresa1AdminToken}`)
+        .send({ aliquota_imposto: 0.09 });
+    if (configE1Res.status !== 200) throw new Error(`Falha ao configurar financeira e1: ${configE1Res.status}`);
 
     // snapshot da empresa 1 ANTES de a empresa 2 existir, pra comparar depois
     baseline = {
@@ -84,26 +127,10 @@ beforeAll(async () => {
     };
 
     // --- Empresa 2 (fictícia) ---
-    const empresaResult = await db.query(
-        `INSERT INTO empresas (nome, cnpj, status) VALUES ('Empresa Teste Isolamento', NULL, 'ativa') RETURNING id`
-    );
-    empresa2Id = empresaResult.rows[0].id;
-
-    const canalResult = await db.query(
-        `INSERT INTO canais_venda (empresa_id, nome, ativo) VALUES ($1, 'loja_fisica', true) RETURNING id`,
-        [empresa2Id]
-    );
-    canalEmpresa2Id = canalResult.rows[0].id;
-
-    const senhaHash = await bcrypt.hash(SENHA_TESTE, 10);
-    const emailAdminE2 = `isolamento.admin.${SUFIXO}@teste.local`;
-
-    await db.query(
-        `INSERT INTO usuarios (empresa_id, nome, email, senha, papel) VALUES ($1, 'Admin Empresa Teste', $2, $3, 'admin')`,
-        [empresa2Id, emailAdminE2, senhaHash]
-    );
-
-    empresa2AdminToken = await loginComo(emailAdminE2, SENHA_TESTE);
+    const tenant2 = await criarTenantDeTeste(`Empresa Teste Isolamento 2 ${SUFIXO}`);
+    empresa2Id = tenant2.empresaId;
+    canalEmpresa2Id = tenant2.canalId;
+    empresa2AdminToken = tenant2.token;
 
     for (let i = 0; i < 2; i++) {
         const res = await request(app)
@@ -296,6 +323,22 @@ afterAll(async () => {
         await db.query('DELETE FROM configuracoes_financeiras WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM usuarios WHERE empresa_id = $1', [empresa2Id]);
         await db.query('DELETE FROM empresas WHERE id = $1', [empresa2Id]);
+    }
+
+    if (empresa1Id) {
+        const tabelas = [
+            'recebimentos_conta', 'estornos_pagamento', 'contas_receber', 'parcelas_pagamento',
+            'pagamentos_venda', 'idempotency_keys', 'niveis_categoria', 'producoes',
+            'itens_ficha_tecnica', 'fichas_tecnicas', 'itens_compra', 'itens_venda',
+            'movimentacoes_estoque', 'compras', 'produtos_categorias', 'categorias_produto',
+            'taxas_venda', 'vendas', 'precos_produto', 'contas_pagar', 'fornecedores',
+            'despesas_fixas', 'produtos', 'clientes', 'canais_venda', 'configuracoes_financeiras', 'usuarios'
+        ];
+
+        for (const tabela of tabelas) {
+            await db.query(`DELETE FROM ${tabela} WHERE empresa_id = $1`, [empresa1Id]);
+        }
+        await db.query('DELETE FROM empresas WHERE id = $1', [empresa1Id]);
     }
 
     await db.end();

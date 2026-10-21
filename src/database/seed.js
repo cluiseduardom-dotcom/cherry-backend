@@ -1,8 +1,9 @@
-require('dotenv').config({ quiet: true });
+require('../config/carregarEnv').carregarEnv();
 const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
+const { validarUrlDeBanco } = require('../config/databaseUrl');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ connectionString: validarUrlDeBanco(process.env.DATABASE_URL) });
 
 const NOME_EMPRESA_SEED = 'Cherry Semijoias';
 const AMBIENTES_PROIBIDOS = ['production', 'staging'];

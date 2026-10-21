@@ -58,7 +58,7 @@ jobs:
         run: node src/database/seed.js
 
       - name: Run tests
-        run: npm test -- --runInBand
+        run: npm run test:unit -- --runInBand
 
       - name: Quality gate summary
         run: |

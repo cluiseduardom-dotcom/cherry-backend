@@ -1,8 +1,9 @@
-require('dotenv').config({ quiet: true });
+require('../config/carregarEnv').carregarEnv();
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { Pool } = require('pg');
+const { validarUrlDeBanco } = require('../config/databaseUrl');
 
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 const SCHEMA_FILE = path.join(__dirname, 'schema.sql');
@@ -28,8 +29,8 @@ function obterConexaoMigracao(env = process.env) {
     return { url: env.DATABASE_URL, origem: 'DATABASE_URL' };
 }
 
-function criarPool(url) {
-    return new Pool({ connectionString: url });
+function criarPool(url, nomeVariavel = 'DATABASE_URL') {
+    return new Pool({ connectionString: validarUrlDeBanco(url, nomeVariavel) });
 }
 
 async function listarMigrations() {
@@ -150,7 +151,7 @@ async function inicializarBanco(client, migrations) {
 async function main() {
     const { url, origem } = obterConexaoMigracao();
 
-    const pool = criarPool(url);
+    const pool = criarPool(url, origem);
     const client = await pool.connect();
 
     try {

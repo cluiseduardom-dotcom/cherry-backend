@@ -7,8 +7,10 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/database/migrate.js && node src/server.js",
-    "test": "jest",
-    "test:coverage": "jest --coverage",
+    "test": "npm run test:unit",
+    "test:unit": "jest --testPathIgnorePatterns=tests/routes/.*\\.integration\\.test\\.js$ --testPathIgnorePatterns=tests/routes/multiTenantIsolation\\.test\\.js$",
+    "test:integration": "node scripts/runIntegrationTests.js",
+    "test:coverage": "npm run test:unit -- --coverage",
     "db:migrate": "node src/database/migrate.js"
   },
   "dependencies": {
@@ -31,6 +33,7 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "globalSetup": "<rootDir>/tests/globalSetup.js",
     "setupFiles": [
       "<rootDir>/tests/setup.js"
     ],

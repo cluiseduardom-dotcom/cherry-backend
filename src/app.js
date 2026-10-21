@@ -1,4 +1,4 @@
-require('dotenv').config({ quiet: true });
+require('./config/carregarEnv').carregarEnv();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');

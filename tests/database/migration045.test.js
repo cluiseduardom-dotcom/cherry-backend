@@ -29,7 +29,9 @@ describe('migration 045 — arquivo', () => {
 });
 
 // Banco real da CI/dev, mas SOMENTE num schema temporário próprio: nunca toca nas tabelas reais.
-const describeComBanco = process.env.DATABASE_URL ? describe : describe.skip;
+const describeComBanco = process.env.RUN_DB_INTEGRATION_TESTS === '1' && process.env.TEST_DATABASE_ISOLATED === 'true'
+    ? describe
+    : describe.skip;
 
 describeComBanco('migration 045 — comportamento em schema isolado', () => {
     const schema = `mig045_${crypto.randomBytes(4).toString('hex')}`;

@@ -8,8 +8,8 @@ const { Pool } = require('pg');
 const { obterConexaoMigracao, main, listarMigrations } = require('../../src/database/migrate');
 
 const SEGREDO = 'SEGREDO-NAO-PODE-VAZAR';
-const URL_RUNTIME = `postgresql://vertumno_runtime:${SEGREDO}-runtime@host-runtime.invalid/db`;
-const URL_MIGRACAO = `postgresql://dono_schema:${SEGREDO}-migracao@host-migracao.invalid/db`;
+const URL_RUNTIME = `postgresql://vertumno_runtime:${SEGREDO}-runtime@host-runtime.invalid/db?sslmode=verify-full`;
+const URL_MIGRACAO = `postgresql://dono_schema:${SEGREDO}-migracao@host-migracao.invalid/db?sslmode=verify-full`;
 
 const ENV_ORIGINAL = { ...process.env };
 
