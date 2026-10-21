@@ -31,6 +31,12 @@ describe('criarPoolSeguro', () => {
         expect(config.connectionString).not.toMatch(/[?&]ssl(mode)?=/i);
     });
 
+    test('rejeita override de host que poderia redirecionar URL local para servidor remoto', () => {
+        expect(() => criarPoolSeguro('postgresql://user:pass@localhost:5432/app?host=db.example.com'))
+            .toThrow('não pode sobrescrever o destino');
+        expect(Pool).not.toHaveBeenCalled();
+    });
+
     test('mantém PostgreSQL local utilizável sem exigir TLS', () => {
         criarPoolSeguro('postgresql://user:pass@localhost:5432/app');
         expect(Pool.mock.calls[0][0].ssl).toBeUndefined();
