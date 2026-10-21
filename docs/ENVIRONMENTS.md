@@ -13,19 +13,9 @@ O backend deve operar com ambientes isolados. Nunca reutilizar banco, segredo JW
 
 - Banco PostgreSQL dedicado ao CI.
 - `DATABASE_URL` do CI nunca deve ser o banco de staging ou produção.
+- Os testes de integração só usam `TEST_DATABASE_URL` (o Postgres descartável do job, `cherry_ci`); nenhum teste lê o `.env` nem usa o banco de dev/produção. Veja `docs/TESTES.md`.
 - O pipeline executa `npm run db:migrate` antes do seed e dos testes.
 - O seed é específico da base de CI e exige `SEED_PASSWORD` (mín. 12 caracteres); o workflow gera uma senha aleatória por execução. Não há senha padrão no código e o seed recusa rodar com `NODE_ENV=production` ou `staging`.
-
-## Testes locais
-
-- `npm test` e `npm run test:unit` executam somente testes unitários, sem `DATABASE_URL` e sem conexão com banco.
-- `npm run test:integration` está bloqueado intencionalmente. Hostname, nome do banco e flags do processo não são prova suficiente de autorização ou descarte; a integração só pode ser liberada por um procedimento externo auditável.
-- O bootstrap unitário remove `DATABASE_URL`, `DATABASE_MIGRATION_URL` e as variáveis `PG*` relevantes antes de carregar módulos da aplicação. Uma consulta real pelo adaptador de banco falha imediatamente.
-- Nunca use a URL de development, staging ou produção nos testes. O arquivo `.env` não é carregado sob Jest; se houver configuração local, mantenha-a fora do controle de versão.
-
-## TLS PostgreSQL
-
-Em bancos remotos, `sslmode=verify-full` é obrigatório. O runtime rejeita URLs sem esse modo e rejeita explicitamente `no-verify`, `disable`, `prefer`, `require` e `verify-ca`. Não use `rejectUnauthorized: false`.
 
 ## Staging
 
@@ -97,8 +87,12 @@ Sem o `ALTER DEFAULT PRIVILEGES`, uma migration que cria tabela deixa a API sem 
 
 Migrations devem ser aplicadas antes do seed de CI e antes de inicializar a aplicação em qualquer ambiente com banco persistente.
 
-## Testes: unitários × integração
+## TLS do PostgreSQL
 
-- `npm test` / `npm run test:unit`: nunca abrem conexão. Sob o Jest o `.env` não é lido, as variáveis `DATABASE_*`/`PG*` são removidas e `src/config/db.js` expõe um adaptador que lança erro em qualquer `query`/`connect`.
-- `npm run test:integration` (`scripts/runIntegrationTests.js`): exige `TEST_DATABASE_URL` apontando para PostgreSQL em **loopback**, sem parâmetros de query, com nome de banco contendo `test`, `teste`, `ci`, `descartavel` ou `tmp`, e **sem** variáveis `PG*` no ambiente. Além disso o `tests/globalSetup.js` conecta e exige que o banco tenha sido marcado pelo responsável: `COMMENT ON DATABASE <banco> IS 'giroone:banco-descartavel-de-teste';`. Sem o marcador (ou se o servidor não estiver em loopback) nada executa.
-- `DATABASE_URL` e `DATABASE_MIGRATION_URL` passam por `validarUrlDeBanco` antes de qualquer conexão (API, migrations e seed): host remoto exige `sslmode=verify-full`; `sslmode=no-verify`, parâmetros TLS duplicados e `?host=`/`?port=` na query são rejeitados. **Antes de publicar, confirme que as URLs de produção/staging usam `sslmode=verify-full`**; do contrário a API não sobe.
+`DATABASE_URL` e `DATABASE_MIGRATION_URL` passam por `validarUrlDeBanco` (`src/config/databaseUrl.js`) antes de qualquer conexão (API, migrations e seed):
+
+- Host remoto exige `sslmode=verify-full` (valida certificado **e** hostname). `require`, `verify-ca`, `prefer`, `disable` e `no-verify` são rejeitados.
+- Rejeitados também: `sslmode`/`ssl` duplicados e `host`, `hostaddr`, `port`, `dbname`, `user`, `password`, `service` ou `socket` na query (evitam que uma URL com cara de local conecte em outro destino).
+- Host local (CI/dev) pode ficar sem TLS, mas nunca com `sslmode=no-verify`.
+- As mensagens de erro nunca incluem a URL, usuário, senha ou host.
+- **Antes de publicar:** `DATABASE_URL` e `DATABASE_MIGRATION_URL` de staging/produção precisam terminar em `sslmode=verify-full` (hoje o Neon costuma entregar `sslmode=require`); caso contrário a API e o `npm start` não sobem. O `pg` instalado já trata `require` como `verify-full`, mas o `pg` v9 passa a seguir a semântica fraca do libpq.

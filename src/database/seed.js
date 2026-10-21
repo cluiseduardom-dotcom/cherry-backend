@@ -1,4 +1,4 @@
-require('../config/carregarEnv').carregarEnv();
+require('dotenv').config({ quiet: true });
 const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
 const { validarUrlDeBanco } = require('../config/databaseUrl');
@@ -57,7 +57,7 @@ async function main() {
 
     try {
         const empresaResult = await client.query(
-            `INSERT INTO empresas (nome, cnpj, status) VALUES ($1, NULL, 'ativa') RETURNING id`,
+            `INSERT INTO empresas (nome, cnpj, status, tema_visual) VALUES ($1, NULL, 'ativa', 'cherry') RETURNING id`,
             [NOME_EMPRESA_SEED]
         );
         const empresaId = empresaResult.rows[0].id;

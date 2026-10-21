@@ -28,10 +28,12 @@ describe('migration 045 — arquivo', () => {
     });
 });
 
-// Banco real da CI/dev, mas SOMENTE num schema temporário próprio: nunca toca nas tabelas reais.
-const describeComBanco = process.env.RUN_DB_INTEGRATION_TESTS === '1' && process.env.TEST_DATABASE_ISOLATED === 'true'
-    ? describe
-    : describe.skip;
+// Parte com banco: roda SÓ no projeto de integração (TESTE_DE_INTEGRACAO=1, definido por
+// tests/integration/setupIntegracao.js depois de validar a TEST_DATABASE_URL), e SOMENTE num
+// schema temporário próprio: nunca toca nas tabelas reais. No projeto unitário (sem banco) é
+// ignorada. Antes dependia de DATABASE_URL, que o .env habitual preenchia (via migrate.js) com
+// o banco compartilhado.
+const describeComBanco = process.env.TESTE_DE_INTEGRACAO === '1' ? describe : describe.skip;
 
 describeComBanco('migration 045 — comportamento em schema isolado', () => {
     const schema = `mig045_${crypto.randomBytes(4).toString('hex')}`;
@@ -56,16 +58,23 @@ describeComBanco('migration 045 — comportamento em schema isolado', () => {
     )).rows[0];
 
     beforeAll(async () => {
-        client = new Client({ connectionString: process.env.DATABASE_URL });
+        // Explícito: só a TEST_DATABASE_URL (já validada pelo globalSetup), nunca o DATABASE_URL.
+        client = new Client({ connectionString: process.env.TEST_DATABASE_URL });
         await client.connect();
         await client.query(`CREATE SCHEMA ${schema}`);
         await client.query(`SET search_path TO ${schema}`);
     });
 
     afterAll(async () => {
-        await client.query('SET search_path TO public');
-        await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
-        await client.end();
+        // Se a conexão ou o CREATE SCHEMA falharam, não há o que limpar.
+        if (!client) return;
+
+        try {
+            await client.query('SET search_path TO public');
+            await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+        } finally {
+            await client.end();
+        }
     });
 
     test('colunas ausentes (drift do staging): cria com a definição exata, sem perder nem alterar dados', async () => {

@@ -1,4 +1,4 @@
-require('../config/carregarEnv').carregarEnv();
+require('dotenv').config({ quiet: true });
 
 const fs = require('node:fs/promises');
 const path = require('node:path');

@@ -24,6 +24,11 @@ const db = require('../../src/config/db');
 const app = require('../../src/app');
 const taxasPlataformaRepository = require('../../src/repositories/taxasPlataformaRepository');
 const { executarArquivoSql } = require('../../src/database/migrate');
+const { criarRegistroDeEmpresas, removerEmpresasPorNome } = require('../helpers/limpezaEmpresasTeste');
+
+// Cada empresa é registrada LOGO APÓS o INSERT (antes de login/produto/preço): se a
+// preparação falhar no meio, o afterAll ainda remove o que foi criado.
+const registro = criarRegistroDeEmpresas(db);
 
 const SUFIXO = crypto.randomBytes(4).toString('hex');
 const SENHA = crypto.randomBytes(12).toString('hex');
@@ -48,7 +53,7 @@ async function criarEmpresa(rotulo) {
         `INSERT INTO empresas (nome, status) VALUES ($1, 'ativa') RETURNING id`,
         [`Teste Taxa Comercial ${rotulo} ${SUFIXO}`]
     );
-    const id = emp.rows[0].id;
+    const id = registro.registrar(emp.rows[0].id);
     const canal = await db.query(
         `INSERT INTO canais_venda (empresa_id, nome, ativo) VALUES ($1, 'loja_fisica', true) RETURNING id`,
         [id]
@@ -133,25 +138,34 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    for (const { id } of Object.values(empresas)) {
-        await db.query('DELETE FROM taxas_venda WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM estornos_pagamento WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM parcelas_pagamento WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM pagamentos_venda WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM idempotency_keys WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM vendas WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM condicoes_comerciais_empresa WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM empresa_planos WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM precos_produto WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM produtos WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM canais_venda WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM usuarios WHERE empresa_id = $1', [id]);
-        await db.query('DELETE FROM empresas WHERE id = $1', [id]);
+    try {
+        for (const id of registro.ids()) {
+            await db.query('DELETE FROM taxas_venda WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM estornos_pagamento WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM parcelas_pagamento WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM pagamentos_venda WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM idempotency_keys WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM vendas WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM condicoes_comerciais_empresa WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM empresa_planos WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM precos_produto WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM produtos WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM canais_venda WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM usuarios WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM empresas WHERE id = $1', [id]);
+        }
+    } finally {
+        // Rede de segurança: remove o que a limpeza acima deixou (ou tudo, se ela falhou
+        // ou se a preparação quebrou antes de a empresa ser usada).
+        try {
+            await registro.limpar();
+            await removerEmpresasPorNome(db, `Teste Taxa Comercial % ${SUFIXO}`);
+        } finally {
+            await db.end();
+        }
     }
-
-    await db.end();
 });
 
 afterEach(() => jest.restoreAllMocks());

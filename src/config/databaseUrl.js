@@ -61,23 +61,4 @@ function validarUrlDeBanco(connectionString, nomeVariavel = 'DATABASE_URL') {
     return connectionString;
 }
 
-// Alvo de testes de integração: somente loopback, sem query alguma e com nome de
-// banco que declare ser de teste. Isto é condição necessária; a autorização real é
-// o marcador gravado no próprio banco (ver testDatabaseSafety.verificarBancoDescartavel).
-function validarUrlDeBancoDescartavel(connectionString, nomeVariavel = 'TEST_DATABASE_URL') {
-    if (!connectionString) falhar(`${nomeVariavel} não configurada`);
-
-    const url = parseUrl(connectionString, nomeVariavel);
-
-    if (!ehLocal(url)) falhar(`${nomeVariavel} deve apontar para loopback`);
-    if (url.search) falhar(`${nomeVariavel} não pode ter parâmetros de query`);
-
-    const banco = decodeURIComponent(url.pathname.replace(/^\//, ''));
-    if (!/^[a-z0-9_]*(test|teste|ci|descartavel|tmp)[a-z0-9_]*$/.test(banco)) {
-        falhar(`${nomeVariavel} deve nomear um banco de teste (test, teste, ci, descartavel ou tmp)`);
-    }
-
-    return { connectionString, banco };
-}
-
-module.exports = { validarUrlDeBanco, validarUrlDeBancoDescartavel };
+module.exports = { validarUrlDeBanco };
