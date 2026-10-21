@@ -2,7 +2,7 @@ require('dotenv').config({ quiet: true });
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { Pool } = require('pg');
+const { criarPoolSeguro } = require('../config/securePgPool');
 
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 const SCHEMA_FILE = path.join(__dirname, 'schema.sql');
@@ -29,7 +29,7 @@ function obterConexaoMigracao(env = process.env) {
 }
 
 function criarPool(url) {
-    return new Pool({ connectionString: url });
+    return criarPoolSeguro(url);
 }
 
 async function listarMigrations() {

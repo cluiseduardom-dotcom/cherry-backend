@@ -74,8 +74,8 @@ Juntas, elas cobrem o caso de alguém criar um banco `cherry_test` dentro do ser
      npm run db:migrate && SEED_PASSWORD="$(openssl rand -hex 16)" node src/database/seed.js
      ```
    (Mais seguro ainda: rode isso num clone/pasta **sem** `.env`.)
-3. Marque o banco (uma vez) e rode a integração apontando `TEST_DATABASE_URL` para o mesmo banco (o `SEED_PASSWORD` do passo 2 também é necessário
-   para `multiTenantIsolation`):
+3. Marque o banco (uma vez) e rode a integração apontando `TEST_DATABASE_URL` para o mesmo banco (`multiTenantIsolation` cria as próprias
+   empresas e não depende do seed nem de `SEED_PASSWORD`; outras suítes, como a da migration 049, ainda dependem do seed):
    ```powershell
    $env:TEST_DATABASE_URL = 'postgresql://cherry:cherry@localhost:5433/cherry_test'
    node tests/integration/marcarBancoDescartavel.js
