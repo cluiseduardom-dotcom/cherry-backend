@@ -28,7 +28,7 @@ describe('pool de runtime (src/config/db.js)', () => {
         });
 
         expect(Pool).toHaveBeenCalledTimes(1);
-        expect(Pool).toHaveBeenCalledWith({ connectionString: URL_RUNTIME });
+        expect(Pool).toHaveBeenCalledWith({ connectionString: URL_RUNTIME, ssl: { rejectUnauthorized: true } });
     });
 });
 
