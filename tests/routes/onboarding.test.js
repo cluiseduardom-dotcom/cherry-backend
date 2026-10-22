@@ -18,6 +18,55 @@ describe('POST /onboarding', () => {
         senha_admin: 'senha123'
     };
 
+    test('blocks production requests when ONBOARDING_SECRET is not configured', async () => {
+        const ambienteOriginal = process.env.NODE_ENV;
+        const secretOriginal = process.env.ONBOARDING_SECRET;
+
+        process.env.NODE_ENV = 'production';
+        delete process.env.ONBOARDING_SECRET;
+
+        try {
+            const res = await request(app)
+                .post('/onboarding')
+                .send(validBody);
+
+            expect(res.status).toBe(503);
+            expect(onboardingService.criarTenant).not.toHaveBeenCalled();
+        } finally {
+            if (ambienteOriginal === undefined) delete process.env.NODE_ENV;
+            else process.env.NODE_ENV = ambienteOriginal;
+            if (secretOriginal === undefined) delete process.env.ONBOARDING_SECRET;
+            else process.env.ONBOARDING_SECRET = secretOriginal;
+        }
+    });
+
+    test('blocks production requests with a missing or invalid onboarding secret', async () => {
+        const ambienteOriginal = process.env.NODE_ENV;
+        const secretOriginal = process.env.ONBOARDING_SECRET;
+
+        process.env.NODE_ENV = 'production';
+        process.env.ONBOARDING_SECRET = 'segredo-de-teste-nao-real';
+
+        try {
+            const semCabecalho = await request(app)
+                .post('/onboarding')
+                .send(validBody);
+            const invalido = await request(app)
+                .post('/onboarding')
+                .set('X-Onboarding-Secret', 'incorreto')
+                .send(validBody);
+
+            expect(semCabecalho.status).toBe(401);
+            expect(invalido.status).toBe(401);
+            expect(onboardingService.criarTenant).not.toHaveBeenCalled();
+        } finally {
+            if (ambienteOriginal === undefined) delete process.env.NODE_ENV;
+            else process.env.NODE_ENV = ambienteOriginal;
+            if (secretOriginal === undefined) delete process.env.ONBOARDING_SECRET;
+            else process.env.ONBOARDING_SECRET = secretOriginal;
+        }
+    });
+
     test('returns 400 for an invalid body', async () => {
         const res = await request(app)
             .post('/onboarding')

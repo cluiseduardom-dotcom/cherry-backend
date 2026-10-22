@@ -1,6 +1,11 @@
 const vendasRepository = require('../repositories/vendasRepository');
 const precosRepository = require('../repositories/precosRepository');
 const AppError = require('../errors/AppError');
+const { podeVerVendasDeTodos } = require('./permissoesService');
+
+// Quem só enxerga as próprias vendas: perfil Vendedor (inclui os cargos novos) sem a
+// capacidade `ver_vendas_de_todos`.
+const veSomenteAsProprias = (usuario) => usuario.role === 'vendedor' && !podeVerVendasDeTodos(usuario);
 
 async function resumo(empresaId) {
     return vendasRepository.getResumo(empresaId);
@@ -46,7 +51,7 @@ async function listar({ page, pageSize, status, canal, data_de, data_ate }, usua
     const limit = pageSize;
     const offset = (page - 1) * pageSize;
 
-    const usuario_id = usuario.role === 'vendedor' ? usuario.id : undefined;
+    const usuario_id = veSomenteAsProprias(usuario) ? usuario.id : undefined;
 
     const { items, total } = await vendasRepository.listarPaginado({
         limit,
@@ -77,7 +82,7 @@ async function buscarPorId(id, usuario) {
 
     // Vendedor não pode ver vendas de outros usuários — tratamos como se não
     // existisse (404) em vez de 403, para não confirmar a existência do id.
-    if (usuario.role === 'vendedor' && venda.usuario_id !== usuario.id) {
+    if (veSomenteAsProprias(usuario) && venda.usuario_id !== usuario.id) {
         throw new AppError('Venda não encontrada', 404);
     }
 

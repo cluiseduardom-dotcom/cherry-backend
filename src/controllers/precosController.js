@@ -2,6 +2,7 @@ const precosService = require('../services/precosService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { definirPrecoSchema } = require('../validations/precosValidation');
+const { podeVerCustosOperacionais } = require('../services/permissoesService');
 
 function parseId(value) {
     const id = Number(value);
@@ -24,8 +25,8 @@ function parsePaginacao(query) {
     return { page, pageSize };
 }
 
-function filtrarPrecoParaRole(preco, role) {
-    if (role !== 'vendedor') return preco;
+function filtrarPrecoParaRole(preco, usuario) {
+    if (podeVerCustosOperacionais(usuario)) return preco;
 
     return { canal: preco.canal, preco_venda: preco.preco_venda };
 }
@@ -44,7 +45,7 @@ async function listarVigentes(req, res, next) {
         const produtoId = parseId(req.params.id);
         const precos = await precosService.listarVigentesPorProduto(produtoId, req.usuario.empresa_id);
 
-        const filtrados = precos.map((preco) => filtrarPrecoParaRole(preco, req.usuario.role));
+        const filtrados = precos.map((preco) => filtrarPrecoParaRole(preco, req.usuario));
 
         return response.success(res, filtrados);
     } catch (error) {

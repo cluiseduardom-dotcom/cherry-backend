@@ -3,6 +3,7 @@ const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { criarVendaSchema } = require('../validations/vendasValidation');
 const { listarVendasSchema } = require('../validations/listarVendasValidation');
+const { podeVerCustosOperacionais } = require('../services/permissoesService');
 
 function parseId(value) {
     const id = Number(value);
@@ -28,8 +29,8 @@ function parsePaginacao(query) {
 // custo_unitario é dado de custo — vendedor nunca vê, mesmo padrão de
 // produtosController.filtrarParaRole. venda.itens pode não existir
 // (listagem paginada hoje não inclui itens), por isso o guard.
-function filtrarParaRole(venda, role) {
-    if (role !== 'vendedor' || !Array.isArray(venda.itens)) return venda;
+function filtrarParaRole(venda, usuario) {
+    if (podeVerCustosOperacionais(usuario) || !Array.isArray(venda.itens)) return venda;
 
     return {
         ...venda,
@@ -90,7 +91,7 @@ async function criar(req, res, next) {
             ? await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id, idempotencyKey)
             : await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id);
 
-        return response.success(res, filtrarParaRole(venda, req.usuario.role), 201);
+        return response.success(res, filtrarParaRole(venda, req.usuario), 201);
     } catch (error) {
         next(error);
     }
@@ -114,7 +115,7 @@ async function listar(req, res, next) {
             ...paginacao,
             ...parsedFiltros.data
         }, req.usuario);
-        const items = resultado.items.map((venda) => filtrarParaRole(venda, req.usuario.role));
+        const items = resultado.items.map((venda) => filtrarParaRole(venda, req.usuario));
 
         return response.success(res, { ...resultado, items });
     } catch (error) {
@@ -127,7 +128,7 @@ async function buscarPorId(req, res, next) {
         const id = parseId(req.params.id);
         const venda = await vendasService.buscarPorId(id, req.usuario);
 
-        return response.success(res, filtrarParaRole(venda, req.usuario.role));
+        return response.success(res, filtrarParaRole(venda, req.usuario));
     } catch (error) {
         next(error);
     }
