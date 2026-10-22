@@ -1,7 +1,9 @@
 const AppError = require('../errors/AppError');
 const cargosRepository = require('../repositories/cargosRepository');
-const { CATALOGO, CARGOS } = require('../constants/cargos');
-const { resolverCargo } = require('./permissoesService');
+const { CATALOGO, CARGOS, CAPACIDADES, PERFIL_ADMIN } = require('../constants/cargos');
+const { resolverCargo, temCapacidade } = require('./permissoesService');
+
+const semAdministrador = (capacidades) => capacidades.filter((capacidade) => capacidade !== CAPACIDADES.ADMINISTRADOR);
 
 function apresentar(cargo, linha) {
     const efetivo = resolverCargo(cargo, linha);
@@ -13,7 +15,10 @@ function apresentar(cargo, linha) {
         rotulo: efetivo.rotulo,
         nivel: efetivo.nivel,
         ativo: efetivo.ativo,
-        capacidades: efetivo.capacidades,
+        // `administrador` não é editável por aqui (fluxo próprio de /privilegios, com senha e auditoria):
+        // aparece como campo à parte, e não dentro da lista que a tela reenvia no PUT.
+        capacidades: semAdministrador(efetivo.capacidades),
+        administrador: efetivo.administrador,
         em_escada: efetivo.escada,
         // Cargos básicos não se desligam; Admin não se edita.
         pode_desativar: !definicao.sempre_ativo,
@@ -33,7 +38,31 @@ async function listar(empresaId) {
         .sort((a, b) => (b.nivel ?? -1) - (a.nivel ?? -1));
 }
 
-async function atualizar(empresaId, cargo, dados, usuarioId) {
+// Quem tem `gerir_cargos` sem ser Admin não pode se promover editando cargos: só mexe em cargos
+// ABAIXO do seu nível, não define nível igual ou acima do seu e só concede capacidades que já tem.
+function garantirSemEscalada(ator, definicao, atual, { nivel, capacidades }) {
+    if (ator.role === PERFIL_ADMIN) return;
+
+    const nivelDoAtor = ator.nivel ?? 0;
+
+    if (definicao.escada) {
+        if ((atual.nivel ?? 0) >= nivelDoAtor) {
+            throw new AppError('Você só pode editar cargos abaixo do seu nível', 403);
+        }
+
+        if (nivel !== null && nivel >= nivelDoAtor) {
+            throw new AppError('Você não pode definir um nível igual ou acima do seu', 403);
+        }
+    }
+
+    const adicionadas = capacidades.filter((capacidade) => !atual.capacidades.includes(capacidade));
+
+    if (adicionadas.some((capacidade) => !temCapacidade(ator, capacidade))) {
+        throw new AppError('Você só pode conceder capacidades que você possui', 403);
+    }
+}
+
+async function atualizar(empresaId, cargo, dados, ator) {
     const definicao = CATALOGO[cargo];
 
     if (!definicao) {
@@ -48,7 +77,11 @@ async function atualizar(empresaId, cargo, dados, usuarioId) {
 
     const nivel = dados.nivel !== undefined ? dados.nivel : atual.nivel;
     const ativo = dados.ativo !== undefined ? dados.ativo : atual.ativo;
-    const capacidades = dados.capacidades !== undefined ? dados.capacidades : atual.capacidades;
+    const capacidadesEditaveis = dados.capacidades !== undefined ? dados.capacidades : semAdministrador(atual.capacidades);
+    // O privilégio de Admin anexado ao cargo sobrevive à edição das demais capacidades.
+    const capacidades = atual.administrador ? [...capacidadesEditaveis, CAPACIDADES.ADMINISTRADOR] : capacidadesEditaveis;
+
+    garantirSemEscalada(ator, definicao, atual, { nivel, capacidades: capacidadesEditaveis });
 
     if (definicao.escada && nivel === null) {
         throw new AppError('Este cargo precisa de um nível', 400);
@@ -71,7 +104,7 @@ async function atualizar(empresaId, cargo, dados, usuarioId) {
         }
     }
 
-    await cargosRepository.salvar({ empresa_id: empresaId, cargo, nivel, ativo, capacidades, usuario_id: usuarioId });
+    await cargosRepository.salvar({ empresa_id: empresaId, cargo, nivel, ativo, capacidades, usuario_id: ator.id });
 
     return apresentar(cargo, { nivel, ativo, capacidades });
 }
