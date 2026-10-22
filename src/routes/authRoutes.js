@@ -8,6 +8,7 @@ const requireAdmin = require('../middlewares/requireAdmin');
 const loginRateLimiter = require('../middlewares/loginRateLimiter');
 
 router.post('/login', loginRateLimiter, authController.login);
+router.get('/me', authMiddleware, authController.me);
 router.post('/register', authMiddleware, requireAdmin, authController.register);
 
 module.exports = router;

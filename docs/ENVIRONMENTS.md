@@ -86,3 +86,13 @@ Sem o `ALTER DEFAULT PRIVILEGES`, uma migration que cria tabela deixa a API sem 
 `feature branch → PR/CI → master → staging → validação manual → produção`
 
 Migrations devem ser aplicadas antes do seed de CI e antes de inicializar a aplicação em qualquer ambiente com banco persistente.
+
+## TLS do PostgreSQL (T-01)
+
+Toda conexão — API (`src/config/db.js`), migrations (`src/database/migrate.js`, inclusive com `DATABASE_MIGRATION_URL`) e seed — é criada por `criarPoolSeguro` (`src/config/securePgPool.js`). A política fica no código, não na variável de ambiente:
+
+- **Host remoto:** TLS obrigatório com validação de certificado e hostname (`ssl: { rejectUnauthorized: true }`). Os parâmetros `sslmode`/`ssl` da URL são removidos antes de criar o pool, então `require`, `prefer`, `disable` ou `no-verify` na URL não enfraquecem a conexão. URLs do Neon com `sslmode=require` ou `verify-full` funcionam sem alteração.
+- **Rejeitados:** `host`, `hostaddr`, `port`, `dbname`, `user`, `password`, `service` e `socket` na query (impedem que uma URL com cara de local conecte em outro destino sem TLS), protocolo diferente de `postgres:`/`postgresql:` e URL ausente ou inválida.
+- **Host local** (`localhost`, `127.0.0.1`, `::1`): sem TLS, para CI e desenvolvimento.
+- As mensagens de erro nunca incluem a URL, usuário, senha ou host.
+- A política independe da semântica de `sslmode` do driver (o `pg` v9 passa a seguir o libpq, em que `require` não valida certificado).

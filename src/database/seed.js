@@ -1,8 +1,8 @@
 require('dotenv').config({ quiet: true });
 const bcrypt = require('bcrypt');
-const { Pool } = require('pg');
+const { criarPoolSeguro } = require('../config/securePgPool');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = criarPoolSeguro(process.env.DATABASE_URL);
 
 const NOME_EMPRESA_SEED = 'Cherry Semijoias';
 const AMBIENTES_PROIBIDOS = ['production', 'staging'];
