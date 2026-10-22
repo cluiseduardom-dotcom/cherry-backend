@@ -5,12 +5,14 @@ jest.mock('../../src/repositories/contasReceberRepository');
 jest.mock('../../src/repositories/taxasPlataformaRepository');
 jest.mock('../../src/repositories/pagamentosVendaRepository');
 jest.mock('../../src/repositories/parcelasPagamentoRepository');
+jest.mock('../../src/repositories/cancelamentosRepository');
 jest.mock('../../src/repositories/shared/transacoes');
 
 const db = require('../../src/config/db');
 const estoqueRepository = require('../../src/repositories/estoqueRepository');
 const precosRepository = require('../../src/repositories/precosRepository');
 const contasReceberRepository = require('../../src/repositories/contasReceberRepository');
+const cancelamentosRepository = require('../../src/repositories/cancelamentosRepository');
 const { executarComLock } = require('../../src/repositories/shared/transacoes');
 const vendasRepository = require('../../src/repositories/vendasRepository');
 
@@ -375,6 +377,15 @@ describe('buscarPorId', () => {
 // lock/commit/rollback já coberta em tests/repositories/shared/transacoes.test.js.
 // Aqui só o wiring e a ramificação própria da callback.
 describe('cancelar', () => {
+  const OPCOES = { motivo: 'Cliente desistiu da compra', login: 'vendedor@teste.invalid', faixaAutorizada: 'ate_7_dias' };
+  const AUTORIZADOR = { id: 77, login: 'gerente@teste.invalid' };
+
+  beforeEach(() => {
+    contasReceberRepository.cancelarPorVendaId.mockReset();
+    cancelamentosRepository.buscarIdadeDaVenda.mockResolvedValue({ dias: 2, status: 'finalizada', usuario_id: 9 });
+    cancelamentosRepository.inserir.mockImplementation(async (dados) => ({ id: 1, ...dados }));
+  });
+
   function fakeClientDeCancelamento({ itens = [] } = {}) {
     const client = { query: jest.fn() };
     client.query.mockImplementation((sql, params = []) => {
@@ -396,7 +407,7 @@ describe('cancelar', () => {
     );
     estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
 
-    const resultado = await vendasRepository.cancelar(1, 9, 5);
+    const resultado = await vendasRepository.cancelar(1, 9, 5, OPCOES);
 
     expect(executarComLock).toHaveBeenCalledWith('vendas', { coluna: 'id', valor: 1 }, 5, undefined, expect.any(Function));
     expect(resultado.status).toBe('cancelada');
@@ -420,7 +431,7 @@ describe('cancelar', () => {
     );
     estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
 
-    const resultado = await vendasRepository.cancelar(1, 9, 5);
+    const resultado = await vendasRepository.cancelar(1, 9, 5, OPCOES);
 
     expect(resultado.status).toBe('cancelada');
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledTimes(2);
@@ -440,7 +451,7 @@ describe('cancelar', () => {
       callback(null, client)
     );
 
-    await expect(vendasRepository.cancelar(999, 9, 5)).rejects.toMatchObject({ statusCode: 404, message: 'Venda não encontrada' });
+    await expect(vendasRepository.cancelar(999, 9, 5, OPCOES)).rejects.toMatchObject({ statusCode: 404, message: 'Venda não encontrada' });
     expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
   });
 
@@ -450,7 +461,7 @@ describe('cancelar', () => {
       callback({ id: 1, status: 'cancelada' }, client)
     );
 
-    await expect(vendasRepository.cancelar(1, 9, 5)).rejects.toMatchObject({
+    await expect(vendasRepository.cancelar(1, 9, 5, OPCOES)).rejects.toMatchObject({
       statusCode: 409,
       message: 'Somente vendas finalizadas podem ser canceladas'
     });
@@ -463,7 +474,7 @@ describe('cancelar', () => {
       callback({ id: 1, status: 'finalizada' }, client)
     );
 
-    await vendasRepository.cancelar(1, 9, 5);
+    await vendasRepository.cancelar(1, 9, 5, OPCOES);
 
     expect(contasReceberRepository.cancelarPorVendaId).toHaveBeenCalledWith(1, 5, client);
   });
@@ -479,7 +490,7 @@ describe('cancelar', () => {
       new AppError('Venda com conta a receber já recebida não pode ser cancelada', 409)
     );
 
-    await expect(vendasRepository.cancelar(1, 9, 5)).rejects.toMatchObject({
+    await expect(vendasRepository.cancelar(1, 9, 5, OPCOES)).rejects.toMatchObject({
       statusCode: 409,
       message: 'Venda com conta a receber já recebida não pode ser cancelada'
     });
@@ -487,5 +498,116 @@ describe('cancelar', () => {
     expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
     const sqlChamados = client.query.mock.calls.map(([sql]) => sql);
     expect(sqlChamados.some((sql) => sql.includes("UPDATE vendas SET status = 'cancelada'"))).toBe(false);
+  });
+
+  describe('política de cancelamento', () => {
+    const vendaFinalizada = { id: 1, status: 'finalizada', usuario_id: 9, forma_pagamento: 'a_vista', total: '120.00' };
+
+    function comVenda(venda, client) {
+      executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) => callback(venda, client));
+    }
+
+    test('exige a política (motivo, login e faixa): sem ela nem abre a transação', async () => {
+      await expect(vendasRepository.cancelar(1, 9, 5)).rejects.toThrow('política de cancelamento');
+      await expect(vendasRepository.cancelar(1, 9, 5, { ...OPCOES, motivo: '' })).rejects.toThrow('política de cancelamento');
+      await expect(vendasRepository.cancelar(1, 9, 5, { ...OPCOES, faixaAutorizada: 'qualquer' })).rejects.toThrow('política de cancelamento');
+      expect(executarComLock).not.toHaveBeenCalled();
+    });
+
+    test('grava o registro com quantidade devolvida, valor, faixa, dias, motivo e login; filtra UPDATE e itens por empresa_id', async () => {
+      const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 3 }, { produto_id: 2, quantidade: 1 }] });
+      comVenda(vendaFinalizada, client);
+      estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
+
+      const resultado = await vendasRepository.cancelar(1, 9, 5, OPCOES);
+
+      expect(cancelamentosRepository.inserir).toHaveBeenCalledWith({
+        empresa_id: 5, venda_id: 1, motivo: 'Cliente desistiu da compra',
+        cancelado_por: 9, cancelado_por_login: 'vendedor@teste.invalid',
+        autorizado_por: null, autorizado_por_login: null,
+        faixa_aplicada: 'ate_7_dias', dias_da_venda: 2,
+        quantidade_devolvida: 4, valor_devolvido: 120
+      }, client);
+      expect(resultado.cancelamento).toMatchObject({ id: 1, quantidade_devolvida: 4 });
+
+      const chamadas = client.query.mock.calls;
+      const update = chamadas.find(([sql]) => sql.includes("UPDATE vendas SET status = 'cancelada'"));
+      expect(update[0]).toContain('AND empresa_id = $2');
+      expect(update[1]).toEqual([1, 5]);
+      const itens = chamadas.find(([sql]) => sql.includes('FROM itens_venda'));
+      expect(itens[0]).toContain('empresa_id = $2');
+      expect(itens[1]).toEqual([1, 5]);
+    });
+
+    test('registra o autorizador quando a faixa exige', async () => {
+      const client = fakeClientDeCancelamento();
+      comVenda(vendaFinalizada, client);
+      cancelamentosRepository.buscarIdadeDaVenda.mockResolvedValue({ dias: 12 });
+
+      await vendasRepository.cancelar(1, 9, 5, { ...OPCOES, faixaAutorizada: '8_a_30_dias', autorizador: AUTORIZADOR });
+
+      expect(cancelamentosRepository.inserir).toHaveBeenCalledWith(expect.objectContaining({
+        faixa_aplicada: '8_a_30_dias', dias_da_venda: 12, autorizado_por: 77, autorizado_por_login: 'gerente@teste.invalid'
+      }), client);
+    });
+
+    test('faixa que exige autorização sem autorizador é recusada (403) sem mexer em nada', async () => {
+      const client = fakeClientDeCancelamento();
+      comVenda(vendaFinalizada, client);
+      cancelamentosRepository.buscarIdadeDaVenda.mockResolvedValue({ dias: 12 });
+
+      await expect(vendasRepository.cancelar(1, 9, 5, { ...OPCOES, faixaAutorizada: '8_a_30_dias' }))
+        .rejects.toMatchObject({ statusCode: 403 });
+
+      expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
+      expect(cancelamentosRepository.inserir).not.toHaveBeenCalled();
+    });
+
+    test('se a venda mudou para uma faixa mais exigente durante a autorização, recusa (409)', async () => {
+      const client = fakeClientDeCancelamento();
+      comVenda(vendaFinalizada, client);
+      cancelamentosRepository.buscarIdadeDaVenda.mockResolvedValue({ dias: 31 });
+
+      await expect(vendasRepository.cancelar(1, 9, 5, { ...OPCOES, faixaAutorizada: '8_a_30_dias', autorizador: AUTORIZADOR }))
+        .rejects.toMatchObject({ statusCode: 409 });
+
+      expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
+      expect(cancelamentosRepository.inserir).not.toHaveBeenCalled();
+    });
+
+    test('quem só vê as próprias vendas não cancela a de outro usuário (404, sem tocar em estoque)', async () => {
+      const client = fakeClientDeCancelamento();
+      comVenda({ ...vendaFinalizada, usuario_id: 10 }, client);
+
+      await expect(vendasRepository.cancelar(1, 9, 5, { ...OPCOES, restringirAoUsuarioId: 9 }))
+        .rejects.toMatchObject({ statusCode: 404 });
+
+      expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
+      expect(cancelamentosRepository.inserir).not.toHaveBeenCalled();
+    });
+
+    test('valor devolvido = soma dos estornos gerados; venda a prazo sem pagamentos devolve 0', async () => {
+      const estornosPagamentoRepository = require('../../src/repositories/estornosPagamentoRepository');
+      const spy = jest.spyOn(estornosPagamentoRepository, 'criar').mockResolvedValue({ id: 1 });
+      const client = { query: jest.fn() };
+      client.query.mockImplementation((sql) => {
+        if (sql.includes('SELECT * FROM pagamentos_venda')) {
+          return Promise.resolve({ rows: [{ id: 1, valor: '80.00', status: 'confirmado' }, { id: 2, valor: '40.00', status: 'confirmado' }] });
+        }
+        if (sql.includes('SUM(valor)')) return Promise.resolve({ rows: [{ total_estornado: '0' }] });
+        if (sql.includes("UPDATE vendas SET status = 'cancelada'")) return Promise.resolve({ rows: [{ id: 1, status: 'cancelada' }] });
+        return Promise.resolve({ rows: [] });
+      });
+      comVenda(vendaFinalizada, client);
+
+      await vendasRepository.cancelar(1, 9, 5, OPCOES);
+      expect(cancelamentosRepository.inserir).toHaveBeenLastCalledWith(expect.objectContaining({ valor_devolvido: 120 }), client);
+
+      comVenda({ ...vendaFinalizada, forma_pagamento: 'prazo' }, fakeClientDeCancelamento());
+      await vendasRepository.cancelar(1, 9, 5, OPCOES);
+      expect(cancelamentosRepository.inserir).toHaveBeenLastCalledWith(expect.objectContaining({ valor_devolvido: 0 }), expect.anything());
+
+      spy.mockRestore();
+    });
   });
 });

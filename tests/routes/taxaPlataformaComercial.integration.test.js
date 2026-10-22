@@ -24,7 +24,7 @@ const db = require('../../src/config/db');
 const app = require('../../src/app');
 const taxasPlataformaRepository = require('../../src/repositories/taxasPlataformaRepository');
 const { executarArquivoSql } = require('../../src/database/migrate');
-const { criarRegistroDeEmpresas, removerEmpresasPorNome } = require('../helpers/limpezaEmpresasTeste');
+const { criarRegistroDeEmpresas, removerEmpresasPorNome, removerCancelamentosDeTeste } = require('../helpers/limpezaEmpresasTeste');
 
 // Cada empresa é registrada LOGO APÓS o INSERT (antes de login/produto/preço): se a
 // preparação falhar no meio, o afterAll ainda remove o que foi criado.
@@ -147,6 +147,7 @@ afterAll(async () => {
             await db.query('DELETE FROM idempotency_keys WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [id]);
+            await removerCancelamentosDeTeste(db, id);
             await db.query('DELETE FROM vendas WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM condicoes_comerciais_empresa WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM empresa_planos WHERE empresa_id = $1', [id]);
@@ -366,7 +367,8 @@ describe('condição individual negociada prevalece sobre o plano', () => {
 
         const res = await request(app)
             .patch(`/vendas/${vendaId}/cancelar`)
-            .set('Authorization', `Bearer ${empresas.EXC.token}`);
+            .set('Authorization', `Bearer ${empresas.EXC.token}`)
+            .send({ motivo: 'Cancelamento de teste da taxa' });
         expect(res.status).toBe(200);
 
         const [taxa] = await taxaDaVenda(vendaId);
@@ -375,7 +377,8 @@ describe('condição individual negociada prevalece sobre o plano', () => {
 
         const de_novo = await request(app)
             .patch(`/vendas/${vendaId}/cancelar`)
-            .set('Authorization', `Bearer ${empresas.EXC.token}`);
+            .set('Authorization', `Bearer ${empresas.EXC.token}`)
+            .send({ motivo: 'Cancelamento de teste da taxa' });
         expect(de_novo.status).toBe(409);
         expect(await taxaDaVenda(vendaId)).toHaveLength(1);
     });

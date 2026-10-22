@@ -6,10 +6,12 @@ const pagamentosVendaRepository = require('./pagamentosVendaRepository');
 const parcelasPagamentoRepository = require('./parcelasPagamentoRepository');
 const estornosPagamentoRepository = require('./estornosPagamentoRepository');
 const taxasPlataformaRepository = require('./taxasPlataformaRepository');
+const cancelamentosRepository = require('./cancelamentosRepository');
 const { executarComLock } = require('./shared/transacoes');
 const AppError = require('../errors/AppError');
 const { MAX_PARCELAS, MAX_MESES_PRAZO } = require('../constants/limites');
 const { inteiroNoIntervalo } = require('../utils/numeros');
+const { faixaPorDias, faixaPorCodigo } = require('../constants/cancelamento');
 
 // Usa os getters LOCAIS do Date (não toISOString/UTC) de propósito: a mesma
 // armadilha de fuso horário documentada em 006_contas_pagar.sql — o driver pg
@@ -482,20 +484,51 @@ async function buscarPorId(id, empresa_id) {
 }
 
 // Estorna o estoque de cada item (entrada auditada, motivo 'cancelamento_venda')
-// e marca a venda como cancelada, na mesma transação. Não reaproveita o
+// e marca a venda como cancelada, na mesma transação, gravando o registro imutável
+// em cancelamentos_venda. Não reaproveita o
 // bloqueio de "produto inativo" do módulo de estoque aqui de propósito: uma
 // venda precisa poder ser cancelada mesmo que o produto tenha sido desativado
 // depois da venda original. Usa executarComLock direto (não transicionarStatus)
 // porque há efeitos colaterais (contasReceberRepository, estoque) entre o
 // lock e a escrita final, não um SET estático.
-async function cancelar(id, usuario_id, empresa_id) {
+//
+// `opcoes` é obrigatório: a política (motivo, faixa autorizada, autorizador) é decidida no
+// serviço, e aqui é reconferida SOB O LOCK da venda, para a idade não mudar de faixa entre a
+// autorização e a gravação.
+//   motivo, login            motivo informado e login de quem cancela
+//   faixaAutorizada          código da faixa para a qual o serviço colheu autorização
+//   autorizador              { id, login } quando a faixa exige; null na faixa livre
+//   restringirAoUsuarioId    quem só enxerga as próprias vendas só cancela as próprias
+async function cancelar(id, usuario_id, empresa_id, opcoes) {
+    if (!opcoes || !opcoes.motivo || !opcoes.login || !faixaPorCodigo(opcoes.faixaAutorizada)) {
+        throw new Error('cancelar: política de cancelamento não informada');
+    }
+
+    const { motivo, login, faixaAutorizada, autorizador = null, restringirAoUsuarioId = null } = opcoes;
+
     return executarComLock('vendas', { coluna: 'id', valor: id }, empresa_id, undefined, async (venda, client) => {
         if (!venda) {
             throw new AppError('Venda não encontrada', 404);
         }
 
+        // Quem não vê as vendas dos outros também não as cancela (404, não confirma o id).
+        if (restringirAoUsuarioId !== null && venda.usuario_id !== restringirAoUsuarioId) {
+            throw new AppError('Venda não encontrada', 404);
+        }
+
         if (venda.status !== 'finalizada') {
             throw new AppError('Somente vendas finalizadas podem ser canceladas', 409);
+        }
+
+        const { dias } = await cancelamentosRepository.buscarIdadeDaVenda(id, empresa_id, client);
+        const faixa = faixaPorDias(dias);
+
+        if (faixa.ordem > faixaPorCodigo(faixaAutorizada).ordem) {
+            throw new AppError('A idade da venda mudou de faixa durante a autorização. Tente novamente.', 409);
+        }
+
+        if (faixa.exige_autorizacao && !autorizador) {
+            throw new AppError('Esta venda exige autorização', 403);
         }
 
         // Checa a conta a receber vinculada antes de mexer em qualquer coisa:
@@ -515,6 +548,10 @@ async function cancelar(id, usuario_id, empresa_id) {
             [id, empresa_id]
         );
 
+        // Valor devolvido = soma dos estornos gerados por este cancelamento. Venda legada à vista,
+        // que nunca teve pagamentos_venda, devolve o total.
+        let valorDevolvido = 0;
+
         for (const pagamento of pagamentosRows) {
             const { rows: estornosRows } = await client.query(
                 `SELECT COALESCE(SUM(valor), 0) AS total_estornado
@@ -533,6 +570,8 @@ async function cancelar(id, usuario_id, empresa_id) {
                     motivo: `Estorno automático pelo cancelamento da venda #${id}`,
                     usuario_id
                 }, client);
+
+                valorDevolvido = Number((valorDevolvido + saldoEstorno).toFixed(2));
             }
 
             await client.query(
@@ -552,10 +591,16 @@ async function cancelar(id, usuario_id, empresa_id) {
             );
         }
 
+        if (pagamentosRows.length === 0 && venda.forma_pagamento === 'a_vista') {
+            valorDevolvido = Number(Number(venda.total).toFixed(2));
+        }
+
         const { rows: itensRows } = await client.query(
-            'SELECT produto_id, quantidade FROM itens_venda WHERE venda_id = $1',
-            [id]
+            'SELECT produto_id, quantidade FROM itens_venda WHERE venda_id = $1 AND empresa_id = $2',
+            [id, empresa_id]
         );
+
+        let quantidadeDevolvida = 0;
 
         for (const item of itensRows) {
             await estoqueRepository.criarMovimentacao(
@@ -569,14 +614,30 @@ async function cancelar(id, usuario_id, empresa_id) {
                 },
                 client
             );
+
+            quantidadeDevolvida += item.quantidade;
         }
 
         const { rows: atualizadaRows } = await client.query(
-            `UPDATE vendas SET status = 'cancelada' WHERE id = $1 RETURNING *`,
-            [id]
+            `UPDATE vendas SET status = 'cancelada' WHERE id = $1 AND empresa_id = $2 RETURNING *`,
+            [id, empresa_id]
         );
 
-        return atualizadaRows[0];
+        const cancelamento = await cancelamentosRepository.inserir({
+            empresa_id,
+            venda_id: id,
+            motivo,
+            cancelado_por: usuario_id,
+            cancelado_por_login: login,
+            autorizado_por: autorizador ? autorizador.id : null,
+            autorizado_por_login: autorizador ? autorizador.login : null,
+            faixa_aplicada: faixa.codigo,
+            dias_da_venda: dias,
+            quantidade_devolvida: quantidadeDevolvida,
+            valor_devolvido: valorDevolvido
+        }, client);
+
+        return { ...atualizadaRows[0], cancelamento };
     });
 }
 
