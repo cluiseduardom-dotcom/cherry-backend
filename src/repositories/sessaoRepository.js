@@ -10,7 +10,12 @@ async function buscarEstado(usuario_id, empresa_id) {
     const { rows } = await db.query(
         `SELECT u.ativo, u.token_version, u.papel, e.status AS empresa_status,
                 (c.empresa_id IS NOT NULL) AS cargo_configurado,
-                c.nivel AS cargo_nivel, c.ativo AS cargo_ativo, c.capacidades AS cargo_capacidades
+                c.nivel AS cargo_nivel, c.ativo AS cargo_ativo, c.capacidades AS cargo_capacidades,
+                EXISTS (
+                    SELECT 1 FROM usuario_privilegios p
+                    WHERE p.empresa_id = u.empresa_id AND p.usuario_id = u.id
+                      AND p.capacidade = 'administrador' AND p.revogado_em IS NULL
+                ) AS administrador_concedido
          FROM usuarios u
          JOIN empresas e ON e.id = u.empresa_id
          LEFT JOIN cargos_empresa c ON c.empresa_id = u.empresa_id AND c.cargo = u.papel

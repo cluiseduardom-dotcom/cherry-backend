@@ -47,6 +47,19 @@ function resolverCargo(cargo, linha) {
     };
 }
 
+// Concessões individuais (usuario_privilegios) somam-se ao cargo: hoje só `administrador`, que dá
+// perfil admin e TODAS as capacidades. Função pura; `permissoes` vem de resolverCargo.
+function aplicarConcessoes(permissoes, { administrador_concedido = false } = {}) {
+    if (!permissoes || !administrador_concedido) return permissoes;
+
+    return {
+        ...permissoes,
+        role: PERFIL_ADMIN,
+        administrador: true,
+        capacidades: [...TODAS_CAPACIDADES]
+    };
+}
+
 // Capacidade vale para quem a tem no cargo; Admin (por cargo ou por concessão) tem todas.
 function temCapacidade(usuario, capacidade) {
     if (!usuario) return false;
@@ -66,6 +79,7 @@ const podeVerVendasDeTodos = (usuario) => temCapacidade(usuario, CAPACIDADES.VER
 
 module.exports = {
     resolverCargo,
+    aplicarConcessoes,
     temCapacidade,
     podeVerCustos,
     podeVerCustosOperacionais,
