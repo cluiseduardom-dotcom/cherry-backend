@@ -1,6 +1,7 @@
 const AppError = require('../errors/AppError');
 const tokenService = require('../services/tokenService');
 const sessaoRepository = require('../repositories/sessaoRepository');
+const { resolverCargo, aplicarConcessoes } = require('../services/permissoesService');
 
 const MENSAGEM_TOKEN_INVALIDO = 'Token inválido ou expirado';
 
@@ -36,7 +37,34 @@ module.exports = async (req, res, next) => {
             return next(new AppError(MENSAGEM_TOKEN_INVALIDO, 401));
         }
 
-        req.usuario = { id: payload.id, role: payload.role, empresa_id: payload.empresa_id };
+        // O cargo vem do banco (estado.papel); o do JWT só vale quando a consulta não o devolve.
+        const cargo = estado.papel ?? payload.role;
+        const linha = estado.cargo_configurado
+            ? { nivel: estado.cargo_nivel, ativo: estado.cargo_ativo, capacidades: estado.cargo_capacidades }
+            : null;
+        const base = resolverCargo(cargo, linha);
+
+        // Cargo desconhecido ou desligado no comércio: nega (fail-closed).
+        if (!base) {
+            return next(new AppError(MENSAGEM_TOKEN_INVALIDO, 401));
+        }
+
+        if (!base.ativo) {
+            return next(new AppError('Cargo desabilitado neste comércio', 403));
+        }
+
+        // Admin concedido individualmente soma-se ao cargo (vale já na próxima requisição).
+        const permissoes = aplicarConcessoes(base, { administrador_concedido: estado.administrador_concedido === true });
+
+        req.usuario = {
+            id: payload.id,
+            // Perfil com que rotas e filtros já existentes enxergam o usuário (admin | vendedor | estoquista | faturista).
+            role: permissoes.role,
+            cargo: permissoes.cargo,
+            nivel: permissoes.nivel,
+            capacidades: permissoes.capacidades,
+            empresa_id: payload.empresa_id
+        };
 
         return next();
     } catch (error) {
