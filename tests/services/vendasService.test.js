@@ -171,6 +171,42 @@ describe('buscarPorId', () => {
   });
 });
 
+describe('vendas por capacidade do cargo (ver_vendas_de_todos)', () => {
+  const filtro = { page: 1, pageSize: 20 };
+
+  test.each([
+    ['Gerente', ['ver_vendas_de_todos']],
+    ['Supervisor', ['ver_vendas_de_todos', 'cancelar_venda']]
+  ])('%s lista as vendas de todos (sem filtro de usuário)', async (_nome, capacidades) => {
+    vendasRepository.listarPaginado.mockResolvedValue({ items: [], total: 0 });
+
+    await vendasService.listar(filtro, { id: 5, role: 'vendedor', capacidades, empresa_id: 9 });
+
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith(expect.objectContaining({ usuario_id: undefined, empresa_id: 9 }));
+  });
+
+  test.each([
+    ['Analista', ['cancelar_venda']],
+    ['Operador sem capacidades', []],
+    ['capacidades ausentes', undefined]
+  ])('%s lista só as próprias vendas', async (_nome, capacidades) => {
+    vendasRepository.listarPaginado.mockResolvedValue({ items: [], total: 0 });
+
+    await vendasService.listar(filtro, { id: 5, role: 'vendedor', capacidades, empresa_id: 9 });
+
+    expect(vendasRepository.listarPaginado).toHaveBeenCalledWith(expect.objectContaining({ usuario_id: 5, empresa_id: 9 }));
+  });
+
+  test('Gerente abre a venda de outro usuário; Analista recebe 404', async () => {
+    vendasRepository.buscarPorId.mockResolvedValue({ id: 1, usuario_id: 99, itens: [] });
+
+    await expect(vendasService.buscarPorId(1, { id: 5, role: 'vendedor', capacidades: ['ver_vendas_de_todos'] }))
+      .resolves.toMatchObject({ id: 1 });
+    await expect(vendasService.buscarPorId(1, { id: 5, role: 'vendedor', capacidades: ['cancelar_venda'] }))
+      .rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
 describe('cancelar', () => {
   test('delegates to the repository', async () => {
     vendasRepository.cancelar.mockResolvedValue({ id: 1, status: 'cancelada' });
