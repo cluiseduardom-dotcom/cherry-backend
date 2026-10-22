@@ -1,14 +1,17 @@
 jest.mock('../../src/repositories/usuarioRepository');
+jest.mock('../../src/services/cargosService');
 jest.mock('bcrypt');
 jest.mock('jsonwebtoken');
 
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const usuarioRepository = require('../../src/repositories/usuarioRepository');
+const cargosService = require('../../src/services/cargosService');
 const authService = require('../../src/services/authService');
 
 beforeEach(() => {
   jest.clearAllMocks();
+  cargosService.garantirCargoAtivo.mockResolvedValue();
 });
 
 describe('authService.login', () => {
@@ -178,6 +181,17 @@ describe('authService.register', () => {
       authService.register('Ana', 'a@x.com', 'senha123', 'vendedor')
     ).rejects.toMatchObject({ statusCode: 409, message: 'Email já cadastrado' });
 
+    expect(usuarioRepository.criar).not.toHaveBeenCalled();
+  });
+
+  test('recusa cargo não habilitado no comércio, sem consultar nem criar usuário', async () => {
+    cargosService.garantirCargoAtivo.mockRejectedValue(Object.assign(new Error('Cargo não habilitado neste comércio'), { statusCode: 409 }));
+
+    await expect(
+      authService.register('Ana', 'a@x.com', 'senha123', 'gerente', 7)
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(cargosService.garantirCargoAtivo).toHaveBeenCalledWith(7, 'gerente');
     expect(usuarioRepository.criar).not.toHaveBeenCalled();
   });
 
