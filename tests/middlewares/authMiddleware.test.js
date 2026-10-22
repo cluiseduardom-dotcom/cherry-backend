@@ -51,7 +51,9 @@ describe('authMiddleware', () => {
     const next = await executar(req);
 
     expect(next).toHaveBeenCalledWith();
-    expect(req.usuario).toEqual({ id: 42, role: 'vendedor', empresa_id: 7 });
+    expect(req.usuario).toEqual({
+      id: 42, role: 'vendedor', cargo: 'vendedor', nivel: 30, capacidades: ['cancelar_venda'], empresa_id: 7
+    });
     expect(sessaoRepository.buscarEstado).toHaveBeenCalledWith(42, 7);
   });
 
