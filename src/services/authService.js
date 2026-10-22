@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const tokenService = require('./tokenService');
 const usuarioRepository = require('../repositories/usuarioRepository');
 const AppError = require('../errors/AppError');
+const cargosService = require('./cargosService');
 const { resolverTemaVisual } = require('../constants/temasVisuais');
 
 // Hash descartável: quando o e-mail não existe, ainda pagamos um bcrypt.compare
@@ -43,6 +44,9 @@ async function login(email, senha) {
 }
 
 async function register(nome, email, senha, papel, empresa_id) {
+
+    // Só cargos ligados no comércio (os básicos — admin, vendedor, estoquista — sempre estão).
+    await cargosService.garantirCargoAtivo(empresa_id, papel);
 
     const usuarioExistente = await usuarioRepository.buscarPorEmail(email);
 

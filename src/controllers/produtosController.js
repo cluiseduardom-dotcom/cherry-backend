@@ -2,6 +2,7 @@ const produtosService = require('../services/produtosService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { criarProdutoSchema, atualizarProdutoSchema, ajustarPrecoSchema, categorizarProdutoSchema } = require('../validations/produtosValidation');
+const { podeVerCustos, podeVerCustosOperacionais } = require('../services/permissoesService');
 
 function parseId(value) {
     const id = Number(value);
@@ -28,8 +29,8 @@ function parseCanal(query) {
     return typeof query.canal === 'string' && query.canal.trim() !== '' ? query.canal : 'loja_fisica';
 }
 
-function filtrarParaRole(produto, role) {
-    if (role !== 'vendedor') return produto;
+function filtrarParaRole(produto, usuario) {
+    if (podeVerCustosOperacionais(usuario)) return produto;
 
     const { custo, margem_percentual, preco_canal, ...resto } = produto;
 
@@ -54,8 +55,8 @@ function filtrarLinhaAnalitica(linha) {
     return copia;
 }
 
-function filtrarDadosAnaliticos(dados, role) {
-    if (role === 'admin') return dados;
+function filtrarDadosAnaliticos(dados, usuario) {
+    if (podeVerCustos(usuario)) return dados;
 
     return Array.isArray(dados) ? dados.map(filtrarLinhaAnalitica) : filtrarLinhaAnalitica(dados);
 }
@@ -66,7 +67,7 @@ async function listar(req, res, next) {
         const canal = parseCanal(req.query);
         const resultado = await produtosService.listar({ ...paginacao, canal }, req.usuario.empresa_id);
 
-        const items = resultado.items.map((produto) => filtrarParaRole(produto, req.usuario.role));
+        const items = resultado.items.map((produto) => filtrarParaRole(produto, req.usuario));
 
         return response.success(res, { ...resultado, items });
     } catch (error) {
@@ -80,7 +81,7 @@ async function buscarPorId(req, res, next) {
         const canal = parseCanal(req.query);
         const produto = await produtosService.buscarPorId(id, canal, req.usuario.empresa_id);
 
-        return response.success(res, filtrarParaRole(produto, req.usuario.role));
+        return response.success(res, filtrarParaRole(produto, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -134,7 +135,7 @@ async function remover(req, res, next) {
 async function giro(req, res, next) {
     try {
         const dados = await produtosService.giro(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -143,7 +144,7 @@ async function giro(req, res, next) {
 async function parados(req, res, next) {
     try {
         const dados = await produtosService.parados(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -152,7 +153,7 @@ async function parados(req, res, next) {
 async function pricingProfissional(req, res, next) {
     try {
         const dados = await produtosService.pricingProfissional(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -161,7 +162,7 @@ async function pricingProfissional(req, res, next) {
 async function lucroPorProduto(req, res, next) {
     try {
         const dados = await produtosService.lucroPorProduto(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -170,7 +171,7 @@ async function lucroPorProduto(req, res, next) {
 async function alertaPrejuizo(req, res, next) {
     try {
         const dados = await produtosService.alertaPrejuizo(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -179,7 +180,7 @@ async function alertaPrejuizo(req, res, next) {
 async function maisVendidos(req, res, next) {
     try {
         const dados = await produtosService.maisVendidos(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -188,7 +189,7 @@ async function maisVendidos(req, res, next) {
 async function curvaABC(req, res, next) {
     try {
         const dados = await produtosService.curvaABC(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -197,7 +198,7 @@ async function curvaABC(req, res, next) {
 async function reposicao(req, res, next) {
     try {
         const dados = await produtosService.reposicao(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -206,7 +207,7 @@ async function reposicao(req, res, next) {
 async function sugestaoPreco(req, res, next) {
     try {
         const dados = await produtosService.sugestaoPreco(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -215,7 +216,7 @@ async function sugestaoPreco(req, res, next) {
 async function inteligencia(req, res, next) {
     try {
         const dados = await produtosService.inteligencia(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -224,7 +225,7 @@ async function inteligencia(req, res, next) {
 async function acoes(req, res, next) {
     try {
         const dados = await produtosService.acoes(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -260,7 +261,7 @@ async function categorizar(req, res, next) {
 
         const produto = await produtosService.categorizar(id, parsed.data.categoria_ids, req.usuario.empresa_id, req.usuario.id);
 
-        return response.success(res, filtrarParaRole(produto, req.usuario.role));
+        return response.success(res, filtrarParaRole(produto, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -269,7 +270,7 @@ async function categorizar(req, res, next) {
 async function dashboard(req, res, next) {
     try {
         const dados = await produtosService.dashboard(req.usuario.empresa_id);
-        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario.role));
+        return response.success(res, filtrarDadosAnaliticos(dados, req.usuario));
     } catch (error) {
         next(error);
     }

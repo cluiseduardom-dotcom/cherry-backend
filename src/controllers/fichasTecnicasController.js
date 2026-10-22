@@ -2,6 +2,7 @@ const fichasTecnicasService = require('../services/fichasTecnicasService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { criarFichaTecnicaSchema } = require('../validations/fichasTecnicasValidation');
+const { podeVerCustos } = require('../services/permissoesService');
 
 function parseId(value) {
     const id = Number(value);
@@ -16,8 +17,8 @@ function parseId(value) {
 // Espelha filtrarParaRole de produtosController: aqui quem perde visibilidade
 // de custo é a estoquista (não a vendedor — vendedor já é barrada em 403 pelo
 // requireEstoquista antes de chegar aqui).
-function filtrarCustoParaRole(ficha, role) {
-    if (role === 'admin') return ficha;
+function filtrarCustoParaRole(ficha, usuario) {
+    if (podeVerCustos(usuario)) return ficha;
 
     const { custo_sugerido, itens, ...resto } = ficha;
 
@@ -39,7 +40,7 @@ async function criar(req, res, next) {
 
         const ficha = await fichasTecnicasService.criar(produtoId, parsed.data, req.usuario.id, req.usuario.empresa_id);
 
-        return response.success(res, filtrarCustoParaRole(ficha, req.usuario.role), 201);
+        return response.success(res, filtrarCustoParaRole(ficha, req.usuario), 201);
     } catch (error) {
         next(error);
     }
@@ -50,7 +51,7 @@ async function buscarVigente(req, res, next) {
         const produtoId = parseId(req.params.id);
         const ficha = await fichasTecnicasService.buscarVigente(produtoId, req.usuario.empresa_id);
 
-        return response.success(res, filtrarCustoParaRole(ficha, req.usuario.role));
+        return response.success(res, filtrarCustoParaRole(ficha, req.usuario));
     } catch (error) {
         next(error);
     }
