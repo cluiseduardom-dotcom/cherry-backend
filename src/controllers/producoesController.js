@@ -2,6 +2,7 @@ const producoesService = require('../services/producoesService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { criarProducaoSchema, listarProducoesSchema } = require('../validations/producoesValidation');
+const { podeVerCustos } = require('../services/permissoesService');
 
 function parseId(value) {
     const id = Number(value);
@@ -26,8 +27,8 @@ function parsePaginacao(query) {
 
 // A estoquista nunca vê o custo total consumido nem o custo unitário de cada
 // insumo — mesmo filtro de fichasTecnicasController.filtrarCustoParaRole.
-function filtrarCustoParaRole(producao, role) {
-    if (role === 'admin') return producao;
+function filtrarCustoParaRole(producao, usuario) {
+    if (podeVerCustos(usuario)) return producao;
 
     const { custo_total, itens, ...resto } = producao;
 
@@ -85,7 +86,7 @@ async function buscarPorId(req, res, next) {
         const id = parseId(req.params.id);
         const producao = await producoesService.buscarPorId(id, req.usuario.empresa_id);
 
-        return response.success(res, filtrarCustoParaRole(producao, req.usuario.role));
+        return response.success(res, filtrarCustoParaRole(producao, req.usuario));
     } catch (error) {
         next(error);
     }
