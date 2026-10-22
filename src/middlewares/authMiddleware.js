@@ -1,7 +1,7 @@
 const AppError = require('../errors/AppError');
 const tokenService = require('../services/tokenService');
 const sessaoRepository = require('../repositories/sessaoRepository');
-const { resolverCargo } = require('../services/permissoesService');
+const { resolverCargo, aplicarConcessoes } = require('../services/permissoesService');
 
 const MENSAGEM_TOKEN_INVALIDO = 'Token inválido ou expirado';
 
@@ -42,16 +42,19 @@ module.exports = async (req, res, next) => {
         const linha = estado.cargo_configurado
             ? { nivel: estado.cargo_nivel, ativo: estado.cargo_ativo, capacidades: estado.cargo_capacidades }
             : null;
-        const permissoes = resolverCargo(cargo, linha);
+        const base = resolverCargo(cargo, linha);
 
         // Cargo desconhecido ou desligado no comércio: nega (fail-closed).
-        if (!permissoes) {
+        if (!base) {
             return next(new AppError(MENSAGEM_TOKEN_INVALIDO, 401));
         }
 
-        if (!permissoes.ativo) {
+        if (!base.ativo) {
             return next(new AppError('Cargo desabilitado neste comércio', 403));
         }
+
+        // Admin concedido individualmente soma-se ao cargo (vale já na próxima requisição).
+        const permissoes = aplicarConcessoes(base, { administrador_concedido: estado.administrador_concedido === true });
 
         req.usuario = {
             id: payload.id,

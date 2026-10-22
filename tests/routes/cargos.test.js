@@ -95,7 +95,10 @@ describe('PUT /cargos/:cargo', () => {
         const ok = await put('gerente', { ativo: true, nivel: 70, capacidades: ['ver_custos'] });
 
         expect(ok.status).toBe(200);
-        expect(cargosService.atualizar).toHaveBeenCalledWith(7, 'gerente', { ativo: true, nivel: 70, capacidades: ['ver_custos'] }, 1);
+        expect(cargosService.atualizar).toHaveBeenCalledWith(
+            7, 'gerente', { ativo: true, nivel: 70, capacidades: ['ver_custos'] },
+            expect.objectContaining({ id: 1, empresa_id: 7, role: 'admin' })
+        );
 
         const injetado = await put('gerente', { ativo: true, empresa_id: 999 });
 
