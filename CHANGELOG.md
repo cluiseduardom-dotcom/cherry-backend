@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Origem de aquisição do tenant (SPEC 03, fase 4): migration `052` adiciona `empresas.origem_aquisicao` (`direta` padrão, `indicacao_parceiro`, `outro`) e `empresas.parceiro_codigo` (obrigatório se, e somente se, a origem for indicação; `^[A-Z0-9_-]{2,40}$`). `POST /onboarding` aceita os dois campos opcionais (código normalizado em maiúsculas). Dado interno da GiroOne: não é devolvido pelo onboarding nem por nenhuma rota de tenant. Aditivo: empresas existentes ficam `direta`.
 - Identidade visual por empresa (cherry-frontend#63): migration `049` adiciona `empresas.tema_visual` (`vertumno` padrão, `cherry`; `CHECK` fechado) e `POST /auth/login` passa a devolver `usuario.empresa = { id, tema }`, lido do banco para a empresa do próprio usuário. Aditivo: o JWT e os campos existentes não mudam; tema ausente/inválido vira `vertumno`.
 - Jest + Supertest test suite (validations, middlewares, services, and routes), with the database mocked at the repository boundary so tests run without a live DB or secrets. `npm test` / `npm run test:coverage`, wired into CI.
 - Produtos/SKU module: `sku`, `descricao`, `categoria`, `estoque_atual`, `estoque_minimo`, `ativo` fields on `produtos`; `GET /produtos` now paginates; new `GET /produtos/:id`; `PUT /produtos/:id` and `DELETE /produtos/:id` (soft delete via `ativo`), both admin-only.
