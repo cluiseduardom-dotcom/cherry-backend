@@ -1,5 +1,16 @@
 const db = require('../config/db');
 
+// Só venda FINALIZADA conta como venda (a mesma regra do dashboard e do ponto de equilíbrio):
+// uma venda cancelada foi estornada e devolveu o estoque, então nunca "aconteceu" para análise.
+// Estes dois trechos mantêm a semântica de cada junção:
+//  - ITENS_VENDIDOS_LEFT: produto sem nenhuma venda válida continua listado (com zero).
+//  - VENDA_FINALIZADA_DO_ITEM: junção interna, só itens de venda finalizada da mesma empresa.
+const ITENS_VENDIDOS_LEFT = `LEFT JOIN (
+            itens_venda iv
+            JOIN vendas v ON v.id = iv.venda_id AND v.empresa_id = iv.empresa_id AND v.status = 'finalizada'
+        ) ON iv.produto_id = p.id AND iv.empresa_id = p.empresa_id`;
+const VENDA_FINALIZADA_DO_ITEM = `JOIN vendas v ON v.id = iv.venda_id AND v.empresa_id = iv.empresa_id AND v.status = 'finalizada'`;
+
 async function listar(empresa_id) {
     const { rows } = await db.query('SELECT * FROM produtos WHERE empresa_id = $1', [empresa_id]);
     return rows;
@@ -107,7 +118,7 @@ async function getGiro(empresa_id) {
           COUNT(DISTINCT DATE(v.data)) AS dias_com_venda
         FROM itens_venda iv
         JOIN produtos p ON p.id = iv.produto_id
-        JOIN vendas v ON v.id = iv.venda_id
+        ${VENDA_FINALIZADA_DO_ITEM}
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
         ORDER BY total_vendido DESC
@@ -122,8 +133,7 @@ async function getParados(empresa_id) {
           p.nome,
           MAX(v.data) AS ultima_venda
         FROM produtos p
-        LEFT JOIN itens_venda iv ON iv.produto_id = p.id
-        LEFT JOIN vendas v ON v.id = iv.venda_id
+        ${ITENS_VENDIDOS_LEFT}
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
         HAVING MAX(v.data) IS NULL
@@ -146,7 +156,7 @@ async function getPricingProfissional(empresa_id) {
             ELSE ROUND(p.custo * 2.2, 2)
           END AS preco_sugerido
         FROM produtos p
-        LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        ${ITENS_VENDIDOS_LEFT}
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome, p.custo, p.preco_venda
         ORDER BY total_vendido DESC
@@ -177,7 +187,7 @@ async function getLucroPorProduto(empresa_id) {
             0), 2
           ) AS margem_percentual
         FROM produtos p
-        LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        ${ITENS_VENDIDOS_LEFT}
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
         ORDER BY lucro DESC
@@ -213,6 +223,7 @@ async function getMaisVendidos(empresa_id) {
           SUM(iv.quantidade * iv.preco_unitario) AS faturamento
         FROM itens_venda iv
         JOIN produtos p ON p.id = iv.produto_id
+        ${VENDA_FINALIZADA_DO_ITEM}
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
         ORDER BY total_vendido DESC
@@ -234,6 +245,7 @@ async function getCurvaABC(empresa_id) {
           END AS curva
         FROM itens_venda iv
         JOIN produtos p ON p.id = iv.produto_id
+        ${VENDA_FINALIZADA_DO_ITEM}
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
     `, [empresa_id]);
@@ -252,7 +264,7 @@ async function getReposicao(empresa_id) {
             ELSE 'OK'
           END AS status
         FROM produtos p
-        LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        ${ITENS_VENDIDOS_LEFT}
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
     `, [empresa_id]);
@@ -272,7 +284,7 @@ async function getSugestaoPreco(empresa_id) {
             ELSE p.custo * 3.2
           END AS preco_sugerido
         FROM produtos p
-        LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        ${ITENS_VENDIDOS_LEFT}
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome, p.custo, p.preco_venda
     `, [empresa_id]);
@@ -292,7 +304,7 @@ async function getInteligencia(empresa_id) {
             ELSE 'LIQUIDAR'
           END AS decisao
         FROM produtos p
-        LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        ${ITENS_VENDIDOS_LEFT}
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome, p.custo, p.preco_venda
     `, [empresa_id]);
@@ -311,7 +323,7 @@ async function getAcoes(empresa_id) {
             ELSE 'Criar promoção'
           END AS acao
         FROM produtos p
-        LEFT JOIN itens_venda iv ON iv.produto_id = p.id
+        ${ITENS_VENDIDOS_LEFT}
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
     `, [empresa_id]);
@@ -325,7 +337,7 @@ async function getDashboard(empresa_id) {
           COALESCE(SUM(total), 0) AS faturamento,
           COALESCE(AVG(total), 0) AS ticket_medio
         FROM vendas
-        WHERE empresa_id = $1
+        WHERE empresa_id = $1 AND status = 'finalizada'
     `, [empresa_id]);
     return rows[0];
 }

@@ -93,8 +93,8 @@ describe('main: qual conexão o executor de migrations usa', () => {
         await main();
 
         expect(Pool).toHaveBeenCalledTimes(1);
-        expect(Pool).toHaveBeenCalledWith({ connectionString: URL_MIGRACAO });
-        expect(Pool).not.toHaveBeenCalledWith({ connectionString: URL_RUNTIME });
+        expect(Pool).toHaveBeenCalledWith({ connectionString: URL_MIGRACAO, ssl: { rejectUnauthorized: true } });
+        expect(Pool).not.toHaveBeenCalledWith({ connectionString: URL_RUNTIME, ssl: { rejectUnauthorized: true } });
     });
 
     test('sem DATABASE_MIGRATION_URL e com migrations já aplicadas, a aplicação sobe usando DATABASE_URL, só com leitura (sem DDL, INSERT ou transação)', async () => {
@@ -102,7 +102,7 @@ describe('main: qual conexão o executor de migrations usa', () => {
 
         await expect(main()).resolves.toBeUndefined();
 
-        expect(Pool).toHaveBeenCalledWith({ connectionString: URL_RUNTIME });
+        expect(Pool).toHaveBeenCalledWith({ connectionString: URL_RUNTIME, ssl: { rejectUnauthorized: true } });
         const sqls = client.query.mock.calls.map(([sql]) => sql);
         expect(sqls.filter((sql) => /CREATE|ALTER|INSERT|UPDATE|DELETE|DROP|BEGIN|COMMIT/i.test(sql))).toEqual([]);
         expect(client.release).toHaveBeenCalledTimes(1);

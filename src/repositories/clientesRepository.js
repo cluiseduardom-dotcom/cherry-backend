@@ -74,6 +74,7 @@ async function getHistorico(id, empresa_id) {
           v.id AS venda_id,
           v.data,
           v.total AS total_venda,
+          v.status AS status_venda,
           p.nome AS produto,
           iv.quantidade,
           iv.preco_unitario,
@@ -97,7 +98,7 @@ async function getRanking(empresa_id) {
           COALESCE(SUM(v.total), 0) AS total_gasto,
           ROUND(COALESCE(AVG(v.total), 0), 2) AS ticket_medio
         FROM clientes c
-        LEFT JOIN vendas v ON v.cliente_id = c.id AND v.empresa_id = c.empresa_id
+        LEFT JOIN vendas v ON v.cliente_id = c.id AND v.empresa_id = c.empresa_id AND v.status = 'finalizada'
         WHERE c.empresa_id = $1
         GROUP BY c.id, c.nome
         ORDER BY total_gasto DESC
@@ -115,7 +116,7 @@ async function getTotalGasto(id, empresa_id) {
           COALESCE(SUM(v.total), 0) AS total_gasto,
           ROUND(COALESCE(AVG(v.total), 0), 2) AS ticket_medio
         FROM clientes c
-        LEFT JOIN vendas v ON v.cliente_id = c.id AND v.empresa_id = c.empresa_id
+        LEFT JOIN vendas v ON v.cliente_id = c.id AND v.empresa_id = c.empresa_id AND v.status = 'finalizada'
         WHERE c.id = $1 AND c.empresa_id = $2
         GROUP BY c.id, c.nome
     `, [id, empresa_id]);
