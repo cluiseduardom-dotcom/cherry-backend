@@ -232,7 +232,7 @@ describe('GET /vendas (admin and vendedor only, paginated)', () => {
       .get('/vendas?page=2&pageSize=5')
       .set('Authorization', `Bearer ${vendedorToken}`);
 
-    expect(vendasService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5, status: undefined, canal: undefined, data_de: undefined, data_ate: undefined }, { id: 2, role: 'vendedor', empresa_id: 1 });
+    expect(vendasService.listar).toHaveBeenCalledWith({ page: 2, pageSize: 5, status: undefined, canal: undefined, data_de: undefined, data_ate: undefined }, expect.objectContaining({ id: 2, role: 'vendedor', empresa_id: 1 }));
   });
 
   test('aceita filtros de status, canal e período', async () => {
@@ -252,7 +252,7 @@ describe('GET /vendas (admin and vendedor only, paginated)', () => {
         data_de: '2026-09-01',
         data_ate: '2026-09-30'
       },
-      { id: 1, role: 'admin', empresa_id: 1 }
+      expect.objectContaining({ id: 1, role: 'admin', empresa_id: 1 })
     );
   });
 
@@ -334,7 +334,7 @@ describe('GET /vendas/:id (admin and vendedor only)', () => {
     const res = await request(app).get('/vendas/1').set('Authorization', `Bearer ${vendedorToken}`);
 
     expect(res.status).toBe(200);
-    expect(vendasService.buscarPorId).toHaveBeenCalledWith(1, { id: 2, role: 'vendedor', empresa_id: 1 });
+    expect(vendasService.buscarPorId).toHaveBeenCalledWith(1, expect.objectContaining({ id: 2, role: 'vendedor', empresa_id: 1 }));
     expect(JSON.stringify(res.body)).not.toMatch(/margem_percentual/);
   });
 

@@ -59,6 +59,18 @@ describe('protegerOnboarding', () => {
         }
     );
 
+    test.each(['production', 'staging'])(
+        'falha fechado quando NODE_ENV é %s e o segredo não está configurado',
+        (ambiente) => {
+            process.env.NODE_ENV = ambiente;
+
+            protegerOnboarding(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            expect(next).not.toHaveBeenCalled();
+        }
+    );
+
     test('falha fechado quando NODE_ENV não está definido', () => {
         delete process.env.NODE_ENV;
 
@@ -84,6 +96,17 @@ describe('protegerOnboarding', () => {
         process.env.NODE_ENV = 'production';
         process.env.ONBOARDING_SECRET = 'segredo-forte-de-teste';
         req.get.mockReturnValue('segredo-errado');
+
+        protegerOnboarding(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    test('retorna 401 quando o segredo tem tamanho diferente', () => {
+        process.env.NODE_ENV = 'production';
+        process.env.ONBOARDING_SECRET = 'segredo-forte-de-teste';
+        req.get.mockReturnValue('segredo');
 
         protegerOnboarding(req, res, next);
 

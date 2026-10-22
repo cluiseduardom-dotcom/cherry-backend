@@ -3,3 +3,6 @@ node_modules/
 .env.*
 !.env.example
 coverage/
+
+# Script legado com conexão embutida (nunca versionado): manter local, fora do git
+/apply-migration-019.js

@@ -29,7 +29,7 @@ async function getResumo(empresa_id) {
           COALESCE(SUM(total), 0) AS faturamento,
           COALESCE(AVG(total), 0) AS ticket_medio
         FROM vendas
-        WHERE empresa_id = $1
+        WHERE empresa_id = $1 AND status = 'finalizada'
     `, [empresa_id]);
     return rows[0];
 }
@@ -41,7 +41,7 @@ async function getPorDia(empresa_id) {
           COALESCE(SUM(total), 0) AS faturamento,
           COUNT(*) AS total_vendas
         FROM vendas
-        WHERE empresa_id = $1
+        WHERE empresa_id = $1 AND status = 'finalizada'
         GROUP BY DATE(data)
         ORDER BY dia DESC
     `, [empresa_id]);
@@ -55,7 +55,7 @@ async function getPorMes(empresa_id) {
           COALESCE(SUM(total), 0) AS faturamento,
           COUNT(*) AS total_vendas
         FROM vendas
-        WHERE empresa_id = $1
+        WHERE empresa_id = $1 AND status = 'finalizada'
         GROUP BY mes
         ORDER BY mes DESC
     `, [empresa_id]);
@@ -70,6 +70,7 @@ async function getMaisVendidosPeriodo(empresa_id) {
           COALESCE(SUM(iv.quantidade), 0) AS total_vendido
         FROM itens_venda iv
         JOIN produtos p ON p.id = iv.produto_id
+        JOIN vendas v ON v.id = iv.venda_id AND v.empresa_id = iv.empresa_id AND v.status = 'finalizada'
         WHERE p.empresa_id = $1
         GROUP BY p.id, p.nome
         ORDER BY total_vendido DESC
