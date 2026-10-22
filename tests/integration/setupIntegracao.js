@@ -17,6 +17,7 @@ if (!resultado.ok) {
     throw new Error(formatarFalha(resultado));
 }
 
+require('../seguranca/variaveisPg').limparVariaveisPg(process.env);
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 process.env.DATABASE_MIGRATION_URL = '';
 process.env.TESTE_DE_INTEGRACAO = '1';

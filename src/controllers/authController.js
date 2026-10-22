@@ -27,6 +27,24 @@ async function login(req, res, next) {
 
 }
 
+// Quem sou eu agora, segundo o banco (cargo, nível e capacidades vigentes), para o frontend
+// mostrar ou esconder o que o usuário pode fazer. A decisão final continua no servidor.
+async function me(req, res, next) {
+
+    try {
+
+        const { id, empresa_id, role, cargo, nivel, capacidades } = req.usuario;
+
+        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades });
+
+    } catch (error) {
+
+        next(error);
+
+    }
+
+}
+
 async function register(req, res, next) {
 
     try {
@@ -53,5 +71,6 @@ async function register(req, res, next) {
 
 module.exports = {
     login,
-    register
+    register,
+    me
 };
