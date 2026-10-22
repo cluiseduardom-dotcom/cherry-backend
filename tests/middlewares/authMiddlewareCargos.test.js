@@ -102,3 +102,43 @@ describe('authMiddleware — cargo e capacidades vindos do banco', () => {
         expect(req.usuario).toMatchObject({ role: 'estoquista', cargo: 'estoquista', nivel: null });
     });
 });
+
+describe('authMiddleware — Admin concedido individualmente', () => {
+    test('concessão ativa vira perfil admin com todas as capacidades, no mesmo token', async () => {
+        sessaoRepository.buscarEstado.mockResolvedValue(estado({ papel: 'vendedor', administrador_concedido: true }));
+
+        const { req, next } = await executar(token({ role: 'vendedor' }));
+
+        expect(next).toHaveBeenCalledWith();
+        expect(req.usuario).toMatchObject({ role: 'admin', cargo: 'vendedor', nivel: 30 });
+        expect(req.usuario.capacidades).toEqual(expect.arrayContaining(['administrador', 'ver_custos', 'conceder_admin', 'gerir_cargos']));
+    });
+
+    test('sem concessão (ou valor não booleano) não vira admin', async () => {
+        for (const valor of [false, undefined, null, 'true', 1]) {
+            sessaoRepository.buscarEstado.mockResolvedValue(estado({ papel: 'vendedor', administrador_concedido: valor }));
+
+            const { req } = await executar(token({ role: 'admin' }));
+
+            expect(req.usuario.role).toBe('vendedor');
+        }
+    });
+
+    test('cargo desligado vale mais que a concessão: 403', async () => {
+        sessaoRepository.buscarEstado.mockResolvedValue(estado({
+            papel: 'gerente', cargo_configurado: true, cargo_nivel: 70, cargo_ativo: false, cargo_capacidades: [], administrador_concedido: true
+        }));
+
+        const { next } = await executar(token());
+
+        expect(next.mock.calls[0][0].statusCode).toBe(403);
+    });
+
+    test('token_version avançada derruba a sessão mesmo com concessão', async () => {
+        sessaoRepository.buscarEstado.mockResolvedValue(estado({ papel: 'vendedor', administrador_concedido: true, token_version: 1 }));
+
+        const { next } = await executar(token({ tv: 0 }));
+
+        expect(next.mock.calls[0][0].statusCode).toBe(401);
+    });
+});

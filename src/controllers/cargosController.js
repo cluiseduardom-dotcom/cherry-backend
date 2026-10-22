@@ -25,7 +25,7 @@ async function atualizar(req, res, next) {
             throw new AppError(dados.error.issues[0].message, 400);
         }
 
-        const atualizado = await cargosService.atualizar(req.usuario.empresa_id, cargo.data, dados.data, req.usuario.id);
+        const atualizado = await cargosService.atualizar(req.usuario.empresa_id, cargo.data, dados.data, req.usuario);
 
         return response.success(res, atualizado);
     } catch (error) {
