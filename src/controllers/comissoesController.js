@@ -1,7 +1,13 @@
 const comissoesService = require('../services/comissoesService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
-const { periodoSchema, definirPercentualSchema } = require('../validations/comissoesValidation');
+const {
+    periodoSchema,
+    definirPercentualSchema,
+    idSchema,
+    repassesQuerySchema,
+    confirmarRepasseSchema
+} = require('../validations/comissoesValidation');
 
 function parsePaginacao(query) {
     let page = parseInt(query.page, 10);
@@ -76,4 +82,51 @@ async function definirPercentual(req, res, next) {
     }
 }
 
-module.exports = { minhas, equipe, listarPercentuais, definirPercentual };
+function parseId(valor) {
+    const id = idSchema.safeParse(valor);
+
+    if (!id.success) throw new AppError(id.error.issues[0].message, 400);
+
+    return id.data;
+}
+
+async function repasses(req, res, next) {
+    try {
+        const query = repassesQuerySchema.safeParse({ status: req.query.status });
+
+        if (!query.success) throw new AppError(query.error.issues[0].message, 400);
+
+        const resultado = await comissoesService.repasses({ ...parsePaginacao(req.query), ...query.data }, req.usuario);
+
+        return response.success(res, resultado);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function confirmarRepasse(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+        const parsed = confirmarRepasseSchema.safeParse(req.body ?? {});
+
+        if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400);
+
+        const resultado = await comissoesService.confirmarRepasse(id, parsed.data, req.usuario);
+
+        return response.success(res, resultado);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function historico(req, res, next) {
+    try {
+        const resultado = await comissoesService.historico(parseId(req.params.id), req.usuario);
+
+        return response.success(res, resultado);
+    } catch (error) {
+        next(error);
+    }
+}
+
+module.exports = { minhas, equipe, listarPercentuais, definirPercentual, repasses, confirmarRepasse, historico };

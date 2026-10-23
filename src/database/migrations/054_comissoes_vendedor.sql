@@ -12,7 +12,14 @@
 -- altera comissões já apuradas. Vendas anteriores a esta migration não têm
 -- comissão (sem backfill).
 --
+-- A comissão NASCE 'pendente' e só vale conforme o pagamento é registrado:
+-- valor_liberado cresce proporcionalmente ao que foi pago (parcela a parcela) e o
+-- status acompanha ('pendente' -> 'parcial' -> 'liberada'). Dinheiro recebido pelo
+-- vendedor só conta depois que um gerente/admin confirma o repasse (comissao_repasses).
+--
 -- Não apagar linhas de comissão: o cancelamento da venda marca status = 'estornada'.
+-- Todo movimento (apuração, liberação, redução, estorno) fica em comissoes_eventos,
+-- insert-only.
 --
 -- Migration só aditiva (CREATE ... IF NOT EXISTS): segura para reexecução e não
 -- altera tabelas existentes.
@@ -47,13 +54,17 @@ CREATE TABLE IF NOT EXISTS comissoes_venda (
     base_calculo NUMERIC(15,2) NOT NULL CHECK (base_calculo >= 0),
     valor NUMERIC(15,2) NOT NULL CHECK (valor >= 0),
 
-    status VARCHAR(20) NOT NULL DEFAULT 'apurada'
-        CHECK (status IN ('apurada', 'estornada')),
+    -- Parte da comissão já liberada pelo pagamento. 0 <= valor_liberado <= valor.
+    valor_liberado NUMERIC(15,2) NOT NULL DEFAULT 0,
+
+    status VARCHAR(20) NOT NULL DEFAULT 'pendente'
+        CHECK (status IN ('pendente', 'parcial', 'liberada', 'estornada')),
 
     criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
     estornado_em TIMESTAMP,
 
-    CONSTRAINT ck_comissao_valor_ate_base CHECK (valor <= base_calculo)
+    CONSTRAINT ck_comissao_valor_ate_base CHECK (valor <= base_calculo),
+    CONSTRAINT ck_comissao_liberado_ate_valor CHECK (valor_liberado >= 0 AND valor_liberado <= valor)
 );
 
 CREATE INDEX IF NOT EXISTS idx_comissoes_venda_empresa_usuario_criado
@@ -62,6 +73,61 @@ CREATE INDEX IF NOT EXISTS idx_comissoes_venda_empresa_usuario_criado
 CREATE INDEX IF NOT EXISTS idx_comissoes_venda_empresa_criado
     ON comissoes_venda (empresa_id, criado_em);
 
+-- Histórico da comissão. Insert-only: a aplicação nunca faz UPDATE nem DELETE.
+--   tipo: apurada (nasce com a venda), liberacao (+), reducao (-, ex.: estorno de pagamento),
+--         estorno (venda cancelada).
+--   delta: variação do valor liberado neste evento (negativa em reducao/estorno).
+--   executado_por: quem causou o evento (NULL na apuração automática da venda).
+CREATE TABLE IF NOT EXISTS comissoes_eventos (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    comissao_id INTEGER NOT NULL REFERENCES comissoes_venda(id),
+    venda_id INTEGER NOT NULL REFERENCES vendas(id),
+    tipo VARCHAR(12) NOT NULL
+        CHECK (tipo IN ('apurada', 'liberacao', 'reducao', 'estorno')),
+    origem VARCHAR(24) NOT NULL
+        CHECK (origem IN ('venda', 'pagamento', 'repasse', 'estorno_pagamento', 'cancelamento_venda', 'conta_receber')),
+    delta NUMERIC(15,2) NOT NULL DEFAULT 0,
+    valor_liberado_apos NUMERIC(15,2) NOT NULL DEFAULT 0 CHECK (valor_liberado_apos >= 0),
+    repasse_id INTEGER,
+    executado_por INTEGER REFERENCES usuarios(id),
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_comissoes_eventos_comissao
+    ON comissoes_eventos (empresa_id, comissao_id, id);
+
+-- Dinheiro recebido pelo vendedor na venda: fica 'a_repassar' até um gerente/admin
+-- (nunca o próprio vendedor) confirmar que o valor chegou. Uma linha por pagamento em
+-- dinheiro de venda que tem comissão. 'cancelado' quando a venda é cancelada antes.
+CREATE TABLE IF NOT EXISTS comissao_repasses (
+    id SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+    pagamento_id INTEGER NOT NULL UNIQUE REFERENCES pagamentos_venda(id),
+    venda_id INTEGER NOT NULL REFERENCES vendas(id),
+    vendedor_id INTEGER NOT NULL REFERENCES usuarios(id),
+    valor NUMERIC(15,2) NOT NULL CHECK (valor > 0),
+    status VARCHAR(12) NOT NULL DEFAULT 'a_repassar'
+        CHECK (status IN ('a_repassar', 'confirmado', 'cancelado')),
+    declarado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    confirmado_em TIMESTAMP,
+    confirmado_por INTEGER REFERENCES usuarios(id),
+    observacao TEXT,
+    CONSTRAINT ck_repasse_confirmacao CHECK (
+        (status = 'confirmado' AND confirmado_em IS NOT NULL AND confirmado_por IS NOT NULL)
+        OR (status <> 'confirmado' AND confirmado_em IS NULL AND confirmado_por IS NULL)
+    ),
+    CONSTRAINT ck_repasse_nao_se_autoconfirma CHECK (confirmado_por IS NULL OR confirmado_por <> vendedor_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_comissao_repasses_empresa_status
+    ON comissao_repasses (empresa_id, status, declarado_em);
+
+CREATE INDEX IF NOT EXISTS idx_comissao_repasses_vendedor
+    ON comissao_repasses (empresa_id, vendedor_id, status);
+
 -- Reversão manual (não executada pelo runner; só se nenhuma comissão tiver sido paga):
+--   DROP TABLE IF EXISTS comissao_repasses;
+--   DROP TABLE IF EXISTS comissoes_eventos;
 --   DROP TABLE IF EXISTS comissoes_venda;
 --   DROP TABLE IF EXISTS comissao_percentuais;

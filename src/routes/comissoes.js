@@ -14,6 +14,14 @@ router.get('/minhas', requireVendedor, controller.minhas);
 // Gerente/admin: quem tem `ver_vendas_de_todos` (Admin tem todas) vê a equipe inteira.
 router.get('/equipe', requireCapacidade(CAPACIDADES.VER_VENDAS_DE_TODOS), controller.equipe);
 
+// Dinheiro recebido pelo vendedor: o vendedor vê os seus; quem tem `ver_vendas_de_todos` vê os
+// da empresa e é quem CONFIRMA o repasse (o próprio vendedor nunca confirma o seu).
+router.get('/repasses', requireVendedor, controller.repasses);
+router.post('/repasses/:id/confirmar', requireCapacidade(CAPACIDADES.VER_VENDAS_DE_TODOS), controller.confirmarRepasse);
+
+// Histórico de uma comissão: o dono vê a sua; gerente/admin vê qualquer uma da empresa.
+router.get('/:id/historico', requireVendedor, controller.historico);
+
 // Regra de dinheiro: só o admin vê e altera os percentuais.
 router.get('/percentuais', requireAdmin, controller.listarPercentuais);
 router.put('/percentuais', requireAdmin, controller.definirPercentual);

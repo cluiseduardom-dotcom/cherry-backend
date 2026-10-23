@@ -1,4 +1,4 @@
-const { calcularComissaoCentavos, centavosParaReais, validarPercentual } = require('../../src/utils/comissao');
+const { calcularComissaoCentavos, liberadoProporcionalCentavos, centavosParaReais, validarPercentual } = require('../../src/utils/comissao');
 
 describe('calcularComissaoCentavos', () => {
   test('5% de R$ 200,00 = R$ 10,00', () => {
@@ -48,5 +48,46 @@ describe('validarPercentual / centavosParaReais', () => {
 
   test('formata centavos em reais com 2 casas', () => {
     expect(centavosParaReais(1050)).toBe('10.50');
+  });
+});
+
+describe('liberadoProporcionalCentavos', () => {
+  test('proporcional ao pago, arredondando para BAIXO', () => {
+    expect(liberadoProporcionalCentavos(1000, 4000, 10000)).toBe(400);
+    expect(liberadoProporcionalCentavos(1000, 3333, 10000)).toBe(333);
+    expect(liberadoProporcionalCentavos(1000, 6666, 10000)).toBe(666);
+  });
+
+  test('pago integral (ou acima) libera exatamente o valor; nada pago não libera', () => {
+    expect(liberadoProporcionalCentavos(1000, 10000, 10000)).toBe(1000);
+    expect(liberadoProporcionalCentavos(1000, 12000, 10000)).toBe(1000);
+    expect(liberadoProporcionalCentavos(1000, 0, 10000)).toBe(0);
+  });
+
+  test('total zero não divide por zero', () => {
+    expect(liberadoProporcionalCentavos(0, 0, 0)).toBe(0);
+  });
+
+  test('nunca libera mais que o valor, para qualquer pago possível (varredura)', () => {
+    for (let pago = 0; pago <= 10000; pago += 37) {
+      const liberado = liberadoProporcionalCentavos(777, pago, 10000);
+      expect(liberado).toBeGreaterThanOrEqual(0);
+      expect(liberado).toBeLessThanOrEqual(777);
+    }
+  });
+
+  test('é monótono: pagar mais nunca libera menos', () => {
+    let anterior = 0;
+    for (let pago = 0; pago <= 10000; pago += 13) {
+      const atual = liberadoProporcionalCentavos(1234, pago, 10000);
+      expect(atual).toBeGreaterThanOrEqual(anterior);
+      anterior = atual;
+    }
+  });
+
+  test('entradas inválidas são recusadas', () => {
+    expect(() => liberadoProporcionalCentavos(-1, 0, 100)).toThrow();
+    expect(() => liberadoProporcionalCentavos(10, 1.5, 100)).toThrow();
+    expect(() => liberadoProporcionalCentavos(10, 0, NaN)).toThrow();
   });
 });

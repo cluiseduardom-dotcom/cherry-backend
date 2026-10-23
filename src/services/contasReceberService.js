@@ -1,4 +1,5 @@
 const contasReceberRepository = require('../repositories/contasReceberRepository');
+const comissoesRepository = require('../repositories/comissoesRepository');
 const AppError = require('../errors/AppError');
 
 // "atrasado" nunca é gravado: é sempre derivado de status + data_vencimento
@@ -50,8 +51,17 @@ async function buscarPorId(id, empresaId) {
 // delegar direto pro repository: leitura+checagem aqui deixaria uma janela
 // para duas requisições concorrentes passarem ambas pela checagem antes de
 // qualquer uma escrever.
-async function marcarComoRecebida(id, empresaId) {
+async function marcarComoRecebida(id, empresaId, usuarioId = null) {
     const recebida = await contasReceberRepository.marcarComoRecebida(id, empresaId);
+
+    // Venda legada a prazo: o recebimento da conta libera a comissão da venda. Venda do
+    // fluxo novo (parcelas) é liberada pelo recebimento da parcela, não por aqui.
+    if (recebida && recebida.venda_id) {
+        await comissoesRepository.recalcularLiberacaoAvulso({
+            venda_id: recebida.venda_id, empresa_id: empresaId, origem: 'conta_receber', executado_por: usuarioId
+        });
+    }
+
     return comAtraso(recebida);
 }
 

@@ -65,7 +65,7 @@ async function buscarPorId(req, res, next) {
 async function marcarComoRecebida(req, res, next) {
     try {
         const id = parseId(req.params.id);
-        const conta = await contasReceberService.marcarComoRecebida(id, req.usuario.empresa_id);
+        const conta = await contasReceberService.marcarComoRecebida(id, req.usuario.empresa_id, req.usuario.id);
 
         return response.success(res, conta);
     } catch (error) {

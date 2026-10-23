@@ -16,6 +16,8 @@ const contasReceberRepository = require('../../src/repositories/contasReceberRep
 const taxasPlataformaRepository = require('../../src/repositories/taxasPlataformaRepository');
 const comissoesRepository = require('../../src/repositories/comissoesRepository');
 const cancelamentosRepository = require('../../src/repositories/cancelamentosRepository');
+const pagamentosVendaRepository = require('../../src/repositories/pagamentosVendaRepository');
+const parcelasPagamentoRepository = require('../../src/repositories/parcelasPagamentoRepository');
 const { executarComLock } = require('../../src/repositories/shared/transacoes');
 const AppError = require('../../src/errors/AppError');
 const vendasRepository = require('../../src/repositories/vendasRepository');
@@ -115,6 +117,59 @@ describe('criar — comissão do vendedor', () => {
     expect(sqls(fakeClient)).toContain('ROLLBACK');
     expect(sqls(fakeClient)).not.toContain('COMMIT');
     expect(fakeClient.release).toHaveBeenCalledTimes(1);
+  });
+
+  test('depois dos pagamentos: registra repasses de dinheiro e recalcula a liberação, no MESMO client', async () => {
+    const fakeClient = prepararVenda({ preco: '100.00' });
+    pagamentosVendaRepository.criar.mockResolvedValue({ id: 31, forma_pagamento: 'dinheiro', valor: 100 });
+    parcelasPagamentoRepository.criar.mockResolvedValue({ id: 41 });
+
+    await vendasRepository.criar({
+      canal_id: 1, usuario_id: 2, empresa_id: 9,
+      itens: [{ produto_id: 1, quantidade: 1 }],
+      pagamentos: [{ forma_pagamento: 'dinheiro', valor: 100 }]
+    });
+
+    expect(comissoesRepository.registrarRepasses).toHaveBeenCalledWith(
+      { venda_id: 1, empresa_id: 9, vendedor_id: 2, pagamentos: [{ id: 31, forma_pagamento: 'dinheiro', valor: 100 }] },
+      fakeClient
+    );
+    expect(comissoesRepository.recalcularLiberacao).toHaveBeenCalledWith(
+      { venda_id: 1, empresa_id: 9, origem: 'venda', executado_por: 2 },
+      fakeClient
+    );
+
+    // Repasses antes de recalcular: o dinheiro precisa estar marcado "a repassar" para não liberar.
+    const ordem = [
+      comissoesRepository.registrarRepasses.mock.invocationCallOrder[0],
+      comissoesRepository.recalcularLiberacao.mock.invocationCallOrder[0]
+    ];
+    expect(ordem[0]).toBeLessThan(ordem[1]);
+  });
+
+  test('venda legada (sem pagamentos[]) também recalcula a liberação, sem repasses', async () => {
+    prepararVenda();
+
+    await vendasRepository.criar({
+      canal_id: 1, usuario_id: 2, empresa_id: 9,
+      itens: [{ produto_id: 1, quantidade: 1 }]
+    });
+
+    expect(comissoesRepository.recalcularLiberacao).toHaveBeenCalledTimes(1);
+    expect(comissoesRepository.registrarRepasses).not.toHaveBeenCalled();
+  });
+
+  test('falha ao recalcular a liberação faz ROLLBACK da venda inteira', async () => {
+    const fakeClient = prepararVenda();
+    comissoesRepository.recalcularLiberacao.mockRejectedValue(new Error('falha'));
+
+    await expect(vendasRepository.criar({
+      canal_id: 1, usuario_id: 2, empresa_id: 9,
+      itens: [{ produto_id: 1, quantidade: 1 }]
+    })).rejects.toThrow('falha');
+
+    expect(sqls(fakeClient)).toContain('ROLLBACK');
+    expect(sqls(fakeClient)).not.toContain('COMMIT');
   });
 
   test('a resposta de criar não expõe a comissão', async () => {

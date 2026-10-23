@@ -301,6 +301,11 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 }, client);
             }
 
+            // Comissão: venda legada à vista nasce paga (libera); a prazo espera o recebimento.
+            await comissoesRepository.recalcularLiberacao({
+                venda_id: venda.id, empresa_id, origem: 'venda', executado_por: usuario_id
+            }, client);
+
             await client.query('COMMIT');
             return {
                 ...venda,
@@ -383,6 +388,16 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
 
             pagamentosCriados.push(pagamento);
         }
+
+        // Comissão: dinheiro recebido pelo vendedor vira repasse a confirmar; o resto do que já
+        // entrou como pago (pix, débito) libera a comissão proporcionalmente, já na venda.
+        await comissoesRepository.registrarRepasses({
+            venda_id: venda.id, empresa_id, vendedor_id: usuario_id, pagamentos: pagamentosCriados
+        }, client);
+
+        await comissoesRepository.recalcularLiberacao({
+            venda_id: venda.id, empresa_id, origem: 'venda', executado_por: usuario_id
+        }, client);
 
         const pagamentosComParcelas = [];
         for (const pagamento of pagamentosCriados) {

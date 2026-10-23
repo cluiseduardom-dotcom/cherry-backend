@@ -23,7 +23,20 @@ const definirPercentualSchema = z.object({
         .nullable()
 }).strict();
 
+const idSchema = z.coerce.number({ error: 'Identificador inválido' }).int('Identificador inválido').positive('Identificador inválido');
+
+const repassesQuerySchema = z.object({
+    status: z.enum(['a_repassar', 'confirmado', 'cancelado'], { error: 'Status inválido' }).optional()
+});
+
+const confirmarRepasseSchema = z.object({
+    observacao: z.string().trim().max(300, 'Observação muito longa').optional()
+}).strict();
+
 module.exports = {
     periodoSchema,
-    definirPercentualSchema
+    definirPercentualSchema,
+    idSchema,
+    repassesQuerySchema,
+    confirmarRepasseSchema
 };

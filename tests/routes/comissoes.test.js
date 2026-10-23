@@ -151,3 +151,77 @@ describe('percentuais (somente admin)', () => {
     expect(comissoesService.definirPercentual).not.toHaveBeenCalled();
   });
 });
+
+describe('GET /comissoes/repasses', () => {
+  test('401 sem token; 403 para estoquista', async () => {
+    expect((await request(app).get('/comissoes/repasses')).status).toBe(401);
+    expect((await request(app).get('/comissoes/repasses').set('Authorization', `Bearer ${estoquistaToken}`)).status).toBe(403);
+  });
+
+  test('vendedor consulta com o usuário do token (o service decide o escopo), status validado', async () => {
+    comissoesService.repasses.mockResolvedValue({ items: [], totais: {}, page: 1, pageSize: 20, total: 0, totalPages: 1 });
+
+    const ok = await request(app).get('/comissoes/repasses?status=a_repassar&vendedor_id=99').set('Authorization', `Bearer ${vendedorToken}`);
+    expect(ok.status).toBe(200);
+    const [filtros, usuario] = comissoesService.repasses.mock.calls[0];
+    expect(filtros).toMatchObject({ status: 'a_repassar', page: 1, pageSize: 20 });
+    expect(filtros).not.toHaveProperty('vendedor_id');
+    expect(usuario.id).toBe(2);
+
+    const ruim = await request(app).get('/comissoes/repasses?status=qualquer').set('Authorization', `Bearer ${vendedorToken}`);
+    expect(ruim.status).toBe(400);
+  });
+});
+
+describe('POST /comissoes/repasses/:id/confirmar', () => {
+  test('401 sem token; 403 sem `ver_vendas_de_todos` (vendedor, estoquista)', async () => {
+    expect((await request(app).post('/comissoes/repasses/5/confirmar').send({})).status).toBe(401);
+
+    for (const token of [vendedorToken, estoquistaToken]) {
+      const res = await request(app).post('/comissoes/repasses/5/confirmar').set('Authorization', `Bearer ${token}`).send({});
+      expect(res.status).toBe(403);
+    }
+
+    expect(comissoesService.confirmarRepasse).not.toHaveBeenCalled();
+  });
+
+  test('gerente e admin confirmam, com o usuário do token como autor', async () => {
+    comissoesService.confirmarRepasse.mockResolvedValue({ id: 5, status: 'confirmado' });
+
+    for (const token of [gerenteToken, adminToken]) {
+      const res = await request(app).post('/comissoes/repasses/5/confirmar').set('Authorization', `Bearer ${token}`).send({ observacao: 'Recebi' });
+      expect(res.status).toBe(200);
+    }
+
+    expect(comissoesService.confirmarRepasse).toHaveBeenCalledWith(5, { observacao: 'Recebi' }, expect.objectContaining({ id: 4, empresa_id: 7 }));
+  });
+
+  test('400 para id inválido e para campo desconhecido (strict)', async () => {
+    expect((await request(app).post('/comissoes/repasses/abc/confirmar').set('Authorization', `Bearer ${adminToken}`).send({})).status).toBe(400);
+    expect((await request(app).post('/comissoes/repasses/5/confirmar').set('Authorization', `Bearer ${adminToken}`).send({ confirmado_por: 1 })).status).toBe(400);
+  });
+});
+
+describe('GET /comissoes/:id/historico', () => {
+  test('401 sem token; 403 para estoquista; 400 para id inválido', async () => {
+    expect((await request(app).get('/comissoes/5/historico')).status).toBe(401);
+    expect((await request(app).get('/comissoes/5/historico').set('Authorization', `Bearer ${estoquistaToken}`)).status).toBe(403);
+    expect((await request(app).get('/comissoes/abc/historico').set('Authorization', `Bearer ${vendedorToken}`)).status).toBe(400);
+  });
+
+  test('vendedor consulta passando o próprio usuário (o escopo é decidido no service/repository)', async () => {
+    comissoesService.historico.mockResolvedValue({ comissao: { id: 5 }, eventos: [] });
+
+    const res = await request(app).get('/comissoes/5/historico').set('Authorization', `Bearer ${vendedorToken}`);
+
+    expect(res.status).toBe(200);
+    expect(comissoesService.historico).toHaveBeenCalledWith(5, expect.objectContaining({ id: 2, empresa_id: 7 }));
+  });
+
+  test('"percentuais" e "equipe" não são capturados pela rota :id', async () => {
+    comissoesService.listarPercentuais.mockResolvedValue({ padrao: null, usuarios: [] });
+
+    expect((await request(app).get('/comissoes/percentuais').set('Authorization', `Bearer ${adminToken}`)).status).toBe(200);
+    expect(comissoesService.historico).not.toHaveBeenCalled();
+  });
+});

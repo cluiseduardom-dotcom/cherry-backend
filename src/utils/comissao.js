@@ -35,7 +35,27 @@ function calcularComissaoCentavos(baseReais, percentual) {
     };
 }
 
+// Parte da comissão liberada pelo que já foi PAGO da venda: valor * pago / total, em
+// centavos inteiros, arredondando para BAIXO (nunca libera centavo a mais). Pago >= total
+// libera tudo exatamente; pago <= 0 não libera nada. Como o alvo é recalculado do zero a
+// cada pagamento (e não somado parcela a parcela), o total liberado ao fim é sempre o
+// valor exato da comissão, sem resto acumulado.
+function liberadoProporcionalCentavos(valorCentavos, pagoCentavos, totalCentavos) {
+    for (const parte of [valorCentavos, pagoCentavos, totalCentavos]) {
+        if (!Number.isSafeInteger(parte) || parte < 0) {
+            throw new AppError('Valores inválidos para liberar a comissão', 500);
+        }
+    }
+
+    if (totalCentavos === 0 || pagoCentavos === 0) return 0;
+    if (pagoCentavos >= totalCentavos) return valorCentavos;
+
+    return Number((BigInt(valorCentavos) * BigInt(pagoCentavos)) / BigInt(totalCentavos));
+}
+
 module.exports = {
+    liberadoProporcionalCentavos,
+    reaisParaCentavos,
     calcularComissaoCentavos,
     centavosParaReais,
     validarPercentual

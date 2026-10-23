@@ -1,4 +1,6 @@
 const comissoesRepository = require('../repositories/comissoesRepository');
+const { temCapacidade } = require('./permissoesService');
+const { CAPACIDADES } = require('../constants/cargos');
 
 // empresa_id e usuario_id vêm sempre do JWT (controller), nunca da requisição.
 
@@ -39,4 +41,37 @@ async function definirPercentual({ usuario_id, percentual }, usuario) {
     });
 }
 
-module.exports = { minhas, equipe, listarPercentuais, definirPercentual };
+const veTodos = (usuario) => temCapacidade(usuario, CAPACIDADES.VER_VENDAS_DE_TODOS);
+
+// Quem tem `ver_vendas_de_todos` (gerente/admin) vê os repasses da empresa; os demais,
+// só os próprios (usuário do JWT).
+async function repasses({ page, pageSize, status }, usuario) {
+    const { items, total, totais } = await comissoesRepository.listarRepasses({
+        empresa_id: usuario.empresa_id,
+        vendedor_id: veTodos(usuario) ? undefined : usuario.id,
+        status,
+        limit: pageSize,
+        offset: (page - 1) * pageSize
+    });
+
+    return { items, totais, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+async function confirmarRepasse(id, { observacao }, usuario) {
+    return comissoesRepository.confirmarRepasse({
+        id,
+        empresa_id: usuario.empresa_id,
+        confirmado_por: usuario.id,
+        observacao
+    });
+}
+
+async function historico(comissaoId, usuario) {
+    return comissoesRepository.historicoDaComissao({
+        empresa_id: usuario.empresa_id,
+        comissao_id: comissaoId,
+        usuario_id: veTodos(usuario) ? undefined : usuario.id
+    });
+}
+
+module.exports = { minhas, equipe, listarPercentuais, definirPercentual, repasses, confirmarRepasse, historico };

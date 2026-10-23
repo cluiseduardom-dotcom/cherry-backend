@@ -1,4 +1,5 @@
 jest.mock('../../src/repositories/contasReceberRepository');
+jest.mock('../../src/repositories/comissoesRepository');
 
 const contasReceberRepository = require('../../src/repositories/contasReceberRepository');
 const contasReceberService = require('../../src/services/contasReceberService');

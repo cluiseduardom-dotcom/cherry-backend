@@ -6,6 +6,7 @@ const parcelasRepository = require('../repositories/parcelasPagamentoRepository'
 const recebimentosRepository = require('../repositories/recebimentosContaRepository');
 const estornosRepository = require('../repositories/estornosPagamentoRepository');
 const contasReceberRepository = require('../repositories/contasReceberRepository');
+const comissoesRepository = require('../repositories/comissoesRepository');
 
 function hoje() {
     const d = new Date();
@@ -87,6 +88,11 @@ async function receberParcela(id, { valor, forma_pagamento = 'dinheiro', observa
             await pagamentosRepository.atualizarStatus(parcela.pagamento_id, 'parcial', usuario.empresa_id, client);
         }
 
+        // A comissão da venda libera na proporção do que já foi pago (mesma transação).
+        await comissoesRepository.recalcularLiberacao({
+            venda_id: parcela.venda_id, empresa_id: usuario.empresa_id, origem: 'pagamento', executado_por: usuario.id
+        }, client);
+
         await client.query('COMMIT');
         return { recebimento, parcela: parcelaAtualizada };
     } catch (error) {
@@ -133,6 +139,11 @@ async function estornarPagamento(id, { valor, motivo }, usuario) {
                 [id, usuario.empresa_id]
             );
         }
+
+        // Estorno de pagamento reduz a parte liberada da comissão (mesma transação).
+        await comissoesRepository.recalcularLiberacao({
+            venda_id: pagamento.venda_id, empresa_id: usuario.empresa_id, origem: 'estorno_pagamento', executado_por: usuario.id
+        }, client);
 
         await client.query('COMMIT');
         return estorno;
