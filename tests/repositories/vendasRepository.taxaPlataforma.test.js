@@ -5,6 +5,7 @@ jest.mock('../../src/repositories/contasReceberRepository');
 jest.mock('../../src/repositories/taxasPlataformaRepository');
 jest.mock('../../src/repositories/pagamentosVendaRepository');
 jest.mock('../../src/repositories/parcelasPagamentoRepository');
+jest.mock('../../src/repositories/cancelamentosRepository');
 jest.mock('../../src/repositories/shared/transacoes');
 
 const db = require('../../src/config/db');
@@ -14,6 +15,7 @@ const contasReceberRepository = require('../../src/repositories/contasReceberRep
 const taxasPlataformaRepository = require('../../src/repositories/taxasPlataformaRepository');
 const pagamentosVendaRepository = require('../../src/repositories/pagamentosVendaRepository');
 const parcelasPagamentoRepository = require('../../src/repositories/parcelasPagamentoRepository');
+const cancelamentosRepository = require('../../src/repositories/cancelamentosRepository');
 const { executarComLock } = require('../../src/repositories/shared/transacoes');
 const AppError = require('../../src/errors/AppError');
 const vendasRepository = require('../../src/repositories/vendasRepository');
@@ -192,6 +194,13 @@ describe('criar — taxa interna da plataforma', () => {
 });
 
 describe('cancelar — taxa interna da plataforma', () => {
+  const OPCOES = { motivo: 'Cliente desistiu da compra', login: 'vendedor@teste.invalid', faixaAutorizada: 'ate_7_dias' };
+
+  beforeEach(() => {
+    cancelamentosRepository.buscarIdadeDaVenda.mockResolvedValue({ dias: 2, status: 'finalizada', usuario_id: 9 });
+    cancelamentosRepository.inserir.mockResolvedValue({ id: 1 });
+  });
+
   function clienteDeCancelamento() {
     const client = { query: jest.fn() };
     client.query.mockImplementation((sql, params = []) => {
@@ -209,7 +218,7 @@ describe('cancelar — taxa interna da plataforma', () => {
       callback({ id: 1, status: 'finalizada' }, client)
     );
 
-    await vendasRepository.cancelar(1, 9, 5);
+    await vendasRepository.cancelar(1, 9, 5, OPCOES);
 
     expect(taxasPlataformaRepository.estornarPorVendaId).toHaveBeenCalledTimes(1);
     expect(taxasPlataformaRepository.estornarPorVendaId).toHaveBeenCalledWith(1, 5, client);
@@ -224,7 +233,7 @@ describe('cancelar — taxa interna da plataforma', () => {
       new AppError('Venda com conta a receber já recebida não pode ser cancelada', 409)
     );
 
-    await expect(vendasRepository.cancelar(1, 9, 5)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(vendasRepository.cancelar(1, 9, 5, OPCOES)).rejects.toMatchObject({ statusCode: 409 });
 
     expect(taxasPlataformaRepository.estornarPorVendaId).not.toHaveBeenCalled();
   });
@@ -236,7 +245,7 @@ describe('cancelar — taxa interna da plataforma', () => {
     );
     taxasPlataformaRepository.estornarPorVendaId.mockRejectedValue(new Error('falha'));
 
-    await expect(vendasRepository.cancelar(1, 9, 5)).rejects.toThrow('falha');
+    await expect(vendasRepository.cancelar(1, 9, 5, OPCOES)).rejects.toThrow('falha');
 
     expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
     expect(sqls(client).some((sql) => sql.includes("UPDATE vendas SET status = 'cancelada'"))).toBe(false);

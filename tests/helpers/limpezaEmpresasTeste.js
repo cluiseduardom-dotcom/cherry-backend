@@ -36,6 +36,10 @@ async function removerEmpresaDeTeste(db, empresaId) {
         await cliente.query('BEGIN');
 
         try {
+            // Tabelas imutáveis (ex.: cancelamentos_venda) só aceitam DELETE com este parâmetro,
+            // válido apenas dentro desta transação de limpeza de empresa de teste.
+            await cliente.query(`SET LOCAL vertumno.limpeza_teste = 'on'`);
+
             // Descobre as tabelas de negócio pelo schema (sempre atualizado) em vez de uma
             // lista fixa. A ordem das FKs é resolvida por tentativas: o que falha por FK
             // (23503) volta para a fila e é repetido depois que os filhos saíram.
@@ -130,8 +134,40 @@ function criarRegistroDeEmpresas(db) {
     };
 }
 
+// cancelamentos_venda é imutável no banco (gatilho recusa UPDATE/DELETE). Suítes que fazem a própria
+// limpeza manual (DELETE FROM vendas ...) precisam apagar antes os registros de cancelamento, e o
+// banco só deixa isso numa transação que liga vertumno.limpeza_teste. Só vale para empresa de teste.
+async function removerCancelamentosDeTeste(db, empresaId) {
+    const id = Number(empresaId);
+    if (!Number.isInteger(id) || id <= 0) {
+        throw new Error(`empresaId inválido para limpeza: ${empresaId}`);
+    }
+
+    const cliente = await db.connect();
+
+    try {
+        const empresa = await cliente.query('SELECT nome FROM empresas WHERE id = $1', [id]);
+        if (empresa.rows.length > 0 && !NOME_DE_EMPRESA_DE_TESTE.test(empresa.rows[0].nome)) {
+            throw new Error(`limpeza recusada: a empresa ${id} não tem nome de empresa de teste`);
+        }
+
+        await cliente.query('BEGIN');
+        try {
+            await cliente.query(`SET LOCAL vertumno.limpeza_teste = 'on'`);
+            await cliente.query('DELETE FROM cancelamentos_venda WHERE empresa_id = $1', [id]);
+            await cliente.query('COMMIT');
+        } catch (erro) {
+            await cliente.query('ROLLBACK');
+            throw erro;
+        }
+    } finally {
+        cliente.release();
+    }
+}
+
 module.exports = {
     NOME_DE_EMPRESA_DE_TESTE,
+    removerCancelamentosDeTeste,
     criarRegistroDeEmpresas,
     removerEmpresaDeTeste,
     removerEmpresasPorNome,
