@@ -110,6 +110,7 @@ const pagamentosRoutes = require('./routes/pagamentos');
 const parcelasPagamentoRoutes = require('./routes/parcelasPagamento');
 const authRoutes = require('./routes/authRoutes');
 const onboardingRoutes = require('./routes/onboarding');
+const internoRoutes = require('./routes/interno');
 const authMiddleware = require('./middlewares/authMiddleware');
 const requireAdmin = require('./middlewares/requireAdmin');
 const requireEstoquista = require('./middlewares/requireEstoquista');
@@ -123,6 +124,7 @@ const errorHandler = require('./middlewares/errorHandler');
 
 app.use('/auth', authRoutes);
 app.use('/onboarding', onboardingRoutes);
+app.use('/interno', internoRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);
 app.use('/vendas', authMiddleware, vendasRoutes);
 app.use('/clientes', authMiddleware, requireVendedor, clientesRoutes);
