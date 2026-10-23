@@ -3,6 +3,7 @@ const tokenService = require('./tokenService');
 const usuarioRepository = require('../repositories/usuarioRepository');
 const AppError = require('../errors/AppError');
 const cargosService = require('./cargosService');
+const moduloRepository = require('../repositories/moduloRepository');
 const { resolverTemaVisual } = require('../constants/temasVisuais');
 
 // Hash descartável: quando o e-mail não existe, ainda pagamos um bcrypt.compare
@@ -10,6 +11,18 @@ const { resolverTemaVisual } = require('../constants/temasVisuais');
 const HASH_DESCARTAVEL = bcrypt.hashSync('hash-descartavel-sem-usuario', 10);
 
 const MENSAGEM_CREDENCIAIS = 'Email ou senha inválidos';
+
+// Módulos ativos da empresa do próprio usuário (só códigos), para o frontend esconder menus.
+// Não é fronteira de segurança: o backend barra por rota (exigirModulo). Se a consulta falhar,
+// o login segue com lista vazia (esconde menus opcionais; nunca libera nada).
+async function listarModulosAtivos(empresa_id) {
+    try {
+        return await moduloRepository.listarAtivos(empresa_id);
+    } catch (error) {
+        console.error('Falha ao listar módulos ativos da empresa no login');
+        return [];
+    }
+}
 
 async function login(email, senha) {
 
@@ -28,6 +41,7 @@ async function login(email, senha) {
     }
 
     const token = tokenService.emitirToken(usuario);
+    const modulos = await listarModulosAtivos(usuario.empresa_id);
 
     return {
         token,
@@ -38,7 +52,7 @@ async function login(email, senha) {
             papel: usuario.papel,
             empresa_id: usuario.empresa_id,
             // Identidade visual da empresa do próprio usuário (lida do banco, nunca da requisição).
-            empresa: { id: usuario.empresa_id, tema: resolverTemaVisual(usuario.empresa_tema) }
+            empresa: { id: usuario.empresa_id, tema: resolverTemaVisual(usuario.empresa_tema), modulos }
         }
     };
 }
