@@ -58,6 +58,8 @@ module.exports = async (req, res, next) => {
 
         req.usuario = {
             id: payload.id,
+            // Login (e-mail) vindo do banco; vai para o registro de cancelamento de venda.
+            email: estado.email,
             // Perfil com que rotas e filtros já existentes enxergam o usuário (admin | vendedor | estoquista | faturista).
             role: permissoes.role,
             cargo: permissoes.cargo,

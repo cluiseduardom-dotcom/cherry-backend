@@ -1,7 +1,9 @@
 jest.mock('../../src/services/vendasService');
+jest.mock('../../src/services/cancelamentosService');
 
 const request = require('supertest');
 const vendasService = require('../../src/services/vendasService');
+const cancelamentosService = require('../../src/services/cancelamentosService');
 const AppError = require('../../src/errors/AppError');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
@@ -363,47 +365,93 @@ describe('GET /vendas/:id (admin and vendedor only)', () => {
   });
 });
 
-describe('PATCH /vendas/:id/cancelar (admin only)', () => {
+describe('PATCH /vendas/:id/cancelar (capacidade cancelar_venda; motivo obrigatório)', () => {
+  const corpo = { motivo: 'Cliente desistiu da compra' };
+  const cancelar = (token, body = corpo, id = 1) =>
+    request(app).patch(`/vendas/${id}/cancelar`).set('Authorization', `Bearer ${token}`).send(body);
+
   test('returns 401 without a token', async () => {
-    const res = await request(app).patch('/vendas/1/cancelar');
+    const res = await request(app).patch('/vendas/1/cancelar').send(corpo);
     expect(res.status).toBe(401);
   });
 
-  test('returns 403 for a vendedor', async () => {
-    const res = await request(app).patch('/vendas/1/cancelar').set('Authorization', `Bearer ${vendedorToken}`);
+  test('returns 403 for an estoquista (sem a capacidade)', async () => {
+    const res = await cancelar(estoquistaToken);
     expect(res.status).toBe(403);
-    expect(vendasService.cancelar).not.toHaveBeenCalled();
+    expect(cancelamentosService.cancelar).not.toHaveBeenCalled();
   });
 
-  test('returns 403 for an estoquista', async () => {
-    const res = await request(app).patch('/vendas/1/cancelar').set('Authorization', `Bearer ${estoquistaToken}`);
-    expect(res.status).toBe(403);
+  test('returns 400 for an invalid id', async () => {
+    const res = await cancelar(adminToken, corpo, 'abc');
+    expect(res.status).toBe(400);
+  });
+
+  test.each([
+    ['sem motivo', {}],
+    ['motivo vazio', { motivo: '   ' }],
+    ['motivo curto demais', { motivo: 'abc' }],
+    ['campo desconhecido', { motivo: 'Cliente desistiu', empresa_id: 99 }],
+    ['autorizacao sem senha', { motivo: 'Cliente desistiu', autorizacao: { email: 'g@x.com' } }]
+  ])('returns 400 %s, without calling the service', async (_nome, body) => {
+    const res = await cancelar(adminToken, body);
+    expect(res.status).toBe(400);
+    expect(cancelamentosService.cancelar).not.toHaveBeenCalled();
   });
 
   test('returns 409 when the venda is not finalizada', async () => {
-    vendasService.cancelar.mockRejectedValue(new AppError('Somente vendas finalizadas podem ser canceladas', 409));
+    cancelamentosService.cancelar.mockRejectedValue(new AppError('Somente vendas finalizadas podem ser canceladas', 409));
 
-    const res = await request(app).patch('/vendas/1/cancelar').set('Authorization', `Bearer ${adminToken}`);
+    const res = await cancelar(adminToken);
     expect(res.status).toBe(409);
   });
 
-  test('returns 409 when the linked conta a receber is already recebida', async () => {
-    vendasService.cancelar.mockRejectedValue(
-      new AppError('Venda com conta a receber já recebida não pode ser cancelada', 409)
+  test('returns 403 when the authorization is refused', async () => {
+    cancelamentosService.cancelar.mockRejectedValue(new AppError('Autorização inválida', 403));
+
+    const res = await cancelar(vendedorToken);
+    expect(res.status).toBe(403);
+    expect(res.body.message).toBe('Autorização inválida');
+  });
+
+  test('a vendedor can cancel (the policy runs in the service) and the service gets the user, motivo and authorization', async () => {
+    cancelamentosService.cancelar.mockResolvedValue({ id: 1, status: 'cancelada' });
+    const autorizacao = { email: 'gerente@x.com', senha: 'senha-do-gerente' };
+
+    const res = await cancelar(vendedorToken, { motivo: 'Cliente desistiu da compra', autorizacao });
+
+    expect(res.status).toBe(200);
+    expect(cancelamentosService.cancelar).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ id: 2, role: 'vendedor', empresa_id: 1 }),
+      { motivo: 'Cliente desistiu da compra', autorizacao }
     );
-
-    const res = await request(app).patch('/vendas/1/cancelar').set('Authorization', `Bearer ${adminToken}`);
-    expect(res.status).toBe(409);
-    expect(res.body.message).toBe('Venda com conta a receber já recebida não pode ser cancelada');
   });
 
-  test('cancels and returns the updated venda for an admin, reversing stock', async () => {
-    vendasService.cancelar.mockResolvedValue({ id: 1, status: 'cancelada' });
+  test('cancels and returns the updated venda for an admin; empresa_id comes from the token, never the body', async () => {
+    cancelamentosService.cancelar.mockResolvedValue({ id: 1, status: 'cancelada' });
 
-    const res = await request(app).patch('/vendas/1/cancelar').set('Authorization', `Bearer ${adminToken}`);
+    const res = await cancelar(adminToken);
 
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('cancelada');
-    expect(vendasService.cancelar).toHaveBeenCalledWith(1, 1, 1);
+    expect(cancelamentosService.cancelar).toHaveBeenCalledWith(1, expect.objectContaining({ id: 1, empresa_id: 1 }), corpo);
+  });
+});
+
+describe('GET /vendas/:id/cancelamento/previa', () => {
+  test('returns 401 without a token and 403 for an estoquista', async () => {
+    expect((await request(app).get('/vendas/1/cancelamento/previa')).status).toBe(401);
+    const res = await request(app).get('/vendas/1/cancelamento/previa').set('Authorization', `Bearer ${estoquistaToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  test('returns the preview for a vendedor', async () => {
+    cancelamentosService.previa.mockResolvedValue({ venda_id: 1, faixa: 'ate_7_dias', exige_autorizacao: false });
+
+    const res = await request(app).get('/vendas/1/cancelamento/previa').set('Authorization', `Bearer ${vendedorToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.faixa).toBe('ate_7_dias');
+    expect(cancelamentosService.previa).toHaveBeenCalledWith(1, expect.objectContaining({ id: 2, empresa_id: 1 }));
   });
 });
