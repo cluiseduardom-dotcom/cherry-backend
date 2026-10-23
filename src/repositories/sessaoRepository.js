@@ -8,7 +8,7 @@ const db = require('../config/db');
 // de 8 h expirar. Uma única ida ao banco (LEFT JOIN em cargos_empresa).
 async function buscarEstado(usuario_id, empresa_id) {
     const { rows } = await db.query(
-        `SELECT u.ativo, u.token_version, u.papel, e.status AS empresa_status,
+        `SELECT u.ativo, u.token_version, u.papel, u.email, e.status AS empresa_status,
                 (c.empresa_id IS NOT NULL) AS cargo_configurado,
                 c.nivel AS cargo_nivel, c.ativo AS cargo_ativo, c.capacidades AS cargo_capacidades,
                 EXISTS (

@@ -1,7 +1,9 @@
 const vendasService = require('../services/vendasService');
+const cancelamentosService = require('../services/cancelamentosService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { criarVendaSchema } = require('../validations/vendasValidation');
+const { cancelarVendaSchema } = require('../validations/cancelamentosValidation');
 const { listarVendasSchema } = require('../validations/listarVendasValidation');
 const { podeVerCustosOperacionais } = require('../services/permissoesService');
 
@@ -137,9 +139,25 @@ async function buscarPorId(req, res, next) {
 async function cancelar(req, res, next) {
     try {
         const id = parseId(req.params.id);
-        const venda = await vendasService.cancelar(id, req.usuario.id, req.usuario.empresa_id);
+        const parsed = cancelarVendaSchema.safeParse(req.body ?? {});
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        const venda = await cancelamentosService.cancelar(id, req.usuario, parsed.data);
 
         return response.success(res, venda);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function previaCancelamento(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+
+        return response.success(res, await cancelamentosService.previa(id, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -153,5 +171,6 @@ module.exports = {
     criar,
     listar,
     buscarPorId,
-    cancelar
+    cancelar,
+    previaCancelamento
 };

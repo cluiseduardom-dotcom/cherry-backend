@@ -118,6 +118,7 @@ const requireCapacidade = require('./middlewares/requireCapacidade');
 const { CAPACIDADES } = require('./constants/cargos');
 const cargosRoutes = require('./routes/cargos');
 const privilegiosRoutes = require('./routes/privilegios');
+const cancelamentosRoutes = require('./routes/cancelamentos');
 const errorHandler = require('./middlewares/errorHandler');
 
 app.use('/auth', authRoutes);
@@ -127,6 +128,7 @@ app.use('/vendas', authMiddleware, vendasRoutes);
 app.use('/clientes', authMiddleware, requireVendedor, clientesRoutes);
 app.use('/cargos', authMiddleware, requireCapacidade(CAPACIDADES.GERIR_CARGOS), cargosRoutes);
 app.use('/privilegios', authMiddleware, requireCapacidade(CAPACIDADES.CONCEDER_ADMIN), privilegiosRoutes);
+app.use('/cancelamentos', authMiddleware, requireCapacidade(CAPACIDADES.VER_CANCELAMENTOS), cancelamentosRoutes);
 app.use('/canais-venda', authMiddleware, canaisVendaRoutes);
 app.use('/dashboard', authMiddleware, requireAdmin, dashboardRoutes);
 app.use('/contas-pagar', authMiddleware, requireAdmin, contasPagarRoutes);
