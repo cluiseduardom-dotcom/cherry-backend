@@ -35,7 +35,7 @@ Este arquivo é o contrato operacional do Claude Code para este repositório. De
 - Papéis atuais: admin, vendedor, estoquista.
 - vendedor nunca recebe custo, margem ou lucro em respostas da API.
 - estoquista não acessa vendas nem financeiro.
-- Criação/remoção de usuários: somente admin.
+- Criação e bloqueio de usuários: admin, ou cargo com a capacidade `gerir_usuarios` (padrão: diretor a supervisor), só sobre cargos de nível estritamente menor, nunca sobre admin nem sobre si mesmo; sempre com trilha em `usuarios_eventos`. Não há exclusão de usuário: bloqueia-se. Redefinir senha e conceder/revogar admin seguem só com admin.
 - Nunca commitar, logar ou expor secrets, tokens, senhas, .env ou DATABASE_URL.
 - Credenciais de teste devem usar hashes/segredos próprios de CI/dev e nunca credenciais reais.
 
