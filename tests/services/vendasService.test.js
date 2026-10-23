@@ -206,22 +206,3 @@ describe('vendas por capacidade do cargo (ver_vendas_de_todos)', () => {
       .rejects.toMatchObject({ statusCode: 404 });
   });
 });
-
-describe('cancelar', () => {
-  test('delegates to the repository', async () => {
-    vendasRepository.cancelar.mockResolvedValue({ id: 1, status: 'cancelada' });
-
-    const result = await vendasService.cancelar(1, 7, 9);
-
-    expect(vendasRepository.cancelar).toHaveBeenCalledWith(1, 7, 9);
-    expect(result).toEqual({ id: 1, status: 'cancelada' });
-  });
-
-  test('propagates a 409 when the venda is not finalizada', async () => {
-    vendasRepository.cancelar.mockRejectedValue(
-      Object.assign(new Error('Somente vendas finalizadas podem ser canceladas'), { statusCode: 409 })
-    );
-
-    await expect(vendasService.cancelar(1, 7, 9)).rejects.toMatchObject({ statusCode: 409 });
-  });
-});

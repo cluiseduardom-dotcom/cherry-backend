@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Módulos habilitáveis por empresa, fatia 1 do ADR-007: migration `053` cria `empresa_modulos` (catálogo fechado `grade`, `fracionario`, `rastreio_unidade`, `fiscal`, `multi_pdv`, `servicos_agenda`; justificativa e responsável obrigatórios; um registro por empresa e módulo), com `src/constants/modulos.js`, `moduloRepository` e o middleware `exigirModulo(modulo)` (403 fail-closed, empresa sempre do JWT). Ainda não é aplicado a nenhuma rota e não há rota de escrita: ativação virá nas próximas fatias.
 - Identidade visual por empresa (cherry-frontend#63): migration `049` adiciona `empresas.tema_visual` (`vertumno` padrão, `cherry`; `CHECK` fechado) e `POST /auth/login` passa a devolver `usuario.empresa = { id, tema }`, lido do banco para a empresa do próprio usuário. Aditivo: o JWT e os campos existentes não mudam; tema ausente/inválido vira `vertumno`.
 - Jest + Supertest test suite (validations, middlewares, services, and routes), with the database mocked at the repository boundary so tests run without a live DB or secrets. `npm test` / `npm run test:coverage`, wired into CI.
 - Produtos/SKU module: `sku`, `descricao`, `categoria`, `estoque_atual`, `estoque_minimo`, `ativo` fields on `produtos`; `GET /produtos` now paginates; new `GET /produtos/:id`; `PUT /produtos/:id` and `DELETE /produtos/:id` (soft delete via `ativo`), both admin-only.

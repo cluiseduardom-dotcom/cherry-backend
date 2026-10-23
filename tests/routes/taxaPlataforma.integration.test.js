@@ -19,7 +19,7 @@ const request = require('supertest');
 const db = require('../../src/config/db');
 const app = require('../../src/app');
 const taxasPlataformaRepository = require('../../src/repositories/taxasPlataformaRepository');
-const { criarRegistroDeEmpresas, removerEmpresasPorNome } = require('../helpers/limpezaEmpresasTeste');
+const { criarRegistroDeEmpresas, removerEmpresasPorNome, removerCancelamentosDeTeste } = require('../helpers/limpezaEmpresasTeste');
 
 // Cada empresa é registrada LOGO APÓS o INSERT (antes de login/produtos/preços): se a
 // preparação falhar no meio, o afterAll ainda remove o que foi criado.
@@ -108,6 +108,7 @@ afterAll(async () => {
             await db.query('DELETE FROM idempotency_keys WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [id]);
+            await removerCancelamentosDeTeste(db, id);
             await db.query('DELETE FROM vendas WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM precos_produto WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM produtos WHERE empresa_id = $1', [id]);
@@ -476,7 +477,8 @@ describe('cancelamento estorna a taxa e preserva o histórico', () => {
 
         const res = await request(app)
             .patch(`/vendas/${vendaId}/cancelar`)
-            .set('Authorization', `Bearer ${empresas.A.tokens.admin}`);
+            .set('Authorization', `Bearer ${empresas.A.tokens.admin}`)
+            .send({ motivo: 'Cancelamento de teste da taxa' });
 
         expect(res.status).toBe(200);
 
@@ -499,7 +501,8 @@ describe('cancelamento estorna a taxa e preserva o histórico', () => {
 
         const res = await request(app)
             .patch(`/vendas/${vendaId}/cancelar`)
-            .set('Authorization', `Bearer ${empresas.A.tokens.admin}`);
+            .set('Authorization', `Bearer ${empresas.A.tokens.admin}`)
+            .send({ motivo: 'Cancelamento de teste da taxa' });
 
         expect(res.status).toBe(409);
         expect((await taxasDaVenda(vendaId))[0].status).toBe('estornada');
@@ -510,7 +513,8 @@ describe('cancelamento estorna a taxa e preserva o histórico', () => {
 
         const res = await request(app)
             .patch(`/vendas/${vendaId}/cancelar`)
-            .set('Authorization', `Bearer ${empresas.B.tokens.admin}`);
+            .set('Authorization', `Bearer ${empresas.B.tokens.admin}`)
+            .send({ motivo: 'Cancelamento de teste da taxa' });
 
         expect(res.status).toBe(404);
         expect((await taxasDaVenda(vendaId))[0].status).toBe('apurada');
@@ -528,7 +532,8 @@ describe('cancelamento estorna a taxa e preserva o histórico', () => {
 
         const cancel = await request(app)
             .patch(`/vendas/${vendaId}/cancelar`)
-            .set('Authorization', `Bearer ${empresas.A.tokens.admin}`);
+            .set('Authorization', `Bearer ${empresas.A.tokens.admin}`)
+            .send({ motivo: 'Cancelamento de teste da taxa' });
 
         expect(cancel.status).toBe(200);
         expect(await taxasDaVenda(vendaId)).toHaveLength(0); // nenhuma taxa criada retroativamente

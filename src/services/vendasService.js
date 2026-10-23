@@ -89,10 +89,6 @@ async function buscarPorId(id, usuario) {
     return venda;
 }
 
-async function cancelar(id, usuario_id, empresaId) {
-    return vendasRepository.cancelar(id, usuario_id, empresaId);
-}
-
 module.exports = {
     resumo,
     porDia,
@@ -100,6 +96,5 @@ module.exports = {
     maisVendidos,
     criar,
     listar,
-    buscarPorId,
-    cancelar
+    buscarPorId
 };
