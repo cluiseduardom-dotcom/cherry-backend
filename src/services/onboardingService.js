@@ -2,18 +2,27 @@ const bcrypt = require('bcrypt');
 const tokenService = require('./tokenService');
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
+const { ORIGEM_AQUISICAO_PADRAO } = require('../constants/origensAquisicao');
 
-async function criarTenant({ empresa_nome, cnpj, nome_admin, email_admin, senha_admin }) {
+async function criarTenant({
+    empresa_nome,
+    cnpj,
+    nome_admin,
+    email_admin,
+    senha_admin,
+    origem_aquisicao = ORIGEM_AQUISICAO_PADRAO,
+    parceiro_codigo = null
+}) {
     const client = await db.connect();
 
     try {
         await client.query('BEGIN');
 
         const empresaResult = await client.query(
-            `INSERT INTO empresas (nome, cnpj, status)
-             VALUES ($1, $2, 'ativa')
+            `INSERT INTO empresas (nome, cnpj, status, origem_aquisicao, parceiro_codigo)
+             VALUES ($1, $2, 'ativa', $3, $4)
              RETURNING id, nome, cnpj, status`,
-            [empresa_nome, cnpj || null]
+            [empresa_nome, cnpj || null, origem_aquisicao, parceiro_codigo]
         );
 
         const empresa = empresaResult.rows[0];

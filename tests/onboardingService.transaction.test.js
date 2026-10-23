@@ -61,6 +61,35 @@ describe('onboardingService.criarTenant transaction', () => {
         expect(client.release).toHaveBeenCalledTimes(1);
     });
 
+    test('stores the acquisition origin as direct by default and never returns it', async () => {
+        await criarTenant({
+            empresa_nome: 'Empresa de teste',
+            nome_admin: 'Admin teste',
+            email_admin: 'admin@teste.invalid',
+            senha_admin: 'senha-de-teste',
+        });
+
+        const [sql, params] = client.query.mock.calls.find(([s]) => s.includes('INSERT INTO empresas'));
+
+        expect(params).toEqual(['Empresa de teste', null, 'direta', null]);
+        expect(sql.split('RETURNING')[1]).not.toMatch(/origem_aquisicao|parceiro_codigo/);
+    });
+
+    test('stores the partner referral on the same insert as the company', async () => {
+        await criarTenant({
+            empresa_nome: 'Empresa de teste',
+            nome_admin: 'Admin teste',
+            email_admin: 'admin@teste.invalid',
+            senha_admin: 'senha-de-teste',
+            origem_aquisicao: 'indicacao_parceiro',
+            parceiro_codigo: 'FORN-01',
+        });
+
+        const [, params] = client.query.mock.calls.find(([s]) => s.includes('INSERT INTO empresas'));
+
+        expect(params).toEqual(['Empresa de teste', null, 'indicacao_parceiro', 'FORN-01']);
+    });
+
     test('rolls back and releases connection if creating defaults fails', async () => {
         client.query.mockImplementation(async (sql) => {
             if (sql === 'BEGIN') return { rows: [] };
