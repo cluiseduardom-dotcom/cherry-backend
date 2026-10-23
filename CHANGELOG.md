@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Módulos ativos no login, fatia 2 do ADR-007: `POST /auth/login` devolve `usuario.empresa.modulos` (códigos dos módulos ativos da empresa do próprio usuário, lidos do banco). Aditivo: nenhum campo existente muda; falha na consulta devolve lista vazia. O frontend usa a lista só para esconder menus; a fronteira de segurança continua sendo `exigirModulo` no backend.
 - Módulos habilitáveis por empresa, fatia 1 do ADR-007: migration `053` cria `empresa_modulos` (catálogo fechado `grade`, `fracionario`, `rastreio_unidade`, `fiscal`, `multi_pdv`, `servicos_agenda`; justificativa e responsável obrigatórios; um registro por empresa e módulo), com `src/constants/modulos.js`, `moduloRepository` e o middleware `exigirModulo(modulo)` (403 fail-closed, empresa sempre do JWT). Ainda não é aplicado a nenhuma rota e não há rota de escrita: ativação virá nas próximas fatias.
 - Identidade visual por empresa (cherry-frontend#63): migration `049` adiciona `empresas.tema_visual` (`vertumno` padrão, `cherry`; `CHECK` fechado) e `POST /auth/login` passa a devolver `usuario.empresa = { id, tema }`, lido do banco para a empresa do próprio usuário. Aditivo: o JWT e os campos existentes não mudam; tema ausente/inválido vira `vertumno`.
 - Jest + Supertest test suite (validations, middlewares, services, and routes), with the database mocked at the repository boundary so tests run without a live DB or secrets. `npm test` / `npm run test:coverage`, wired into CI.

@@ -1,5 +1,6 @@
 jest.mock('../../src/repositories/usuarioRepository');
 jest.mock('../../src/services/cargosService');
+jest.mock('../../src/repositories/moduloRepository');
 jest.mock('bcrypt');
 jest.mock('jsonwebtoken');
 
@@ -7,11 +8,13 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const usuarioRepository = require('../../src/repositories/usuarioRepository');
 const cargosService = require('../../src/services/cargosService');
+const moduloRepository = require('../../src/repositories/moduloRepository');
 const authService = require('../../src/services/authService');
 
 beforeEach(() => {
   jest.clearAllMocks();
   cargosService.garantirCargoAtivo.mockResolvedValue();
+  moduloRepository.listarAtivos.mockResolvedValue([]);
 });
 
 describe('authService.login', () => {
@@ -55,7 +58,7 @@ describe('authService.login', () => {
       token: 'signed-token',
       usuario: {
         id: 1, nome: 'Ana', email: 'a@x.com', papel: 'admin', empresa_id: undefined,
-        empresa: { id: undefined, tema: 'vertumno' }
+        empresa: { id: undefined, tema: 'vertumno', modulos: [] }
       }
     });
   });
@@ -124,7 +127,7 @@ describe('authService.login — identidade visual da empresa', () => {
 
     const { usuario } = await authService.login('a@x.com', 'senha123');
 
-    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry' });
+    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry', modulos: [] });
   });
 
   test.each([undefined, null, '', 'desconhecido', 'CHERRY', '__proto__', 42])(
@@ -134,7 +137,7 @@ describe('authService.login — identidade visual da empresa', () => {
       const { token, usuario } = await authService.login('a@x.com', 'senha123');
 
       expect(token).toBe('signed-token');
-      expect(usuario.empresa).toEqual({ id: 7, tema: 'vertumno' });
+      expect(usuario.empresa).toEqual({ id: 7, tema: 'vertumno', modulos: [] });
     }
   );
 
@@ -168,8 +171,8 @@ describe('authService.login — identidade visual da empresa', () => {
     const a = await authService.login('a@x.com', 'senha123');
     const b = await authService.login('b@x.com', 'senha123');
 
-    expect(a.usuario.empresa).toEqual({ id: 1, tema: 'cherry' });
-    expect(b.usuario.empresa).toEqual({ id: 2, tema: 'vertumno' });
+    expect(a.usuario.empresa).toEqual({ id: 1, tema: 'cherry', modulos: [] });
+    expect(b.usuario.empresa).toEqual({ id: 2, tema: 'vertumno', modulos: [] });
   });
 });
 
@@ -217,5 +220,59 @@ describe('authService.register', () => {
     expect(result).toEqual({
       usuario: { id: 5, nome: 'Ana', email: 'a@x.com', papel: 'vendedor' }
     });
+  });
+});
+
+describe('authService.login — módulos ativos da empresa', () => {
+  const usuarioBase = { id: 1, nome: 'Ana', email: 'a@x.com', senha: 'hash', papel: 'admin', empresa_id: 7, token_version: 0, ativo: true, empresa_status: 'ativa', empresa_tema: 'vertumno' };
+
+  beforeEach(() => {
+    bcrypt.compare.mockResolvedValue(true);
+    jwt.sign.mockReturnValue('signed-token');
+  });
+
+  test('devolve os códigos dos módulos ativos da empresa do próprio usuário', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue(usuarioBase);
+    moduloRepository.listarAtivos.mockResolvedValue(['fiscal', 'grade']);
+
+    const { usuario } = await authService.login('a@x.com', 'senha123');
+
+    expect(moduloRepository.listarAtivos).toHaveBeenCalledWith(7);
+    expect(usuario.empresa.modulos).toEqual(['fiscal', 'grade']);
+  });
+
+  test('empresa sem módulos recebe lista vazia', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue(usuarioBase);
+
+    const { usuario } = await authService.login('a@x.com', 'senha123');
+
+    expect(usuario.empresa.modulos).toEqual([]);
+  });
+
+  test('falha na consulta não derruba o login: lista vazia, nunca libera módulo', async () => {
+    const erro = jest.spyOn(console, 'error').mockImplementation(() => {});
+    usuarioRepository.buscarPorEmail.mockResolvedValue(usuarioBase);
+    moduloRepository.listarAtivos.mockRejectedValue(new Error('banco indisponível'));
+
+    const { token, usuario } = await authService.login('a@x.com', 'senha123');
+
+    expect(token).toBe('signed-token');
+    expect(usuario.empresa.modulos).toEqual([]);
+    erro.mockRestore();
+  });
+
+  test('login recusado não consulta módulos; o JWT não carrega módulos', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase, empresa_status: 'inativa' });
+    await expect(authService.login('a@x.com', 'senha123')).rejects.toMatchObject({ statusCode: 401 });
+    expect(moduloRepository.listarAtivos).not.toHaveBeenCalled();
+
+    usuarioRepository.buscarPorEmail.mockResolvedValue(usuarioBase);
+    moduloRepository.listarAtivos.mockResolvedValue(['grade']);
+    await authService.login('a@x.com', 'senha123');
+    expect(jwt.sign).toHaveBeenCalledWith(
+      { id: 1, role: 'admin', empresa_id: 7, tv: 0 },
+      process.env.JWT_SECRET,
+      { expiresIn: '8h', algorithm: 'HS256' }
+    );
   });
 });
