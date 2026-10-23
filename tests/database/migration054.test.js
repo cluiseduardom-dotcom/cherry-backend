@@ -3,16 +3,16 @@ const path = require('node:path');
 const { listarMigrations } = require('../../src/database/migrate');
 const { ORIGENS_AQUISICAO, PARCEIRO_CODIGO_REGEX } = require('../../src/constants/origensAquisicao');
 
-const ARQUIVO = path.join(__dirname, '../../src/database/migrations/052_empresas_origem_aquisicao.sql');
+const ARQUIVO = path.join(__dirname, '../../src/database/migrations/054_empresas_origem_aquisicao.sql');
 const SQL = fs.readFileSync(ARQUIVO, 'utf8');
 const EXECUTAVEL = SQL.replace(/--.*$/gm, '');
 
-describe('migration 052 — arquivo', () => {
-    test('está na sequência do runner, depois da 051', async () => {
+describe('migration 054 — arquivo', () => {
+    test('está no runner, depois da 053', async () => {
         const versoes = (await listarMigrations()).map((m) => m.versao);
 
-        expect(versoes).toContain(52);
-        expect(versoes.indexOf(52)).toBe(versoes.indexOf(51) + 1);
+        expect(versoes).toContain(54);
+        expect(versoes.indexOf(54)).toBeGreaterThan(versoes.indexOf(53));
     });
 
     test('é aditiva: sem DROP/DELETE/TRUNCATE/INSERT/UPDATE e sem tocar em schema_migrations', () => {
