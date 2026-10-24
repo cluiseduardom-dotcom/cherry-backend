@@ -1,11 +1,12 @@
 const service = require('../services/transferenciasEstoqueService');
 const conferencias = require('../services/conferenciasEstoqueService');
+const locais = require('../services/locaisEstoqueService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const {
     criarTransferenciaSchema, aceitarSchema, recusarOuCancelarSchema, criarLocalSchema, listarTransferenciasSchema
 } = require('../validations/transferenciasEstoqueValidation');
-const { criarConferenciaSchema, acertoQuerySchema } = require('../validations/conferenciasEstoqueValidation');
+const { criarConferenciaSchema, acertoQuerySchema, saldosQuerySchema } = require('../validations/conferenciasEstoqueValidation');
 
 function parseId(valor) {
     const id = Number(valor);
@@ -73,7 +74,23 @@ const criarConferencia = rota(async (req, res) => {
 const listarConferencias = rota(async (req, res) =>
     response.success(res, await conferencias.listarConferencias(parseId(req.params.id), paginacao(req.query), req.usuario)));
 
+const listarLocais = rota(async (req, res) => response.success(res, await locais.listar(req.usuario)));
+
+const saldosDoLocal = rota(async (req, res) => {
+    const id = parseId(req.params.id);
+    const filtros = parseCorpo(saldosQuerySchema, { busca: req.query.busca });
+    // Saldos alimentam o PDV (lista inteira do local): padrão 500, teto 1000 por página.
+    let page = parseInt(req.query.page, 10);
+    let pageSize = parseInt(req.query.pageSize, 10);
+    if (!Number.isInteger(page) || page < 1) page = 1;
+    if (!Number.isInteger(pageSize) || pageSize < 1) pageSize = 500;
+    pageSize = Math.min(pageSize, 1000);
+    return response.success(res, await locais.saldos(id, { ...filtros, page, pageSize }, req.usuario));
+});
+
 module.exports = {
+    listarLocais,
+    saldosDoLocal,
     acerto,
     criarConferencia,
     listarConferencias,

@@ -1,15 +1,13 @@
 const AppError = require('../errors/AppError');
 const repo = require('../repositories/conferenciasEstoqueRepository');
 
-const ehEquipe = (usuario) => usuario.role === 'admin' || usuario.role === 'estoquista';
+const { ehEquipe, podeVerLocal } = require('./shared/locaisEstoquePermissao');
 
-// Equipe vê o acerto de qualquer local; os demais, só o da PRÓPRIA maleta. Fora disso, 404
-// (não confirma que o local existe).
+// Fora da regra de visibilidade, 404 (não confirma que o local existe).
 async function localVisivel(local_id, usuario) {
     const local = await repo.obterLocal(usuario.empresa_id, local_id);
-    const dono = local?.tipo === 'maleta' && local.usuario_id === usuario.id;
 
-    if (!local || !(ehEquipe(usuario) || dono)) throw new AppError('Local de estoque não encontrado', 404);
+    if (!podeVerLocal(local, usuario)) throw new AppError('Local de estoque não encontrado', 404);
 
     return local;
 }
