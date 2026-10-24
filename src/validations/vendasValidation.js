@@ -31,7 +31,9 @@ const criarVendaSchema = z.object({
         z.object({
             produto_id: z.coerce.number({ error: 'Produto inválido' }).int().positive('Produto inválido'),
             quantidade: z.coerce.number({ error: 'Quantidade deve ser maior que zero' }).int().positive('Quantidade deve ser maior que zero').max(MAX_QUANTIDADE_ITEM, `Quantidade deve ser no máximo ${MAX_QUANTIDADE_ITEM}`),
-            kit_id: z.coerce.number({ error: 'kit_id inválido' }).int().positive('kit_id inválido').nullish()
+            kit_id: z.coerce.number({ error: 'kit_id inválido' }).int().positive('kit_id inválido').nullish(),
+            // Opcional: de qual local de estoque sai o item. Sem ele: Maleta do vendedor (se tiver) ou Central.
+            local_id: z.coerce.number({ error: 'Local inválido' }).int().positive('Local inválido').optional()
         }).strict()
     ).min(1, 'A venda deve ter ao menos um item').max(MAX_ITENS_POR_DOCUMENTO, `A venda deve ter no máximo ${MAX_ITENS_POR_DOCUMENTO} itens`)
 }).strict().superRefine((data, ctx) => {

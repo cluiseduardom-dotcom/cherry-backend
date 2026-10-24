@@ -54,3 +54,21 @@ Status inválidos de transição (já resolvida) = 409. Aceites/cancelamentos si
 
 ## Trilha
 `transferencias_eventos` (criar/aceitar/recusar/cancelar, quem, motivo, quando) é insert-only (o banco recusa UPDATE/DELETE).
+
+# Fatia 3 — venda e cancelamento por local (migration `060`)
+
+## Venda (`POST /vendas`)
+Cada item aceita `local_id` opcional (ex.: `{ produto_id, quantidade, local_id }`).
+- **Sem `local_id`**: sai da Maleta **ativa** do próprio vendedor (usuário do JWT), se existir; senão do Central (comportamento anterior).
+- **Com `local_id`**: só o **Central** ou a **própria** Maleta. Consignado, Maleta de outra pessoa, Em trânsito ou Maleta inativa = **403**. Local inexistente ou de outra empresa = **404**.
+- **Saldo insuficiente no local** = **409** (`Estoque insuficiente em "<local>" ...`); não há queda automática para o Central, o vendedor escolhe outro local. Nada é gravado (transação única). No Central a mensagem segue `Estoque insuficiente para essa venda`.
+- Itens de uma mesma venda podem sair de locais diferentes. A resposta traz `local_id` em cada item. Preço e custo continuam sendo apurados no servidor; o vendedor nunca recebe custo.
+
+## Cancelamento (`PATCH /vendas/:id/cancelar`)
+Cada item volta ao local de onde saiu (`itens_venda.local_id`), mesmo que o estoque tenha se movido depois. Vale a regra de sempre: só vendas `finalizada` cancelam (a 2ª tentativa dá 409).
+
+## Banco
+- `itens_venda.local_id NOT NULL` + FK composta `(local_id, empresa_id)` → `locais_estoque`.
+- Backfill: itens existentes → Central da empresa.
+- Gatilho `BEFORE INSERT`: se `local_id` vier nulo, usa o Central (criando se faltar). Mantém compatível o código antigo durante o deploy, fixtures e importações; o código novo sempre informa o local.
+- Reversão manual no rodapé da migration (não executada pelo runner).

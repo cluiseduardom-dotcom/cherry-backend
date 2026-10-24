@@ -44,7 +44,7 @@ function makeFakeClient() {
 
     if (sql.includes('INSERT INTO itens_venda')) {
       const itens = [];
-      for (let i = 0; i < params.length; i += 7) {
+      for (let i = 0; i < params.length; i += 8) {
         itens.push({ id: itens.length + 1, venda_id: params[i], produto_id: params[i + 1], quantidade: params[i + 2], preco_unitario: params[i + 3], custo_unitario: params[i + 4], kit_id: params[i + 6] });
       }
       return Promise.resolve({ rows: itens });

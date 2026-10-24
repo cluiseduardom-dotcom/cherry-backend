@@ -53,7 +53,7 @@ function makeFakeClient({ produtos = {}, clienteExiste = true } = {}) {
 
     if (sql.includes('INSERT INTO itens_venda')) {
       const itens = [];
-      for (let i = 0; i < params.length; i += 7) {
+      for (let i = 0; i < params.length; i += 8) {
         itens.push({
           id: itens.length + 1, venda_id: params[i], produto_id: params[i + 1], quantidade: params[i + 2],
           preco_unitario: params[i + 3], custo_unitario: params[i + 4], kit_id: params[i + 6]
@@ -390,7 +390,7 @@ describe('cancelar', () => {
   function fakeClientDeCancelamento({ itens = [] } = {}) {
     const client = { query: jest.fn() };
     client.query.mockImplementation((sql, params = []) => {
-      if (sql.includes('SELECT produto_id, quantidade FROM itens_venda')) {
+      if (sql.includes('SELECT produto_id, quantidade, local_id FROM itens_venda')) {
         return Promise.resolve({ rows: itens });
       }
       if (sql.includes("UPDATE vendas SET status = 'cancelada'")) {
@@ -402,7 +402,7 @@ describe('cancelar', () => {
   }
 
   test('wires executarComLock with vendas/id, reverses stock for every item and marks the venda cancelada', async () => {
-    const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 3 }, { produto_id: 2, quantidade: 1 }] });
+    const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 3, local_id: 7 }, { produto_id: 2, quantidade: 1, local_id: 7 }] });
     executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
       callback({ id: 1, status: 'finalizada' }, client)
     );
@@ -413,11 +413,11 @@ describe('cancelar', () => {
     expect(executarComLock).toHaveBeenCalledWith('vendas', { coluna: 'id', valor: 1 }, 5, undefined, expect.any(Function));
     expect(resultado.status).toBe('cancelada');
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
-      { produto_id: 1, tipo: 'entrada', quantidade: 3, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5 },
+      { produto_id: 1, tipo: 'entrada', quantidade: 3, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5, local_id: 7 },
       client
     );
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
-      { produto_id: 2, tipo: 'entrada', quantidade: 1, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5 },
+      { produto_id: 2, tipo: 'entrada', quantidade: 1, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5, local_id: 7 },
       client
     );
   });
@@ -426,7 +426,7 @@ describe('cancelar', () => {
   // seleciona toda linha de itens_venda da venda (produto_id, quantidade),
   // kit ou avulso, e reverte cada uma normalmente pelo fluxo existente.
   test('reverses stock for every component of a kit on cancellation, same as an avulso item', async () => {
-    const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 2 }, { produto_id: 2, quantidade: 1 }] });
+    const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 2, local_id: 7 }, { produto_id: 2, quantidade: 1, local_id: 7 }] });
     executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
       callback({ id: 1, status: 'finalizada' }, client)
     );
@@ -437,11 +437,11 @@ describe('cancelar', () => {
     expect(resultado.status).toBe('cancelada');
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledTimes(2);
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
-      { produto_id: 1, tipo: 'entrada', quantidade: 2, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5 },
+      { produto_id: 1, tipo: 'entrada', quantidade: 2, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5, local_id: 7 },
       client
     );
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
-      { produto_id: 2, tipo: 'entrada', quantidade: 1, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5 },
+      { produto_id: 2, tipo: 'entrada', quantidade: 1, motivo: 'cancelamento_venda', usuario_id: 9, empresa_id: 5, local_id: 7 },
       client
     );
   });
@@ -481,7 +481,7 @@ describe('cancelar', () => {
   });
 
   test('blocks cancellation (409) without touching stock or venda status when the linked conta a receber is already recebida', async () => {
-    const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 3 }] });
+    const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 3, local_id: 7 }] });
     executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
       callback({ id: 1, status: 'finalizada' }, client)
     );
@@ -516,7 +516,7 @@ describe('cancelar', () => {
     });
 
     test('grava o registro com quantidade devolvida, valor, faixa, dias, motivo e login; filtra UPDATE e itens por empresa_id', async () => {
-      const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 3 }, { produto_id: 2, quantidade: 1 }] });
+      const client = fakeClientDeCancelamento({ itens: [{ produto_id: 1, quantidade: 3, local_id: 7 }, { produto_id: 2, quantidade: 1, local_id: 7 }] });
       comVenda(vendaFinalizada, client);
       estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
 
