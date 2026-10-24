@@ -3,6 +3,7 @@ jest.mock('../../src/repositories/estoqueRepository');
 jest.mock('../../src/repositories/precosRepository');
 jest.mock('../../src/repositories/contasReceberRepository');
 jest.mock('../../src/repositories/taxasPlataformaRepository');
+jest.mock('../../src/repositories/comissoesRepository');
 jest.mock('../../src/repositories/pagamentosVendaRepository');
 jest.mock('../../src/repositories/parcelasPagamentoRepository');
 jest.mock('../../src/repositories/cancelamentosRepository');
