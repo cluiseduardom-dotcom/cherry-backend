@@ -413,3 +413,27 @@ describe('histórico e visões', () => {
         expect(JSON.stringify(res.body)).not.toMatch(/comiss/i);
     });
 });
+
+describe('usuário bloqueado nas telas de comissão', () => {
+    test('sai de percentuais; na equipe só fica se tiver comissão, marcado como inativo', async () => {
+        await criarUsuario(A, 'vendedor', 'bloqsem');
+        await criarUsuario(A, 'vendedor', 'bloqcom');
+
+        const venda = await vender(A, 'bloqcom', { pagamentos: [{ forma_pagamento: 'pix', valor: 100 }] });
+        expect(venda.status).toBe(201);
+
+        const antes = (await request(app).get('/comissoes/percentuais').set(auth(A, 'admin'))).body.data.usuarios.map((u) => u.usuario_id);
+        expect(antes).toEqual(expect.arrayContaining([A.u.bloqsem, A.u.bloqcom]));
+
+        await db.query('UPDATE usuarios SET ativo = false WHERE id = ANY($1)', [[A.u.bloqsem, A.u.bloqcom]]);
+
+        const percentuais = (await request(app).get('/comissoes/percentuais').set(auth(A, 'admin'))).body.data.usuarios.map((u) => u.usuario_id);
+        expect(percentuais).not.toContain(A.u.bloqsem);
+        expect(percentuais).not.toContain(A.u.bloqcom);
+
+        const equipe = (await request(app).get('/comissoes/equipe').set(auth(A, 'gerente'))).body.data.items;
+        expect(equipe.find((i) => i.usuario_id === A.u.bloqsem)).toBeUndefined();
+        expect(equipe.find((i) => i.usuario_id === A.u.bloqcom)).toMatchObject({ ativo: false, total_comissao: '10.00' });
+        expect(equipe.find((i) => i.usuario_id === A.u.vendedor)).toMatchObject({ ativo: true });
+    });
+});
