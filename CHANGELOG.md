@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `POST /vendas` sob concorrência: o preço vigente e as parcelas passam a ser lidos na conexão da própria transação (antes pediam uma 2ª conexão ao pool; com 10 ou mais vendas simultâneas o pool esgotava e as requisições travavam) e os produtos da venda são travados de uma vez, em ordem de id, antes de baixar o estoque (vendas com os mesmos produtos em ordem inversa davam deadlock). Sem mudança de contrato.
 - `npm ci` was failing in CI (`Missing: @emnapi/core@1.11.3 from lock file`) on every push since the 2.4.0 version bump — a stale `package-lock.json` whose optional platform-dependency tree (via `jest` → `jest-resolve` → `unrs-resolver`) wasn't fully resolved for the npm version used by `actions/setup-node`. Regenerated the lockfile from scratch.
 
 ## [2.3.0] - 2026-07-20

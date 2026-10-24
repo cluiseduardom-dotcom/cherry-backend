@@ -293,16 +293,14 @@ describe('cancelamento devolve ao local original', () => {
 });
 
 describe('concorrência', () => {
-    // 4 simultâneas (e não 10): o pool do pg tem 10 conexões e a venda usa uma 2ª conexão dentro da transação
-    // (pré-existente), então 10 vendas ao mesmo tempo esgotam o pool por limitação de infraestrutura do teste.
-    test('4 vendas simultâneas de 1 unidade com 2 na Maleta: exatamente 2 passam, saldo nunca negativo', async () => {
-        const produtoId = await criarProduto(A, { [A.centralId]: 20, [A.maleta.comMaleta]: 2 });
+    test('10 vendas simultâneas de 1 unidade com 4 na Maleta: exatamente 4 passam, saldo nunca negativo', async () => {
+        const produtoId = await criarProduto(A, { [A.centralId]: 20, [A.maleta.comMaleta]: 4 });
 
-        const resultados = await Promise.all(Array.from({ length: 4 }, () => vender(A, 'comMaleta', [{ produto_id: produtoId, quantidade: 1 }])));
+        const resultados = await Promise.all(Array.from({ length: 10 }, () => vender(A, 'comMaleta', [{ produto_id: produtoId, quantidade: 1 }])));
         const status = resultados.map((r) => r.status);
 
-        expect(status.filter((s) => s === 201)).toHaveLength(2);
-        expect(status.filter((s) => s === 409)).toHaveLength(2);
+        expect(status.filter((s) => s === 201)).toHaveLength(4);
+        expect(status.filter((s) => s === 409)).toHaveLength(6);
         expect(await saldo(produtoId, A.maleta.comMaleta)).toBe(0);
         expect(await saldo(produtoId, A.centralId)).toBe(20);
         await conferirInvariante(produtoId);

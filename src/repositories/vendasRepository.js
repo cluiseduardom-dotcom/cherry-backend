@@ -231,6 +231,15 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
         );
         const venda = vendaResult.rows[0];
 
+        // Trava os produtos da venda de uma vez, em ordem de id. Duas vendas com os mesmos produtos em
+        // ordem diferente travavam uma à outra (deadlock) ao baixar item por item na ordem recebida.
+        // Com todos travados nesta ordem global, quem chega depois apenas espera. Existência e
+        // ativo continuam sendo validados item a item abaixo.
+        await client.query(
+            'SELECT id FROM produtos WHERE empresa_id = $1 AND id = ANY($2::int[]) ORDER BY id FOR UPDATE',
+            [empresa_id, itens.map((item) => item.produto_id)]
+        );
+
         let subtotal = 0;
         const itensProcessados = [];
         const resolverLocal = criarResolvedorDeLocal(client, { empresa_id, usuario_id });
@@ -244,7 +253,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             if (!produtoRows.length) throw new AppError('Produto não encontrado', 404);
             if (!produtoRows[0].ativo) throw new AppError('Produto inativo não pode ser vendido', 400);
 
-            const precoVigente = await precosRepository.buscarPrecoVigente(item.produto_id, canal_id, empresa_id);
+            const precoVigente = await precosRepository.buscarPrecoVigente(item.produto_id, canal_id, empresa_id, client);
             if (!precoVigente) throw new AppError('Produto sem preço definido para o canal informado', 409);
 
             const preco_unitario = Number(precoVigente.preco_venda);
@@ -460,7 +469,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
         for (const pagamento of pagamentosCriados) {
             pagamentosComParcelas.push({
                 ...pagamento,
-                parcelas: await parcelasPagamentoRepository.listarPorPagamento(pagamento.id, empresa_id)
+                parcelas: await parcelasPagamentoRepository.listarPorPagamento(pagamento.id, empresa_id, client)
             });
         }
 
