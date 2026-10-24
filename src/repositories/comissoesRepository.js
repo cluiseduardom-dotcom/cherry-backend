@@ -401,7 +401,7 @@ async function resumoEquipe({ empresa_id, data_inicio, data_fim }) {
     const idxPapeis = valores.length;
 
     const { rows } = await db.query(
-        `SELECT u.id AS usuario_id, u.nome, u.papel AS cargo,
+        `SELECT u.id AS usuario_id, u.nome, u.papel AS cargo, u.ativo,
                 COALESCE(
                     (SELECT cp.percentual FROM comissao_percentuais cp
                       WHERE cp.empresa_id = u.empresa_id AND cp.usuario_id = u.id),
@@ -427,7 +427,8 @@ async function resumoEquipe({ empresa_id, data_inicio, data_fim }) {
                )
          WHERE u.empresa_id = $1
            AND NOT (u.papel = ANY($${idxPapeis}))
-         GROUP BY u.id, u.nome, u.papel, u.empresa_id
+         GROUP BY u.id, u.nome, u.papel, u.ativo, u.empresa_id
+         HAVING u.ativo = true OR COUNT(c.id) > 0
          ORDER BY total_comissao DESC, u.nome ASC`,
         valores
     );
@@ -537,6 +538,7 @@ async function listarPercentuais(empresa_id) {
          LEFT JOIN comissao_percentuais cp
                 ON cp.empresa_id = u.empresa_id AND cp.usuario_id = u.id
          WHERE u.empresa_id = $1
+           AND u.ativo = true
            AND NOT (u.papel = ANY($2))
          ORDER BY u.nome ASC`,
         [empresa_id, PAPEIS_SEM_VENDA]

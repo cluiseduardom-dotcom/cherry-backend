@@ -80,6 +80,8 @@ Todos os parâmetros são opcionais. `pageSize` máximo 100.
 
 ### `GET /comissoes/equipe?data_inicio=...&data_fim=...`
 
+Cada linha traz `ativo`. Usuário **bloqueado** só aparece se tiver comissão no período (o histórico não some); sem comissão, sai da lista.
+
 Sem paginação. Ordenado por `total_comissao` decrescente. Inclui quem não vendeu no período. Não inclui estoquista/faturista.
 
 ```json
@@ -172,6 +174,8 @@ Corpo opcional: `{ "observacao": "Recebi na loja" }` (até 300 caracteres; campo
 - `delta` negativo em `reducao`/`estorno`. Ordem cronológica. Usar texto legível por `tipo` + `origem`, não mostrar os códigos.
 
 ### `GET /comissoes/percentuais` (admin)
+
+Lista só usuários **ativos** (bloquear um vendedor o tira daqui).
 
 ```json
 {
