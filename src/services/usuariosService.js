@@ -90,6 +90,18 @@ async function listar(ator) {
     });
 }
 
+// Cargos que o ator pode atribuir ao criar um usuário: só os ATIVOS na empresa, nunca Admin
+// (cargo admin ou com `administrador`) e, para quem não é Admin, só de nível estritamente menor
+// que o seu. É a mesma regra de `criar`: a tela lista isto em vez de adivinhar e levar 409/403.
+async function listarCargosAtribuiveis(ator) {
+    const cargos = await cargosService.listar(ator.empresa_id);
+
+    return cargos
+        .filter((cargo) => cargo.ativo && cargo.cargo !== PERFIL_ADMIN && !cargo.administrador)
+        .filter((cargo) => ator.role === PERFIL_ADMIN || (cargo.em_escada ? cargo.nivel : 0) < (ator.nivel ?? 0))
+        .map(({ cargo, rotulo, nivel, em_escada }) => ({ cargo, rotulo, nivel: em_escada ? nivel : null, em_escada }));
+}
+
 async function criar({ nome, email, senha, papel }, ator) {
     const empresaId = ator.empresa_id;
 
@@ -159,6 +171,7 @@ module.exports = {
     avaliarAlvo,
     permissoesDoUsuario,
     listar,
+    listarCargosAtribuiveis,
     criar,
     definirBloqueio,
     listarEventos

@@ -130,3 +130,44 @@ describe('usuariosService.listar', () => {
         expect(JSON.stringify(r)).not.toMatch(/senha|hash/);
     });
 });
+
+describe('usuariosService.listarCargosAtribuiveis', () => {
+    const cargo = (nome, nivel, extra = {}) => ({ cargo: nome, rotulo: nome, nivel, ativo: true, administrador: false, em_escada: true, ...extra });
+    const catalogo = [
+        cargo('admin', 90, { administrador: true }),
+        cargo('diretor', 80),
+        cargo('gerente', 70),
+        cargo('supervisor', 50, { ativo: false }),
+        cargo('vendedor', 30),
+        cargo('estoquista', 0, { em_escada: false })
+    ];
+
+    beforeEach(() => cargosService.listar.mockResolvedValue(catalogo));
+
+    test('gerente: só cargos ativos de nível menor; sem Admin, sem desligados, sem igual/acima', async () => {
+        const r = await service.listarCargosAtribuiveis(gerente);
+
+        expect(r.map((c) => c.cargo)).toEqual(['vendedor', 'estoquista']);
+        expect(cargosService.listar).toHaveBeenCalledWith(7);
+    });
+
+    test('cargo fora da escada não traz nível', async () => {
+        const r = await service.listarCargosAtribuiveis(gerente);
+
+        expect(r.find((c) => c.cargo === 'estoquista')).toMatchObject({ nivel: null, em_escada: false });
+    });
+
+    test('Admin: todos os ativos, menos Admin', async () => {
+        const r = await service.listarCargosAtribuiveis(admin);
+
+        expect(r.map((c) => c.cargo)).toEqual(['diretor', 'gerente', 'vendedor', 'estoquista']);
+    });
+
+    test('cargo com a capacidade administrador nunca é oferecido', async () => {
+        cargosService.listar.mockResolvedValue([cargo('diretor', 80, { administrador: true }), cargo('vendedor', 30)]);
+
+        const r = await service.listarCargosAtribuiveis(admin);
+
+        expect(r.map((c) => c.cargo)).toEqual(['vendedor']);
+    });
+});

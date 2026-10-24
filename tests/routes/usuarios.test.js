@@ -23,6 +23,7 @@ const call = (metodo, url, corpo) => request(app)[metodo](url).set('Authorizatio
 
 const rotas = [
     ['get', '/usuarios'],
+    ['get', '/usuarios/cargos'],
     ['post', '/usuarios'],
     ['get', '/usuarios/eventos'],
     ['patch', '/usuarios/5/bloqueio']

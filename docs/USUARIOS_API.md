@@ -26,6 +26,19 @@ Lista os usuários da empresa. Cada item:
 Use `pode_gerenciar` para habilitar/ocultar o botão de bloquear; `motivo_bloqueio_gestao`
 traz a explicação quando for `false`.
 
+## GET /usuarios/cargos — cargos que o ator pode atribuir
+
+Use para montar o seletor de cargo do formulário de criação. Devolve só o que `POST /usuarios`
+aceitaria: cargos **ativos** na empresa, nunca Admin e, para quem não é Admin, só de nível
+estritamente menor que o do ator. Não use um catálogo fixo no cliente.
+
+```json
+[{ "cargo": "vendedor", "rotulo": "Vendedor", "nivel": 30, "em_escada": true },
+ { "cargo": "estoquista", "rotulo": "Estoquista", "nivel": null, "em_escada": false }]
+```
+
+Lista vazia = nenhum cargo habilitado abaixo do ator (o Admin liga cargos em `PUT /cargos/:cargo`).
+
 ## POST /usuarios — criar
 
 Corpo (campos extras são recusados com 400): `{ "nome", "email", "senha" (6–128), "papel" }`.

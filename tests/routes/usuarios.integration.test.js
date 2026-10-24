@@ -190,6 +190,33 @@ describe('autorização', () => {
     });
 });
 
+describe('cargos atribuíveis', () => {
+    test('Admin vê só cargos ligados e nunca Admin; analista desligado não aparece', async () => {
+        const res = await como(A, A.adminId, 'get', '/usuarios/cargos');
+
+        expect(res.status).toBe(200);
+        const cargos = res.body.data.map((c) => c.cargo);
+        expect(cargos).toEqual(expect.arrayContaining(['diretor', 'gerente', 'vendedor', 'estoquista']));
+        expect(cargos).not.toContain('admin');
+        expect(cargos).not.toContain('analista');
+    });
+
+    test('Gerente só vê cargos de nível menor que o seu (e só da própria empresa)', async () => {
+        const res = await como(A, A.gerenteId, 'get', '/usuarios/cargos');
+
+        expect(res.status).toBe(200);
+        const cargos = res.body.data.map((c) => c.cargo);
+        expect(cargos).toContain('vendedor');
+        expect(cargos).not.toContain('gerente');
+        expect(cargos).not.toContain('diretor');
+        expect(cargos).not.toContain('admin');
+    });
+
+    test('Vendedor recebe 403', async () => {
+        expect((await como(A, A.vendedorId, 'get', '/usuarios/cargos')).status).toBe(403);
+    });
+});
+
 describe('criar', () => {
     test('Gerente cria Vendedor; fica na empresa do JWT, com hash e evento de auditoria', async () => {
         const corpo = novo();

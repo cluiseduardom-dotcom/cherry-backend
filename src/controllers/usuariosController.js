@@ -24,6 +24,16 @@ async function listar(req, res, next) {
     }
 }
 
+async function cargosAtribuiveis(req, res, next) {
+    try {
+        const resultado = await usuariosService.listarCargosAtribuiveis(req.usuario);
+
+        return response.success(res, resultado);
+    } catch (error) {
+        next(error);
+    }
+}
+
 async function criar(req, res, next) {
     try {
         const parsed = criarUsuarioSchema.safeParse(req.body);
@@ -72,4 +82,4 @@ async function eventos(req, res, next) {
     }
 }
 
-module.exports = { listar, criar, bloquear, eventos };
+module.exports = { listar, cargosAtribuiveis, criar, bloquear, eventos };
