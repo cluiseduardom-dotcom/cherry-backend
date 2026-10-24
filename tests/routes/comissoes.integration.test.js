@@ -111,6 +111,55 @@ describe('migration 054', () => {
     });
 });
 
+describe('migration 056: blindagem das tabelas de comissão', () => {
+    test('o histórico é imutável no banco (UPDATE e DELETE recusados)', async () => {
+        const venda = await vender(A, 'vendedor', { pagamentos: [{ forma_pagamento: 'pix', valor: 100 }] });
+        const comissao = await comissaoDaVenda(venda.body.data.id);
+        const [evento] = await eventosDaComissao(comissao.id);
+
+        await expect(db.query(`UPDATE comissoes_eventos SET delta = 999 WHERE id = $1`, [evento.id]))
+            .rejects.toMatchObject({ code: '23001' });
+        await expect(db.query('DELETE FROM comissoes_eventos WHERE id = $1', [evento.id]))
+            .rejects.toMatchObject({ code: '23001' });
+    });
+
+    test('evento de comissão que aponta para outra empresa é recusado (FK composta)', async () => {
+        const venda = await vender(A, 'vendedor', { pagamentos: [{ forma_pagamento: 'pix', valor: 100 }] });
+        const comissao = await comissaoDaVenda(venda.body.data.id);
+
+        const evento = (empresaId, executor = null) => db.query(
+            `INSERT INTO comissoes_eventos (empresa_id, comissao_id, venda_id, tipo, origem, executado_por)
+             VALUES ($1, $2, $3, 'liberacao', 'pagamento', $4)`,
+            [empresaId, comissao.id, comissao.venda_id, executor]
+        );
+
+        await expect(evento(B.empresaId)).rejects.toMatchObject({ code: '23503' });
+        await expect(evento(A.empresaId, B.u.gerente)).rejects.toMatchObject({ code: '23503' });
+    });
+
+    test('comissão e repasse com venda, vendedor ou confirmador de outra empresa são recusados', async () => {
+        const venda = await vender(A, 'vendedor', { pagamentos: [{ forma_pagamento: 'dinheiro', valor: 100 }] });
+        const [repasse] = await repassesDaVenda(venda.body.data.id);
+
+        // Venda do admin (sem percentual próprio): ainda não tem comissão, então o único erro possível é a FK.
+        const semComissao = await vender(A, 'admin', { pagamentos: [{ forma_pagamento: 'pix', valor: 100 }] });
+
+        await expect(db.query(
+            `INSERT INTO comissoes_venda (venda_id, empresa_id, usuario_id, percentual, base_calculo, valor)
+             VALUES ($1, $2, $3, 10, 100, 10)`,
+            [semComissao.body.data.id, B.empresaId, B.u.vendedor]
+        )).rejects.toMatchObject({ code: '23503' });
+
+        await expect(db.query('UPDATE comissao_repasses SET vendedor_id = $2 WHERE id = $1', [repasse.id, B.u.vendedor]))
+            .rejects.toMatchObject({ code: '23503' });
+
+        await expect(db.query(
+            `UPDATE comissao_repasses SET status = 'confirmado', confirmado_em = NOW(), confirmado_por = $2 WHERE id = $1`,
+            [repasse.id, B.u.gerente]
+        )).rejects.toMatchObject({ code: '23503' });
+    });
+});
+
 describe('pagamento imediato (pix/débito)', () => {
     test('a comissão nasce e já é liberada na venda, com histórico', async () => {
         const res = await vender(A, 'vendedor', { pagamentos: [{ forma_pagamento: 'pix', valor: 100 }] });
