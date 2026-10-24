@@ -23,4 +23,8 @@ const acertoQuerySchema = z.object({
         .optional()
 }).strict();
 
-module.exports = { criarConferenciaSchema, acertoQuerySchema };
+const saldosQuerySchema = z.object({
+    busca: z.string().trim().max(100, 'Busca muito longa').optional()
+}).strict();
+
+module.exports = { criarConferenciaSchema, acertoQuerySchema, saldosQuerySchema };

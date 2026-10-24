@@ -99,3 +99,13 @@ Corpo: `{ itens: [{ produto_id, quantidade_contada }], observacao?, aplicar_ajus
 
 ## Histórico — `GET /estoque/locais/:id/conferencias?page=&pageSize=`
 Lista as conferências do local com os itens e as diferenças. Equipe vê qualquer local; o dono vê a própria maleta; os demais recebem 404.
+
+# Fatia 3c — descobrir locais e ver saldos (sem migration)
+
+Qualquer usuário autenticado; a visibilidade é a mesma do acerto: equipe (admin/estoquista) vê qualquer local, os demais só a **própria** maleta.
+
+## `GET /estoque/locais`
+Locais **ativos**, exceto Em trânsito (interno). Equipe: Central, maletas e consignados. Vendedor: só a própria maleta (lista vazia se não tiver). Cada item: `id, tipo, nome, usuario_id, usuario_nome, cliente_id, cliente_nome, ativo`.
+
+## `GET /estoque/locais/:id/saldos?busca=&page=&pageSize=`
+Produtos com **saldo > 0** no local: `produto_id, nome, sku, ativo, saldo`, ordenados por nome. `busca` filtra por nome ou SKU (parcial, sem diferenciar maiúsculas). Padrão 500 por página, máximo 1000. Local fora da visibilidade, inexistente, de outra empresa ou Em trânsito = 404. Nunca traz custo, margem ou lucro.
