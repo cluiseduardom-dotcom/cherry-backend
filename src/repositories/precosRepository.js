@@ -15,8 +15,11 @@ async function buscarCanalPorNome(nome, empresa_id) {
     return rows.length ? rows[0] : null;
 }
 
-async function buscarPrecoVigente(produto_id, canal_id, empresa_id) {
-    const { rows } = await db.query(
+// `clienteExterno`: dentro de uma transação (ex.: POST /vendas) a consulta TEM que usar a conexão da
+// transação. Pedir outra ao pool enquanto se segura uma esgota o pool sob carga (todas as conexões
+// seguradas esperando uma 2ª que nunca vem).
+async function buscarPrecoVigente(produto_id, canal_id, empresa_id, clienteExterno) {
+    const { rows } = await (clienteExterno || db).query(
         `SELECT * FROM precos_produto
          WHERE produto_id = $1 AND canal_id = $2 AND empresa_id = $3
          ORDER BY criado_em DESC, id DESC

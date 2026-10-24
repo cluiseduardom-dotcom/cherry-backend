@@ -114,6 +114,32 @@ describe('criar', () => {
     expect(fakeClient.release).toHaveBeenCalledTimes(1);
   });
 
+  test('usa a conexão da transação para o preço e trava os produtos em ordem de id antes de baixar o estoque', async () => {
+    const fakeClient = makeFakeClient({ produtos: { 2: { ativo: true }, 5: { ativo: true } } });
+    db.connect = jest.fn().mockResolvedValue(fakeClient);
+
+    precosRepository.buscarPrecoVigente.mockResolvedValue({ preco_venda: '10.00' });
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ movimentacao: { id: 1 }, custo: '4.00' });
+
+    await vendasRepository.criar({
+      cliente_id: null, canal_id: 1, usuario_id: 2, empresa_id: 9,
+      itens: [{ produto_id: 5, quantidade: 1 }, { produto_id: 2, quantidade: 1 }]
+    });
+
+    // Preço consultado na conexão da transação (nunca no pool, que esgota sob carga).
+    expect(precosRepository.buscarPrecoVigente).toHaveBeenCalledWith(5, 1, 9, fakeClient);
+    expect(precosRepository.buscarPrecoVigente).toHaveBeenCalledWith(2, 1, 9, fakeClient);
+
+    const chamadas = fakeClient.query.mock.calls;
+    const travaIdx = chamadas.findIndex(([sql]) => typeof sql === 'string' && sql.includes('ORDER BY id FOR UPDATE'));
+    expect(travaIdx).toBeGreaterThan(-1);
+    expect(chamadas[travaIdx][1]).toEqual([9, [5, 2]]);
+    const primeiroItemIdx = chamadas.findIndex(([sql]) => typeof sql === 'string' && sql.includes('SELECT id, ativo FROM produtos'));
+    expect(travaIdx).toBeLessThan(primeiroItemIdx);
+    expect(estoqueRepository.criarMovimentacao.mock.invocationCallOrder[0])
+      .toBeGreaterThan(fakeClient.query.mock.invocationCallOrder[travaIdx]);
+  });
+
   test('rolls back and creates nothing when the cliente does not belong to the empresa', async () => {
     const fakeClient = makeFakeClient({ produtos: { 1: { ativo: true } }, clienteExiste: false });
     db.connect = jest.fn().mockResolvedValue(fakeClient);
