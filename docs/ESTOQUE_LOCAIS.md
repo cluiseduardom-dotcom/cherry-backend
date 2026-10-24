@@ -72,3 +72,30 @@ Cada item volta ao local de onde saiu (`itens_venda.local_id`), mesmo que o esto
 - Backfill: itens existentes → Central da empresa.
 - Gatilho `BEFORE INSERT`: se `local_id` vier nulo, usa o Central (criando se faltar). Mantém compatível o código antigo durante o deploy, fixtures e importações; o código novo sempre informa o local.
 - Reversão manual no rodapé da migration (não executada pelo runner).
+
+# Fatia 3b — acerto e conferência (migration `061`)
+
+## Acerto — `GET /estoque/locais/:id/acerto?desde=AAAA-MM-DD`
+Calculado do histórico de movimentações do local (nada é digitado). Por produto:
+| Campo | Significado |
+|---|---|
+| `saldo_inicial` | saldo no começo do período (`saldo_atual` − movimento do período) |
+| `recebido` | chegou por transferência aceita |
+| `enviado` | saiu por transferência, líquido de recusa/cancelamento |
+| `vendido` | saídas de venda, líquido de cancelamento |
+| `ajustes` | variação por ajuste/conferência aplicada |
+| `outros` | entradas e saídas manuais |
+| `saldo_atual`, `valor_vendido` | saldo hoje; soma de preço × quantidade das vendas não canceladas do local |
+| `confere` | sem `desde`: o saldo inicial tem que ser 0 (a conta fecha desde a origem); com `desde`: ≥ 0 |
+
+`saldo_inicial + recebido − enviado − vendido + ajustes + outros = saldo_atual`. `totais` soma as colunas e `confere` (raiz) é verdadeiro se todos os produtos conferem. Mercadoria **pendente em trânsito** não aparece em nenhum local do acerto até o aceite (ou a devolução à origem). Nunca traz custo, margem ou lucro. `desde` inválido = 400.
+
+## Conferência — `POST /estoque/locais/:id/conferencias`
+Corpo: `{ itens: [{ produto_id, quantidade_contada }], observacao?, aplicar_ajuste? }` (1–200 itens, sem produto repetido, contagem inteira ≥ 0).
+- Registra, por item, `saldo_sistema` (lido sob trava), `quantidade_contada` e `diferenca`. Registro **imutável** (o banco recusa UPDATE/DELETE).
+- Sem `aplicar_ajuste` o estoque **não muda**. Com `aplicar_ajuste: true` (só admin) cada item com diferença gera uma movimentação `ajuste` no local (motivo `Conferência #id`), na mesma transação; qualquer falha desfaz tudo.
+- Quem registra: admin e estoquista. Vendedor = 403, inclusive na própria maleta (ninguém atesta o próprio estoque).
+- Local Em trânsito ou inativo = 409; local/produto de outra empresa = 404.
+
+## Histórico — `GET /estoque/locais/:id/conferencias?page=&pageSize=`
+Lista as conferências do local com os itens e as diferenças. Equipe vê qualquer local; o dono vê a própria maleta; os demais recebem 404.

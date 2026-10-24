@@ -7,6 +7,10 @@ const requireAdmin = require('../middlewares/requireAdmin');
 // depende do local (dono da maleta) e não só do papel. Aqui só entram usuários autenticados.
 router.post('/locais', requireAdmin, controller.criarLocal);
 
+router.get('/locais/:id/acerto', controller.acerto);
+router.post('/locais/:id/conferencias', controller.criarConferencia);
+router.get('/locais/:id/conferencias', controller.listarConferencias);
+
 router.post('/transferencias', controller.criar);
 router.get('/transferencias', controller.listar);
 router.get('/transferencias/:id', controller.obter);

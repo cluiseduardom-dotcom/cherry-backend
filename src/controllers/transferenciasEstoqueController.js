@@ -1,9 +1,11 @@
 const service = require('../services/transferenciasEstoqueService');
+const conferencias = require('../services/conferenciasEstoqueService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const {
     criarTransferenciaSchema, aceitarSchema, recusarOuCancelarSchema, criarLocalSchema, listarTransferenciasSchema
 } = require('../validations/transferenciasEstoqueValidation');
+const { criarConferenciaSchema, acertoQuerySchema } = require('../validations/conferenciasEstoqueValidation');
 
 function parseId(valor) {
     const id = Number(valor);
@@ -57,7 +59,24 @@ const criarLocal = rota(async (req, res) => {
     return response.success(res, await service.criarLocal(dados, req.usuario), 201);
 });
 
+const acerto = rota(async (req, res) => {
+    const filtros = parseCorpo(acertoQuerySchema, { desde: req.query.desde });
+    return response.success(res, await conferencias.acerto(parseId(req.params.id), filtros, req.usuario));
+});
+
+const criarConferencia = rota(async (req, res) => {
+    const id = parseId(req.params.id);
+    const dados = parseCorpo(criarConferenciaSchema, req.body);
+    return response.success(res, await conferencias.criarConferencia(id, dados, req.usuario), 201);
+});
+
+const listarConferencias = rota(async (req, res) =>
+    response.success(res, await conferencias.listarConferencias(parseId(req.params.id), paginacao(req.query), req.usuario)));
+
 module.exports = {
+    acerto,
+    criarConferencia,
+    listarConferencias,
     criar,
     listar,
     obter,
