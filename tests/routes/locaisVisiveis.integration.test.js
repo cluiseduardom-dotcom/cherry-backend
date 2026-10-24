@@ -88,14 +88,14 @@ describe('GET /estoque/locais', () => {
         }
     });
 
-    test('vendedor vê só a própria Maleta; sem Maleta recebe lista vazia', async () => {
+    test('vendedor vê o Central (para devolver/vender) e a própria Maleta; nunca maletas alheias nem consignados', async () => {
         const ana = await listar(A, 'ana');
         expect(ana.status).toBe(200);
-        expect(ana.body.data.map((l) => l.id)).toEqual([A.maletaAna]);
+        expect(ana.body.data.map((l) => l.id)).toEqual([A.centralId, A.maletaAna]);
 
         const sem = await listar(A, 'semMaleta');
         expect(sem.status).toBe(200);
-        expect(sem.body.data).toEqual([]);
+        expect(sem.body.data.map((l) => l.id)).toEqual([A.centralId]);
     });
 
     test('isolamento por empresa', async () => {

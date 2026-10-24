@@ -1,7 +1,8 @@
 const db = require('../config/db');
 const { obterLocal } = require('./conferenciasEstoqueRepository');
 
-// `usuario_id` informado = visão restrita à maleta ativa desse usuário.
+// `usuario_id` informado = visão restrita: o Central (destino das devoluções e local de venda
+// possível no PDV; só o id e o nome, sem saldo) e a maleta ativa desse usuário.
 async function listarVisiveis({ empresa_id, usuario_id }) {
     const { rows } = await db.query(
         `SELECT l.id, l.tipo, l.nome, l.usuario_id, u.nome AS usuario_nome, l.cliente_id, c.nome AS cliente_nome, l.ativo
@@ -9,7 +10,7 @@ async function listarVisiveis({ empresa_id, usuario_id }) {
          LEFT JOIN usuarios u ON u.id = l.usuario_id AND u.empresa_id = l.empresa_id
          LEFT JOIN clientes c ON c.id = l.cliente_id AND c.empresa_id = l.empresa_id
          WHERE l.empresa_id = $1 AND l.ativo = true AND l.tipo <> 'transito'
-           AND ($2::int IS NULL OR (l.tipo = 'maleta' AND l.usuario_id = $2))
+           AND ($2::int IS NULL OR l.tipo = 'central' OR (l.tipo = 'maleta' AND l.usuario_id = $2))
          ORDER BY CASE l.tipo WHEN 'central' THEN 0 WHEN 'maleta' THEN 1 ELSE 2 END, l.nome, l.id`,
         [empresa_id, usuario_id ?? null]
     );
