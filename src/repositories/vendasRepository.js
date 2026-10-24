@@ -132,6 +132,52 @@ function validarLimitesDeParcelamento(pagamentos, meses_prazo) {
     }
 }
 
+// Local de estoque de onde cada item sai. Sem `local_id`: a Maleta ativa do próprio vendedor, se ele
+// tiver uma; senão o Central (comportamento de sempre). Com `local_id`: só o Central ou a PRÓPRIA
+// maleta (consignado, maleta alheia e Em trânsito nunca vendem pelo PDV; transferência é outro fluxo).
+function criarResolvedorDeLocal(client, { empresa_id, usuario_id }) {
+    const cache = new Map();
+    let padrao = null;
+
+    async function localPadrao() {
+        if (padrao) return padrao;
+
+        const { rows } = await client.query(
+            `SELECT id, nome, tipo FROM locais_estoque
+             WHERE empresa_id = $1 AND tipo = 'maleta' AND usuario_id = $2 AND ativo = true`,
+            [empresa_id, usuario_id]
+        );
+
+        if (rows.length) {
+            padrao = rows[0];
+        } else {
+            const centralId = await estoqueRepository.garantirLocalCentral(client, empresa_id);
+            padrao = { id: centralId, nome: 'Central', tipo: 'central' };
+        }
+
+        return padrao;
+    }
+
+    return async function resolver(local_id) {
+        if (local_id == null) return localPadrao();
+        if (cache.has(local_id)) return cache.get(local_id);
+
+        const { rows } = await client.query(
+            'SELECT id, nome, tipo, usuario_id, ativo FROM locais_estoque WHERE id = $1 AND empresa_id = $2',
+            [local_id, empresa_id]
+        );
+
+        if (!rows.length) throw new AppError('Local de estoque não encontrado', 404);
+
+        const local = rows[0];
+        const permitido = local.ativo && (local.tipo === 'central' || (local.tipo === 'maleta' && local.usuario_id === usuario_id));
+        if (!permitido) throw new AppError('Você não pode vender a partir deste local de estoque', 403);
+
+        cache.set(local_id, local);
+        return local;
+    };
+}
+
 async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null }) {
     validarLimitesDeParcelamento(pagamentos, meses_prazo);
 
@@ -187,6 +233,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
 
         let subtotal = 0;
         const itensProcessados = [];
+        const resolverLocal = criarResolvedorDeLocal(client, { empresa_id, usuario_id });
 
         for (const item of itens) {
             const { rows: produtoRows } = await client.query(
@@ -201,16 +248,25 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             if (!precoVigente) throw new AppError('Produto sem preço definido para o canal informado', 409);
 
             const preco_unitario = Number(precoVigente.preco_venda);
+            const local = await resolverLocal(item.local_id);
             const resultado = await estoqueRepository.criarMovimentacao({
                 produto_id: item.produto_id,
                 tipo: 'saida',
                 quantidade: item.quantidade,
                 motivo: `Venda #${venda.id}`,
                 usuario_id,
-                empresa_id
+                empresa_id,
+                local_id: local.id
             }, client);
 
-            if (resultado.erro === 'ESTOQUE_INSUFICIENTE') throw new AppError('Estoque insuficiente para essa venda', 409);
+            if (resultado.erro === 'ESTOQUE_INSUFICIENTE') {
+                throw new AppError(
+                    local.tipo === 'central'
+                        ? 'Estoque insuficiente para essa venda'
+                        : `Estoque insuficiente em "${local.nome}" para essa venda. Escolha outro local ou peça uma transferência.`,
+                    409
+                );
+            }
             if (resultado.erro === 'PRODUTO_NAO_ENCONTRADO') throw new AppError('Produto não encontrado', 404);
 
             itensProcessados.push({
@@ -218,7 +274,8 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 quantidade: item.quantidade,
                 preco_unitario,
                 custo_unitario: Number(resultado.custo),
-                kit_id: item.kit_id ?? null
+                kit_id: item.kit_id ?? null,
+                local_id: local.id
             });
             subtotal += item.quantidade * preco_unitario;
         }
@@ -270,16 +327,16 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
 
         const valores = itensProcessados.map((item) => [
             venda.id, item.produto_id, item.quantidade, item.preco_unitario,
-            item.custo_unitario, empresa_id, item.kit_id
+            item.custo_unitario, empresa_id, item.kit_id, item.local_id
         ]);
         const placeholders = valores.map((_, i) => {
-            const base = i * 7;
-            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
+            const base = i * 8;
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
         }).join(', ');
 
         const { rows: itensRows } = await client.query(
             `INSERT INTO itens_venda
-             (venda_id, produto_id, quantidade, preco_unitario, custo_unitario, empresa_id, kit_id)
+             (venda_id, produto_id, quantidade, preco_unitario, custo_unitario, empresa_id, kit_id, local_id)
              VALUES ${placeholders} RETURNING *`,
             valores.flat()
         );
@@ -501,7 +558,7 @@ async function buscarPorId(id, empresa_id) {
     const venda = rows[0];
 
     const { rows: itensRows } = await db.query(
-        'SELECT id, produto_id, quantidade, preco_unitario, custo_unitario, kit_id FROM itens_venda WHERE venda_id = $1 ORDER BY id',
+        'SELECT id, produto_id, quantidade, preco_unitario, custo_unitario, kit_id, local_id FROM itens_venda WHERE venda_id = $1 ORDER BY id',
         [id]
     );
 
@@ -624,7 +681,7 @@ async function cancelar(id, usuario_id, empresa_id, opcoes) {
         }
 
         const { rows: itensRows } = await client.query(
-            'SELECT produto_id, quantidade FROM itens_venda WHERE venda_id = $1 AND empresa_id = $2',
+            'SELECT produto_id, quantidade, local_id FROM itens_venda WHERE venda_id = $1 AND empresa_id = $2 ORDER BY produto_id, id',
             [id, empresa_id]
         );
 
@@ -638,7 +695,9 @@ async function cancelar(id, usuario_id, empresa_id, opcoes) {
                     quantidade: item.quantidade,
                     motivo: 'cancelamento_venda',
                     usuario_id,
-                    empresa_id
+                    empresa_id,
+                    // Volta ao local de onde saiu (Maleta ou Central), não a um local qualquer.
+                    local_id: item.local_id
                 },
                 client
             );
