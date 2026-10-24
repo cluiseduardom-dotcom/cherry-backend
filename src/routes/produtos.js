@@ -25,6 +25,7 @@ router.get('/inteligencia', controller.inteligencia);
 router.get('/dashboard', controller.dashboard);
 router.get('/estoque-baixo', estoqueController.alertas);
 router.get('/movimentacoes', requireAdmin, estoqueController.listarMovimentacoesRelatorio);
+router.get('/locais-estoque', requireEstoquista, estoqueController.listarLocais);
 
 router.get('/:id', controller.buscarPorId);
 router.put('/:id', requireAdmin, controller.atualizar);
@@ -36,6 +37,7 @@ router.delete('/:id/codigos/:codigoId', requireEstoquista, produtosCodigosContro
 
 router.get('/:id/movimentacoes', estoqueController.historico);
 router.post('/:id/movimentacoes', requireEstoquista, estoqueController.registrarMovimentacao);
+router.get('/:id/estoque-locais', requireEstoquista, estoqueController.saldosPorLocal);
 
 router.get('/:id/precos', precosController.listarVigentes);
 router.get('/:id/precos/historico', requireAdmin, precosController.historico);

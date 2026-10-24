@@ -330,6 +330,8 @@ afterAll(async () => {
             // precisa ser removida antes de compras, senão a FK bloqueia o DELETE
             // abaixo (issue #79).
             await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM estoque_locais WHERE empresa_id = $1', [empresa2Id]);
+            await db.query('DELETE FROM locais_estoque WHERE empresa_id = $1', [empresa2Id]);
             await db.query('DELETE FROM compras WHERE empresa_id = $1', [empresa2Id]);
             await db.query('DELETE FROM produtos_categorias WHERE empresa_id = $1', [empresa2Id]);
             await db.query('DELETE FROM categorias_produto WHERE empresa_id = $1', [empresa2Id]);
@@ -603,10 +605,10 @@ describe('empresa 2 não vê dados da empresa 1', () => {
             .get(`/produtos/${produtosE2[0]}/movimentacoes`)
             .set('Authorization', `Bearer ${empresa2AdminToken}`);
 
-        // 4 esperadas: a entrada manual + uma entrada da compra + uma saída para cada venda.
+        // 5 esperadas: o estoque inicial do produto + a entrada manual + uma entrada da compra + uma saída para cada venda.
         expect(res.status).toBe(200);
-        expect(res.body.data.total).toBe(4);
-        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'entrada', 'saida', 'saida']);
+        expect(res.body.data.total).toBe(5);
+        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'entrada', 'entrada', 'saida', 'saida']);
     });
 });
 

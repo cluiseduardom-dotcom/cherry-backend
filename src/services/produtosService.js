@@ -87,8 +87,8 @@ async function buscarPorId(id, canal, empresaId) {
     return { ...comPrecoCanal(comMargem(produto), canalRow.nome, precoRow), categorias };
 }
 
-async function criar(dados, empresaId) {
-    const produto = await produtosRepository.criar({ ...dados, empresa_id: empresaId });
+async function criar(dados, empresaId, usuarioId) {
+    const produto = await produtosRepository.criar({ ...dados, empresa_id: empresaId, usuario_id: usuarioId });
 
     return comMargem(produto);
 }

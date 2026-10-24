@@ -2,7 +2,7 @@ const estoqueRepository = require('../repositories/estoqueRepository');
 const produtosRepository = require('../repositories/produtosRepository');
 const AppError = require('../errors/AppError');
 
-async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo }, usuario_id, empresaId) {
+async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo, local_id }, usuario_id, empresaId) {
     const produto = await produtosRepository.buscarPorId(produto_id, empresaId);
 
     if (!produto) {
@@ -19,11 +19,16 @@ async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo }, u
         quantidade,
         motivo,
         usuario_id,
-        empresa_id: empresaId
+        empresa_id: empresaId,
+        local_id
     });
 
     if (resultado.erro === 'PRODUTO_NAO_ENCONTRADO') {
         throw new AppError('Produto não encontrado', 404);
+    }
+
+    if (resultado.erro === 'LOCAL_NAO_ENCONTRADO') {
+        throw new AppError('Local de estoque não encontrado', 404);
     }
 
     if (resultado.erro === 'ESTOQUE_INSUFICIENTE') {
@@ -31,6 +36,20 @@ async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo }, u
     }
 
     return resultado.movimentacao;
+}
+
+async function saldosPorLocal(produto_id, empresaId) {
+    const resultado = await estoqueRepository.saldosPorLocal(produto_id, empresaId);
+
+    if (!resultado) {
+        throw new AppError('Produto não encontrado', 404);
+    }
+
+    return resultado;
+}
+
+async function listarLocais(empresaId) {
+    return estoqueRepository.listarLocais(empresaId);
 }
 
 async function historicoPorProduto(produto_id, { page, pageSize }, empresaId) {
@@ -81,6 +100,8 @@ async function listarMovimentacoesRelatorio(filtros, empresaId) {
 
 module.exports = {
     registrarMovimentacao,
+    saldosPorLocal,
+    listarLocais,
     historicoPorProduto,
     alertasEstoqueBaixo,
     listarMovimentacoesRelatorio

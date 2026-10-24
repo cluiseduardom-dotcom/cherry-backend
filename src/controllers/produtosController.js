@@ -95,7 +95,7 @@ async function criar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const produto = await produtosService.criar(parsed.data, req.usuario.empresa_id);
+        const produto = await produtosService.criar(parsed.data, req.usuario.empresa_id, req.usuario.id);
 
         return response.success(res, produto, 201);
     } catch (error) {

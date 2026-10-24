@@ -147,6 +147,8 @@ afterAll(async () => {
             await db.query('DELETE FROM idempotency_keys WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM itens_venda WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM movimentacoes_estoque WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM estoque_locais WHERE empresa_id = $1', [id]);
+            await db.query('DELETE FROM locais_estoque WHERE empresa_id = $1', [id]);
             await removerCancelamentosDeTeste(db, id);
             await db.query('DELETE FROM vendas WHERE empresa_id = $1', [id]);
             await db.query('DELETE FROM condicoes_comerciais_empresa WHERE empresa_id = $1', [id]);
