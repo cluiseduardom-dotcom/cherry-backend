@@ -171,3 +171,56 @@ describe('usuariosService.listarCargosAtribuiveis', () => {
         expect(r.map((c) => c.cargo)).toEqual(['vendedor']);
     });
 });
+
+describe('usuariosService.detalhar e editarDados', () => {
+    const usuario = (papel, extra = {}) => ({
+        ...alvo(papel), id: 20, nome: 'N', email: 'n@x.com', criado_em: 'd', cpf: '52998224725', telefone: '11912345678', ...extra
+    });
+
+    test('detalhe devolve os dados cadastrais a quem pode gerenciar o usuário', async () => {
+        usuariosRepository.obterDetalhe.mockResolvedValue(usuario('vendedor'));
+
+        const r = await service.detalhar(20, gerente);
+
+        expect(r.dados).toMatchObject({ telefone: '11912345678', cpf: '52998224725', uf: null });
+        expect(usuariosRepository.obterDetalhe).toHaveBeenCalledWith(7, 20);
+    });
+
+    test('detalhe: 404 se não existe na empresa; 403 para cargo igual/acima; o próprio usuário sempre vê', async () => {
+        usuariosRepository.obterDetalhe.mockResolvedValue(null);
+        await expect(service.detalhar(20, gerente)).rejects.toMatchObject({ statusCode: 404 });
+
+        usuariosRepository.obterDetalhe.mockResolvedValue(usuario('diretor'));
+        await expect(service.detalhar(20, gerente)).rejects.toMatchObject({ statusCode: 403 });
+
+        usuariosRepository.obterDetalhe.mockResolvedValue(usuario('gerente', { id: 10 }));
+        await expect(service.detalhar(20, gerente)).resolves.toMatchObject({ id: 10 });
+    });
+
+    test('editar delega ao repository com empresa e autor do JWT e autoriza pela hierarquia', async () => {
+        usuariosRepository.editarDados.mockImplementation(async ({ autorizar }) => {
+            autorizar(usuario('vendedor'));
+            return { alterado: true, campos: ['cpf'] };
+        });
+
+        const r = await service.editarDados(20, { cpf: '52998224725' }, gerente);
+        const arg = usuariosRepository.editarDados.mock.calls[0][0];
+
+        expect(r).toEqual({ alterado: true, campos: ['cpf'] });
+        expect(arg).toMatchObject({ empresa_id: 7, usuario_id: 20, executado_por: 10, dados: { cpf: '52998224725' } });
+
+        usuariosRepository.editarDados.mockImplementation(async ({ autorizar }) => autorizar(usuario('admin')));
+        await expect(service.editarDados(20, { cpf: null }, gerente)).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    test('criar repassa os dados cadastrais ao repository', async () => {
+        cargosService.garantirCargoAtivo.mockResolvedValue();
+        cargosRepository.buscar.mockResolvedValue(null);
+        usuarioRepository.buscarPorEmail.mockResolvedValue(null);
+        usuariosRepository.criarComAuditoria.mockResolvedValue({ id: 99 });
+
+        await service.criar({ nome: 'Ana', email: 'a@x.com', senha: 'segredo1', papel: 'vendedor', telefone: '11912345678', cpf: null }, gerente);
+
+        expect(usuariosRepository.criarComAuditoria.mock.calls[0][0].dados).toEqual({ telefone: '11912345678', cpf: null });
+    });
+});

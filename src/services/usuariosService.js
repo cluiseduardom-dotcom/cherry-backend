@@ -6,6 +6,7 @@ const cargosRepository = require('../repositories/cargosRepository');
 const cargosService = require('./cargosService');
 const { resolverCargo, aplicarConcessoes } = require('./permissoesService');
 const { PERFIL_ADMIN } = require('../constants/cargos');
+const { CAMPOS_DADOS } = require('../validations/usuariosValidation');
 
 // Gestão de usuários delegada a quem tem `gerir_usuarios` (diretor a supervisor por padrão;
 // o Admin da empresa ajusta pelos cargos). empresa_id e ator vêm sempre do JWT.
@@ -84,6 +85,7 @@ async function listar(ator) {
             cargo: usuario.papel,
             ativo: usuario.ativo,
             criado_em: usuario.criado_em,
+            telefone: usuario.telefone ?? null,
             pode_gerenciar: pode,
             motivo_bloqueio_gestao: pode ? null : motivo
         };
@@ -102,7 +104,7 @@ async function listarCargosAtribuiveis(ator) {
         .map(({ cargo, rotulo, nivel, em_escada }) => ({ cargo, rotulo, nivel: em_escada ? nivel : null, em_escada }));
 }
 
-async function criar({ nome, email, senha, papel }, ator) {
+async function criar({ nome, email, senha, papel, ...dados }, ator) {
     const empresaId = ator.empresa_id;
 
     // Só cargos ligados no comércio.
@@ -134,10 +136,53 @@ async function criar({ nome, email, senha, papel }, ator) {
         papel,
         empresa_id: empresaId,
         executado_por: ator.id,
-        motivo: null
+        motivo: null,
+        dados
     });
 
     return { usuario };
+}
+
+// Os próprios dados o usuário sempre pode ver/editar; os de outro, só quem pode gerenciá-lo
+// (mesma hierarquia do bloqueio). Dados cadastrais não mudam cargo nem acesso: sem escalada.
+function garantirPodeVerOuEditar(ator, alvo) {
+    if (alvo.id === ator.id) return;
+
+    garantirPodeGerenciar(ator, alvo);
+}
+
+function apresentarDetalhe(usuario) {
+    return {
+        id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        cargo: usuario.papel,
+        ativo: usuario.ativo,
+        criado_em: usuario.criado_em,
+        dados: Object.fromEntries(CAMPOS_DADOS.map((campo) => [campo, usuario[campo] ?? null]))
+    };
+}
+
+async function detalhar(usuarioId, ator) {
+    const usuario = await usuariosRepository.obterDetalhe(ator.empresa_id, usuarioId);
+
+    if (!usuario) {
+        throw new AppError('Usuário não encontrado', 404);
+    }
+
+    garantirPodeVerOuEditar(ator, usuario);
+
+    return apresentarDetalhe(usuario);
+}
+
+async function editarDados(usuarioId, dados, ator) {
+    return usuariosRepository.editarDados({
+        empresa_id: ator.empresa_id,
+        usuario_id: usuarioId,
+        dados,
+        executado_por: ator.id,
+        autorizar: (alvo) => garantirPodeVerOuEditar(ator, alvo)
+    });
 }
 
 async function definirBloqueio(usuarioId, { bloqueado, motivo }, ator) {
@@ -173,6 +218,8 @@ module.exports = {
     listar,
     listarCargosAtribuiveis,
     criar,
+    detalhar,
+    editarDados,
     definirBloqueio,
     listarEventos
 };

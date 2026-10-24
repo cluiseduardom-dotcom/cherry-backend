@@ -1,7 +1,7 @@
 const usuariosService = require('../services/usuariosService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
-const { criarUsuarioSchema, bloqueioSchema, usuarioIdSchema } = require('../validations/usuariosValidation');
+const { criarUsuarioSchema, editarDadosSchema, bloqueioSchema, usuarioIdSchema } = require('../validations/usuariosValidation');
 
 function parsePaginacao(query) {
     let page = parseInt(query.page, 10);
@@ -50,6 +50,40 @@ async function criar(req, res, next) {
     }
 }
 
+async function detalhar(req, res, next) {
+    try {
+        const id = usuarioIdSchema.safeParse(req.params.id);
+
+        if (!id.success) {
+            throw new AppError(id.error.issues[0].message, 400);
+        }
+
+        return response.success(res, await usuariosService.detalhar(id.data, req.usuario));
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function editarDados(req, res, next) {
+    try {
+        const id = usuarioIdSchema.safeParse(req.params.id);
+
+        if (!id.success) {
+            throw new AppError(id.error.issues[0].message, 400);
+        }
+
+        const parsed = editarDadosSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        return response.success(res, await usuariosService.editarDados(id.data, parsed.data, req.usuario));
+    } catch (error) {
+        next(error);
+    }
+}
+
 async function bloquear(req, res, next) {
     try {
         const id = usuarioIdSchema.safeParse(req.params.id);
@@ -82,4 +116,4 @@ async function eventos(req, res, next) {
     }
 }
 
-module.exports = { listar, cargosAtribuiveis, criar, bloquear, eventos };
+module.exports = { listar, cargosAtribuiveis, criar, detalhar, editarDados, bloquear, eventos };

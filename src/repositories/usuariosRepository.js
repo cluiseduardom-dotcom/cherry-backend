@@ -20,11 +20,21 @@ const COLUNAS_COM_CARGO = `
 const JOIN_CARGO = `
     LEFT JOIN cargos_empresa c ON c.empresa_id = u.empresa_id AND c.cargo = u.papel`;
 
+// Dados cadastrais (usuarios_dados). Datas saem como 'YYYY-MM-DD' (to_char), nunca como Date.
+const CAMPOS_DADOS = ['telefone', 'cpf', 'data_nascimento', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf', 'data_admissao', 'observacoes'];
+const COLUNAS_DADOS = `
+    d.telefone, d.cpf, to_char(d.data_nascimento, 'YYYY-MM-DD') AS data_nascimento,
+    d.cep, d.logradouro, d.numero, d.complemento, d.bairro, d.cidade, d.uf,
+    to_char(d.data_admissao, 'YYYY-MM-DD') AS data_admissao, d.observacoes`;
+const JOIN_DADOS = `
+    LEFT JOIN usuarios_dados d ON d.usuario_id = u.id AND d.empresa_id = u.empresa_id`;
+
 async function listarPorEmpresa(empresa_id) {
     const { rows } = await db.query(
-        `SELECT ${COLUNAS_COM_CARGO}
+        `SELECT ${COLUNAS_COM_CARGO}, d.telefone
          FROM usuarios u
          ${JOIN_CARGO}
+         ${JOIN_DADOS}
          WHERE u.empresa_id = $1
          ORDER BY u.nome ASC, u.id ASC`,
         [empresa_id]
@@ -37,7 +47,7 @@ async function listarPorEmpresa(empresa_id) {
 // O cargo é REVALIDADO aqui dentro, sob a trava de cargo: se alguém o desligar ao mesmo tempo,
 // a criação vê o cargo desligado e recusa (409) em vez de deixar um usuário ativo sem acesso.
 // O e-mail é único no banco inteiro; a corrida entre duas criações vira 409, não 500.
-async function criarComAuditoria({ nome, email, senhaHash, papel, empresa_id, executado_por, motivo }) {
+async function criarComAuditoria({ nome, email, senhaHash, papel, empresa_id, executado_por, motivo, dados = {} }) {
     const client = await db.connect();
 
     try {
@@ -58,6 +68,12 @@ async function criarComAuditoria({ nome, email, senhaHash, papel, empresa_id, ex
         );
 
         await client.query(
+            `INSERT INTO usuarios_dados (usuario_id, empresa_id, ${CAMPOS_DADOS.join(', ')}, atualizado_por)
+             VALUES ($1, $2, ${CAMPOS_DADOS.map((_, i) => `$${i + 3}`).join(', ')}, $${CAMPOS_DADOS.length + 3})`,
+            [rows[0].id, empresa_id, ...CAMPOS_DADOS.map((c) => dados[c] ?? null), executado_por]
+        );
+
+        await client.query(
             `INSERT INTO usuarios_eventos (empresa_id, acao, alvo_usuario_id, cargo_alvo, executado_por, motivo)
              VALUES ($1, 'criar', $2, $3, $4, $5)`,
             [empresa_id, rows[0].id, papel, executado_por, motivo ?? null]
@@ -70,7 +86,7 @@ async function criarComAuditoria({ nome, email, senhaHash, papel, empresa_id, ex
         await client.query('ROLLBACK');
 
         if (error && error.code === '23505') {
-            throw new AppError('Email já cadastrado', 409);
+            throw new AppError(error.constraint === 'uq_usuarios_dados_cpf' ? 'CPF já cadastrado nesta empresa' : 'Email já cadastrado', 409);
         }
 
         throw error;
@@ -132,7 +148,7 @@ async function alterarBloqueio({ empresa_id, usuario_id, bloqueado, motivo, exec
 async function listarEventos({ empresa_id, limit, offset }) {
     const { rows } = await db.query(
         `SELECT e.id, e.acao, e.alvo_usuario_id, alvo.nome AS alvo_nome, e.cargo_alvo,
-                e.executado_por, autor.nome AS executado_por_nome, e.motivo, e.criado_em
+                e.executado_por, autor.nome AS executado_por_nome, e.motivo, e.campos, e.criado_em
          FROM usuarios_eventos e
          JOIN usuarios alvo ON alvo.id = e.alvo_usuario_id AND alvo.empresa_id = e.empresa_id
          JOIN usuarios autor ON autor.id = e.executado_por AND autor.empresa_id = e.empresa_id
@@ -150,7 +166,70 @@ async function listarEventos({ empresa_id, limit, offset }) {
     return { items: rows, total: Number(totalRows[0].total) };
 }
 
+// Detalhe com os dados cadastrais (inclui CPF: só chamar depois de autorizar o ator).
+async function obterDetalhe(empresa_id, usuario_id, client = db) {
+    const { rows } = await client.query(
+        `SELECT ${COLUNAS_COM_CARGO}, ${COLUNAS_DADOS}
+         FROM usuarios u
+         ${JOIN_CARGO}
+         ${JOIN_DADOS}
+         WHERE u.id = $1 AND u.empresa_id = $2`,
+        [usuario_id, empresa_id]
+    );
+
+    return rows[0] || null;
+}
+
+// Edita os dados cadastrais com a linha do usuário TRAVADA. `autorizar(alvo)` decide se o ator
+// pode; `dados` traz só os campos enviados (null limpa). Sem mudança real = no-op (sem evento).
+// A trilha guarda só os NOMES dos campos alterados, nunca os valores (CPF é dado pessoal).
+async function editarDados({ empresa_id, usuario_id, dados, executado_por, autorizar }) {
+    return executarComLock('usuarios', { coluna: 'id', valor: usuario_id }, empresa_id, undefined, async (linha, client) => {
+        if (!linha) {
+            throw new AppError('Usuário não encontrado', 404);
+        }
+
+        const alvo = await obterDetalhe(empresa_id, usuario_id, client);
+
+        autorizar(alvo);
+
+        const enviados = CAMPOS_DADOS.filter((campo) => Object.prototype.hasOwnProperty.call(dados, campo));
+        const alterados = enviados.filter((campo) => (alvo[campo] ?? null) !== (dados[campo] ?? null));
+
+        if (alterados.length === 0) {
+            return { alterado: false, campos: [] };
+        }
+
+        try {
+            await client.query(
+                `INSERT INTO usuarios_dados (usuario_id, empresa_id, ${alterados.join(', ')}, atualizado_por)
+                 VALUES ($1, $2, ${alterados.map((_, i) => `$${i + 3}`).join(', ')}, $${alterados.length + 3})
+                 ON CONFLICT (usuario_id) DO UPDATE SET
+                    ${alterados.map((c) => `${c} = EXCLUDED.${c}`).join(', ')},
+                    atualizado_por = EXCLUDED.atualizado_por, atualizado_em = NOW()`,
+                [usuario_id, empresa_id, ...alterados.map((c) => dados[c] ?? null), executado_por]
+            );
+        } catch (error) {
+            if (error && error.code === '23505') {
+                throw new AppError('CPF já cadastrado nesta empresa', 409);
+            }
+
+            throw error;
+        }
+
+        await client.query(
+            `INSERT INTO usuarios_eventos (empresa_id, acao, alvo_usuario_id, cargo_alvo, executado_por, motivo, campos)
+             VALUES ($1, 'editar', $2, $3, $4, NULL, $5)`,
+            [empresa_id, usuario_id, alvo.papel, executado_por, alterados]
+        );
+
+        return { alterado: true, campos: alterados };
+    });
+}
+
 module.exports = {
+    obterDetalhe,
+    editarDados,
     listarPorEmpresa,
     criarComAuditoria,
     alterarBloqueio,

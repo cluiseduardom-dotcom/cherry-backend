@@ -44,7 +44,7 @@ const como = async (alvo, id, metodo, url, corpo) =>
     request(app)[metodo](url).set('Authorization', `Bearer ${await tokenAtual(alvo, id)}`).send(corpo);
 const eventos = async (empresaId) => (await db.query('SELECT * FROM usuarios_eventos WHERE empresa_id = $1 ORDER BY id', [empresaId])).rows;
 const novo = (extra = {}) => ({
-    nome: `Novo ${sufixo}`, email: `novo-${crypto.randomBytes(4).toString('hex')}-${sufixo}@teste.invalid`, senha: SENHA, papel: 'vendedor', ...extra
+    nome: `Novo ${sufixo}`, email: `novo-${crypto.randomBytes(4).toString('hex')}-${sufixo}@teste.invalid`, senha: SENHA, papel: 'vendedor', telefone: '(11) 91234-5678', ...extra
 });
 
 beforeAll(async () => {
@@ -341,5 +341,109 @@ describe('trilha', () => {
 
         const outra = await como(B, B.gerenteId, 'get', '/usuarios/eventos');
         expect(outra.body.data.total).toBe(0);
+    });
+});
+
+describe('dados cadastrais', () => {
+    const CPF_1 = '52998224725';
+    const CPF_2 = '11144477735';
+    const dadosDe = async (id) => (await db.query(`SELECT *, to_char(data_nascimento, 'YYYY-MM-DD') AS nasc FROM usuarios_dados WHERE usuario_id = $1`, [id])).rows[0];
+
+    test('migration 057: telefone/CPF/CEP/UF malformados e evento editar sem campos são recusados pelo banco', async () => {
+        const insere = (col, val) => db.query(`UPDATE usuarios_dados SET ${col} = $2 WHERE usuario_id = $1`, [A.vendedorId, val]);
+        await db.query(`INSERT INTO usuarios_dados (usuario_id, empresa_id, telefone) VALUES ($1, $2, '11912345678') ON CONFLICT DO NOTHING`, [A.vendedorId, A.empresaId]);
+
+        await expect(insere('telefone', '123')).rejects.toMatchObject({ code: '23514' });
+        await expect(insere('cpf', '123')).rejects.toMatchObject({ code: '23514' });
+        await expect(insere('cep', 'abc')).rejects.toMatchObject({ code: '23514' });
+        await expect(insere('uf', 'sp')).rejects.toMatchObject({ code: '23514' });
+        await expect(db.query(
+            `INSERT INTO usuarios_eventos (empresa_id, acao, alvo_usuario_id, cargo_alvo, executado_por) VALUES ($1, 'editar', $2, 'vendedor', $3)`,
+            [A.empresaId, A.vendedorId, A.adminId]
+        )).rejects.toMatchObject({ code: '23514' });
+    });
+
+    test('dados de outra empresa são recusados pelo banco (FK composta)', async () => {
+        await expect(db.query(`INSERT INTO usuarios_dados (usuario_id, empresa_id, telefone) VALUES ($1, $2, '11912345678')`, [B.vendedorId, A.empresaId]))
+            .rejects.toMatchObject({ code: '23503' });
+    });
+
+    test('criar grava os dados (datas YYYY-MM-DD) e a trilha; CPF repetido na empresa = 409; em outra empresa pode', async () => {
+        const corpo = novo({ cpf: '529.982.247-25', data_nascimento: '1990-05-10', cep: '01001-000', uf: 'sp', cidade: 'São Paulo' });
+        const res = await como(A, A.gerenteId, 'post', '/usuarios', corpo);
+
+        expect(res.status).toBe(201);
+        const id = res.body.data.usuario.id;
+        const d = await dadosDe(id);
+        expect(d).toMatchObject({ empresa_id: A.empresaId, telefone: '11912345678', cpf: CPF_1, nasc: '1990-05-10', cep: '01001000', uf: 'SP', cidade: 'São Paulo' });
+
+        const repetido = await como(A, A.gerenteId, 'post', '/usuarios', novo({ cpf: CPF_1 }));
+        expect(repetido.status).toBe(409);
+        expect(repetido.body.message || repetido.body.error).toMatch(/CPF/);
+
+        const outraEmpresa = await como(B, B.gerenteId, 'post', '/usuarios', novo({ cpf: CPF_1 }));
+        expect(outraEmpresa.status).toBe(201);
+    });
+
+    test('lista traz telefone mas nunca CPF; detalhe traz CPF só a quem pode gerenciar', async () => {
+        const criado = (await como(A, A.gerenteId, 'post', '/usuarios', novo({ cpf: CPF_2 }))).body.data.usuario.id;
+
+        const lista = await como(A, A.gerenteId, 'get', '/usuarios');
+        expect(JSON.stringify(lista.body)).not.toContain(CPF_2);
+        expect(lista.body.data.find((u) => u.id === criado).telefone).toBe('11912345678');
+
+        const detalhe = await como(A, A.gerenteId, 'get', `/usuarios/${criado}`);
+        expect(detalhe.status).toBe(200);
+        expect(detalhe.body.data.dados).toMatchObject({ cpf: CPF_2, telefone: '11912345678' });
+
+        expect((await como(A, A.gerenteId, 'get', `/usuarios/${A.diretorId}`)).status).toBe(403);
+        expect((await como(A, A.gerenteId, 'get', `/usuarios/${B.vendedorId}`)).status).toBe(404);
+        expect((await como(A, A.vendedorId, 'get', `/usuarios/${criado}`)).status).toBe(403);
+    });
+
+    test('editar: grava, registra na trilha só os NOMES dos campos, no-op não gera evento, CPF duplicado = 409', async () => {
+        const id = (await como(A, A.gerenteId, 'post', '/usuarios', novo())).body.data.usuario.id;
+        const antes = (await eventos(A.empresaId)).length;
+
+        const res = await como(A, A.gerenteId, 'patch', `/usuarios/${id}/dados`, { cpf: '390.533.447-05', data_admissao: '2026-10-01', observacoes: 'Turno da tarde' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({ alterado: true, campos: expect.arrayContaining(['cpf', 'data_admissao', 'observacoes']) });
+        expect(await dadosDe(id)).toMatchObject({ cpf: '39053344705', observacoes: 'Turno da tarde', atualizado_por: A.gerenteId });
+
+        const trilha = await eventos(A.empresaId);
+        expect(trilha.length).toBe(antes + 1);
+        const evento = trilha[trilha.length - 1];
+        expect(evento).toMatchObject({ acao: 'editar', alvo_usuario_id: id, executado_por: A.gerenteId });
+        expect(evento.campos.sort()).toEqual(['cpf', 'data_admissao', 'observacoes']);
+        expect(JSON.stringify(evento)).not.toContain('39053344705');
+
+        const igual = await como(A, A.gerenteId, 'patch', `/usuarios/${id}/dados`, { observacoes: 'Turno da tarde' });
+        expect(igual.body.data).toEqual({ alterado: false, campos: [] });
+        expect((await eventos(A.empresaId)).length).toBe(antes + 1);
+
+        const limpa = await como(A, A.gerenteId, 'patch', `/usuarios/${id}/dados`, { observacoes: null });
+        expect(limpa.status).toBe(200);
+        expect((await dadosDe(id)).observacoes).toBeNull();
+
+        const outro = (await como(A, A.gerenteId, 'post', '/usuarios', novo())).body.data.usuario.id;
+        expect((await como(A, A.gerenteId, 'patch', `/usuarios/${outro}/dados`, { cpf: '39053344705' })).status).toBe(409);
+    });
+
+    test('editar respeita a hierarquia e o isolamento; o próprio usuário edita os seus dados', async () => {
+        expect((await como(A, A.gerenteId, 'patch', `/usuarios/${A.diretorId}/dados`, { telefone: '11999998888' })).status).toBe(403);
+        expect((await como(A, A.gerenteId, 'patch', `/usuarios/${A.adminId}/dados`, { telefone: '11999998888' })).status).toBe(403);
+        expect((await como(A, A.gerenteId, 'patch', `/usuarios/${B.vendedorId}/dados`, { telefone: '11999998888' })).status).toBe(404);
+        expect((await como(A, A.vendedorId, 'patch', `/usuarios/${A.vendedorId}/dados`, { telefone: '11999998888' })).status).toBe(403); // sem gerir_usuarios nem entra na rota
+
+        const proprio = await como(A, A.gerenteId, 'patch', `/usuarios/${A.gerenteId}/dados`, { telefone: '11977776666' });
+        expect(proprio.status).toBe(200);
+        expect((await dadosDe(A.gerenteId)).telefone).toBe('11977776666');
+    });
+
+    test('a trilha continua imutável com a ação editar', async () => {
+        const evento = (await eventos(A.empresaId)).find((e) => e.acao === 'editar');
+
+        await expect(db.query(`UPDATE usuarios_eventos SET campos = ARRAY['x'] WHERE id = $1`, [evento.id])).rejects.toMatchObject({ code: '23001' });
     });
 });

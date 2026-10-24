@@ -9,6 +9,8 @@ router.get('/', controller.listar);
 router.get('/cargos', controller.cargosAtribuiveis);
 router.post('/', controller.criar);
 router.get('/eventos', controller.eventos);
+router.get('/:id', controller.detalhar);
+router.patch('/:id/dados', controller.editarDados);
 router.patch('/:id/bloqueio', controller.bloquear);
 
 module.exports = router;
