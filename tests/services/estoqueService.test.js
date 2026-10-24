@@ -121,3 +121,23 @@ describe('listarMovimentacoesRelatorio', () => {
     });
   });
 });
+
+describe('estoque por local', () => {
+  test('repassa local_id ao repositório e traduz LOCAL_NAO_ENCONTRADO em 404', async () => {
+    produtosRepository.buscarPorId.mockResolvedValue({ id: 1, ativo: true });
+    estoqueRepository.criarMovimentacao.mockResolvedValue({ erro: 'LOCAL_NAO_ENCONTRADO' });
+
+    await expect(
+      estoqueService.registrarMovimentacao(1, { tipo: 'entrada', quantidade: 2, local_id: 9 }, 1, 4)
+    ).rejects.toMatchObject({ statusCode: 404, message: 'Local de estoque não encontrado' });
+
+    expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(expect.objectContaining({ local_id: 9, empresa_id: 4 }));
+  });
+
+  test('saldosPorLocal devolve 404 para produto inexistente (ou de outra empresa)', async () => {
+    estoqueRepository.saldosPorLocal.mockResolvedValue(null);
+
+    await expect(estoqueService.saldosPorLocal(99, 4)).rejects.toMatchObject({ statusCode: 404 });
+    expect(estoqueRepository.saldosPorLocal).toHaveBeenCalledWith(99, 4);
+  });
+});

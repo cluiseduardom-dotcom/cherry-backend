@@ -86,6 +86,24 @@ async function historico(req, res, next) {
     }
 }
 
+async function saldosPorLocal(req, res, next) {
+    try {
+        const produtoId = parseId(req.params.id);
+        const resultado = await estoqueService.saldosPorLocal(produtoId, req.usuario.empresa_id);
+        return response.success(res, resultado);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function listarLocais(req, res, next) {
+    try {
+        return response.success(res, await estoqueService.listarLocais(req.usuario.empresa_id));
+    } catch (error) {
+        next(error);
+    }
+}
+
 async function alertas(req, res, next) {
     try {
         const dados = await estoqueService.alertasEstoqueBaixo(req.usuario.empresa_id);
@@ -98,6 +116,8 @@ async function alertas(req, res, next) {
 module.exports = {
     registrarMovimentacao,
     historico,
+    saldosPorLocal,
+    listarLocais,
     alertas,
     listarMovimentacoesRelatorio
 };

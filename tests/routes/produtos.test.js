@@ -186,7 +186,8 @@ describe('POST /produtos (admin only)', () => {
     expect(res.body.data.id).toBe(1);
     expect(produtosService.criar).toHaveBeenCalledWith(
       expect.not.objectContaining({ sku: expect.anything() }),
-      1
+      1,
+      2
     );
   });
 
@@ -201,7 +202,8 @@ describe('POST /produtos (admin only)', () => {
     expect(res.status).toBe(201);
     expect(produtosService.criar).toHaveBeenCalledWith(
       expect.not.objectContaining({ sku: expect.anything() }),
-      1
+      1,
+      2
     );
   });
 });

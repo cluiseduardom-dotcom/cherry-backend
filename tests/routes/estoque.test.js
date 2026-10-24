@@ -180,3 +180,54 @@ describe('GET /produtos/movimentacoes (relatório agregado)', () => {
     expect(estoqueService.listarMovimentacoesRelatorio).not.toHaveBeenCalled();
   });
 });
+
+describe('estoque por local', () => {
+  test('POST /produtos/:id/movimentacoes repassa local_id e local inexistente devolve 404', async () => {
+    estoqueService.registrarMovimentacao.mockRejectedValue(new AppError('Local de estoque não encontrado', 404));
+
+    const res = await request(app)
+      .post('/produtos/1/movimentacoes')
+      .set('Authorization', `Bearer ${estoquistaToken}`)
+      .send({ tipo: 'entrada', quantidade: 5, local_id: 9 });
+
+    expect(res.status).toBe(404);
+    expect(estoqueService.registrarMovimentacao).toHaveBeenCalledWith(
+      1, expect.objectContaining({ local_id: 9 }), 2, 1
+    );
+  });
+
+  test('POST rejeita local_id inválido com 400', async () => {
+    const res = await request(app)
+      .post('/produtos/1/movimentacoes')
+      .set('Authorization', `Bearer ${estoquistaToken}`)
+      .send({ tipo: 'entrada', quantidade: 5, local_id: -3 });
+
+    expect(res.status).toBe(400);
+    expect(estoqueService.registrarMovimentacao).not.toHaveBeenCalled();
+  });
+
+  test.each(['/produtos/1/estoque-locais', '/produtos/locais-estoque'])('GET %s: 401 sem token e 403 para vendedor', async (url) => {
+    expect((await request(app).get(url)).status).toBe(401);
+    const res = await request(app).get(url).set('Authorization', `Bearer ${vendedorToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  test('GET /produtos/:id/estoque-locais devolve os saldos para estoquista, usando a empresa do JWT', async () => {
+    estoqueService.saldosPorLocal.mockResolvedValue({ produto_id: 1, estoque_total: 10, consistente: true, locais: [] });
+
+    const res = await request(app).get('/produtos/1/estoque-locais').set('Authorization', `Bearer ${estoquistaToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.estoque_total).toBe(10);
+    expect(estoqueService.saldosPorLocal).toHaveBeenCalledWith(1, 1);
+  });
+
+  test('GET /produtos/locais-estoque lista os locais da empresa do JWT', async () => {
+    estoqueService.listarLocais.mockResolvedValue([{ id: 1, tipo: 'central', nome: 'Central' }]);
+
+    const res = await request(app).get('/produtos/locais-estoque').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(estoqueService.listarLocais).toHaveBeenCalledWith(1);
+  });
+});

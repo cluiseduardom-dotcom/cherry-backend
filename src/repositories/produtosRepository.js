@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const estoqueRepository = require('./estoqueRepository');
 
 // Só venda FINALIZADA conta como venda (a mesma regra do dashboard e do ponto de equilíbrio):
 // uma venda cancelada foi estornada e devolveu o estoque, então nunca "aconteceu" para análise.
@@ -30,28 +31,60 @@ async function listarPaginado({ limit, offset, empresa_id }) {
     return { items: rows, total: Number(countRows[0].count) };
 }
 
-async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id }) {
-    const { rows } = await db.query(
-        `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id)
+// Estoque inicial: o total (produtos.estoque_atual) e o saldo por local têm que fechar sempre, e o
+// histórico precisa existir. Por isso, com estoque inicial > 0, o produto nasce com 0 e o saldo
+// entra como uma entrada auditada ("Estoque inicial") no local Central, na MESMA transação.
+async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id, usuario_id }) {
+    const estoqueInicial = estoque_atual ?? 0;
+    const sql = `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         RETURNING *`,
-        [
-            sku ?? null,
-            nome,
-            descricao ?? null,
-            categoria ?? null,
-            preco_venda,
-            custo,
-            estoque_atual ?? 0,
-            estoque_minimo ?? 0,
-            ativo ?? true,
-            tipo ?? 'acabado',
-            unidade ?? 'UN',
-            empresa_id
-        ]
-    );
+         RETURNING *`;
+    const params = (estoque) => [
+        sku ?? null,
+        nome,
+        descricao ?? null,
+        categoria ?? null,
+        preco_venda,
+        custo,
+        estoque,
+        estoque_minimo ?? 0,
+        ativo ?? true,
+        tipo ?? 'acabado',
+        unidade ?? 'UN',
+        empresa_id
+    ];
 
-    return rows[0];
+    if (estoqueInicial <= 0) {
+        const { rows } = await db.query(sql, params(0));
+        return rows[0];
+    }
+
+    const client = await db.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const { rows } = await client.query(sql, params(0));
+        const produto = rows[0];
+
+        const resultado = await estoqueRepository.criarMovimentacao({
+            produto_id: produto.id,
+            tipo: 'entrada',
+            quantidade: estoqueInicial,
+            motivo: 'Estoque inicial',
+            usuario_id,
+            empresa_id
+        }, client);
+
+        await client.query('COMMIT');
+
+        return { ...produto, estoque_atual: resultado.movimentacao.estoque_resultante };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
 }
 
 async function atualizar(id, dados, empresa_id) {

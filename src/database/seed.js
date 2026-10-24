@@ -106,6 +106,15 @@ async function main() {
             { sku: 'CHV-001', nome: 'Chaveiro Promo', custo: 6.00, preco_venda: 5.00 }
         ];
 
+        const centralResult = await client.query(
+            `INSERT INTO locais_estoque (empresa_id, tipo, nome) VALUES ($1, 'central', 'Central')
+             ON CONFLICT DO NOTHING RETURNING id`,
+            [empresaId]
+        );
+        const centralId = centralResult.rows.length
+            ? centralResult.rows[0].id
+            : (await client.query(`SELECT id FROM locais_estoque WHERE empresa_id = $1 AND tipo = 'central'`, [empresaId])).rows[0].id;
+
         const produtoIds = [];
         const estoqueAtual = {};
         const custoPorProduto = {};
@@ -122,9 +131,9 @@ async function main() {
             custoPorProduto[produtoId] = p.custo;
 
             await client.query(
-                `INSERT INTO movimentacoes_estoque (empresa_id, produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id)
-                 VALUES ($1, $2, 'entrada', $3, $3, 'Estoque inicial (seed)', $4)`,
-                [empresaId, produtoId, ESTOQUE_INICIAL, adminId]
+                `INSERT INTO movimentacoes_estoque (empresa_id, produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id, local_id, saldo_local_resultante)
+                 VALUES ($1, $2, 'entrada', $3, $3, 'Estoque inicial (seed)', $4, $5, $3)`,
+                [empresaId, produtoId, ESTOQUE_INICIAL, adminId, centralId]
             );
 
             const { markup, margem } = calcularMarkupEMargem(p.custo, p.preco_venda);
@@ -173,11 +182,20 @@ async function main() {
                 );
 
                 await client.query(
-                    `INSERT INTO movimentacoes_estoque (empresa_id, produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id)
-                     VALUES ($1, $2, 'saida', $3, $4, $5, $6)`,
-                    [empresaId, produtoId, quantidade, estoqueAtual[produtoId], `Venda #${vendaId}`, adminId]
+                    `INSERT INTO movimentacoes_estoque (empresa_id, produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id, local_id, saldo_local_resultante)
+                     VALUES ($1, $2, 'saida', $3, $4, $5, $6, $7, $4)`,
+                    [empresaId, produtoId, quantidade, estoqueAtual[produtoId], `Venda #${vendaId}`, adminId, centralId]
                 );
             }
+        }
+
+        // Saldo final de cada produto no Central (tudo do seed acontece lá).
+        for (const produtoId of produtoIds) {
+            await client.query(
+                `INSERT INTO estoque_locais (produto_id, local_id, empresa_id, saldo) VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (produto_id, local_id) DO UPDATE SET saldo = EXCLUDED.saldo`,
+                [produtoId, centralId, empresaId, estoqueAtual[produtoId]]
+            );
         }
 
         await client.query('COMMIT');

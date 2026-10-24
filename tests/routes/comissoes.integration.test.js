@@ -45,6 +45,13 @@ async function criarProduto(alvo, preco = 100) {
         `INSERT INTO produtos (empresa_id, nome, preco_venda, custo, estoque_atual) VALUES ($1, $2, $3, 10, 500) RETURNING id`,
         [alvo.empresaId, `Produto ${sufixo}`, preco]
     );
+    // Estoque por local: o saldo inserido direto precisa existir também no Central.
+    await db.query(`INSERT INTO locais_estoque (empresa_id, tipo, nome) VALUES ($1, 'central', 'Central') ON CONFLICT DO NOTHING`, [alvo.empresaId]);
+    await db.query(
+        `INSERT INTO estoque_locais (produto_id, local_id, empresa_id, saldo)
+         SELECT $1, l.id, $2, 500 FROM locais_estoque l WHERE l.empresa_id = $2 AND l.tipo = 'central'`,
+        [rows[0].id, alvo.empresaId]
+    );
     await db.query(
         `INSERT INTO precos_produto (empresa_id, produto_id, canal_id, preco_venda, markup_percentual, margem_percentual) VALUES ($1, $2, $3, $4, 900, 90)`,
         [alvo.empresaId, rows[0].id, alvo.canalId, preco]
