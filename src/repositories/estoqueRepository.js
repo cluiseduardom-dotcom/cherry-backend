@@ -14,6 +14,19 @@ async function garantirLocalCentral(client, empresa_id) {
     return rows[0].id;
 }
 
+// Local "Em trânsito" da empresa (mercadoria enviada e ainda não aceita). Mesmo padrão do Central.
+async function garantirLocalTransito(client, empresa_id) {
+    await client.query(
+        `INSERT INTO locais_estoque (empresa_id, tipo, nome) VALUES ($1, 'transito', 'Em trânsito') ON CONFLICT DO NOTHING`,
+        [empresa_id]
+    );
+    const { rows } = await client.query(
+        `SELECT id FROM locais_estoque WHERE empresa_id = $1 AND tipo = 'transito'`,
+        [empresa_id]
+    );
+    return rows[0].id;
+}
+
 // clienteExterno permite participar de uma transação já aberta por outro módulo
 // (ex: criação de venda, que precisa que a baixa de estoque de todos os itens e o
 // registro da venda sejam a mesma transação). Quando informado, esta função não
@@ -25,7 +38,7 @@ async function garantirLocalCentral(client, empresa_id) {
 // locais sempre fecha com o total. Saldo de local nunca fica negativo. A trava do produto
 // (FOR UPDATE) vem primeiro e serializa todas as movimentações do mesmo produto, o que também
 // protege as linhas de saldo por local.
-async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario_id, empresa_id, local_id }, clienteExterno) {
+async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario_id, empresa_id, local_id, transferencia_id }, clienteExterno) {
     const client = clienteExterno || await db.connect();
     const gerenciaTransacao = !clienteExterno;
 
@@ -92,10 +105,10 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
         await client.query('UPDATE produtos SET estoque_atual = $1 WHERE id = $2', [novoEstoque, produto_id]);
 
         const { rows } = await client.query(
-            `INSERT INTO movimentacoes_estoque (produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id, empresa_id, local_id, saldo_local_resultante)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `INSERT INTO movimentacoes_estoque (produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id, empresa_id, local_id, saldo_local_resultante, transferencia_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              RETURNING *`,
-            [produto_id, tipo, quantidade, novoEstoque, motivo ?? null, usuario_id, empresa_id, localId, novoSaldoLocal]
+            [produto_id, tipo, quantidade, novoEstoque, motivo ?? null, usuario_id, empresa_id, localId, novoSaldoLocal, transferencia_id ?? null]
         );
 
         if (gerenciaTransacao) await client.query('COMMIT');
@@ -224,6 +237,7 @@ async function listarMovimentacoesRelatorio({ limit, offset, produto_id, data_de
 module.exports = {
     criarMovimentacao,
     garantirLocalCentral,
+    garantirLocalTransito,
     saldosPorLocal,
     listarLocais,
     listarPorProduto,
