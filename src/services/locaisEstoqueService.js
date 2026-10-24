@@ -2,7 +2,8 @@ const AppError = require('../errors/AppError');
 const repo = require('../repositories/locaisEstoqueRepository');
 const { ehEquipe, podeVerLocal } = require('./shared/locaisEstoquePermissao');
 
-// Equipe: todos os locais ativos (menos o Em trânsito, que é interno). Demais: só a própria maleta.
+// Equipe: todos os locais ativos (menos o Em trânsito, que é interno). Demais: o Central (só
+// identificação, para devolver e vender; o saldo dele segue restrito à equipe) e a própria maleta.
 async function listar(usuario) {
     return repo.listarVisiveis({
         empresa_id: usuario.empresa_id,
