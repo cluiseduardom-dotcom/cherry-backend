@@ -16,7 +16,8 @@ const CAPACIDADES = Object.freeze({
     CANCELAR_VENDA: 'cancelar_venda',
     VER_CANCELAMENTOS: 'ver_cancelamentos',
     CONCEDER_ADMIN: 'conceder_admin',
-    GERIR_CARGOS: 'gerir_cargos'
+    GERIR_CARGOS: 'gerir_cargos',
+    GERIR_USUARIOS: 'gerir_usuarios'
 });
 
 const TODAS_CAPACIDADES = Object.freeze(Object.values(CAPACIDADES));
@@ -36,7 +37,7 @@ const PERFIL_VENDEDOR = 'vendedor';
 const PERFIL_ESTOQUISTA = 'estoquista';
 const PERFIL_FATURISTA = 'faturista';
 
-const { VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS } = CAPACIDADES;
+const { VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS } = CAPACIDADES;
 
 // `escada`: participa da hierarquia de autorização (tem nível). Estoquista e Faturista são
 // funcionais e ficam fora. `sempre_ativo`: cargos básicos que o comércio não pode desligar.
@@ -48,22 +49,22 @@ const CATALOGO = Object.freeze({
     diretor: {
         cargo: 'diretor', rotulo: 'Diretor', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 80,
         sempre_ativo: false, imutavel: false, ativo_padrao: false,
-        capacidades: [VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS]
+        capacidades: [VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS]
     },
     gerente: {
         cargo: 'gerente', rotulo: 'Gerente', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 70,
         sempre_ativo: false, imutavel: false, ativo_padrao: false,
-        capacidades: [VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS]
+        capacidades: [VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS]
     },
     coordenador: {
         cargo: 'coordenador', rotulo: 'Coordenador', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 60,
         sempre_ativo: false, imutavel: false, ativo_padrao: false,
-        capacidades: [VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS]
+        capacidades: [VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS]
     },
     supervisor: {
         cargo: 'supervisor', rotulo: 'Supervisor', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 50,
         sempre_ativo: false, imutavel: false, ativo_padrao: false,
-        capacidades: [VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS]
+        capacidades: [VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS]
     },
     analista: {
         cargo: 'analista', rotulo: 'Analista', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 40,
