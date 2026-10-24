@@ -6,6 +6,7 @@ const pagamentosVendaRepository = require('./pagamentosVendaRepository');
 const parcelasPagamentoRepository = require('./parcelasPagamentoRepository');
 const estornosPagamentoRepository = require('./estornosPagamentoRepository');
 const taxasPlataformaRepository = require('./taxasPlataformaRepository');
+const comissoesRepository = require('./comissoesRepository');
 const cancelamentosRepository = require('./cancelamentosRepository');
 const { executarComLock } = require('./shared/transacoes');
 const AppError = require('../errors/AppError');
@@ -258,6 +259,15 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
         // do catch desfaz a venda inteira. Nunca entra na resposta nem nos itens.
         await taxasPlataformaRepository.apurar({ venda_id: venda.id, empresa_id, total }, client);
 
+        // Comissão do vendedor: congelada na mesma transação, sobre subtotal - desconto
+        // (sem juros do crediário). Sem percentual configurado para o vendedor, não grava.
+        await comissoesRepository.apurar({
+            venda_id: venda.id,
+            empresa_id,
+            usuario_id,
+            base: Number((subtotal - descontoFinal).toFixed(2))
+        }, client);
+
         const valores = itensProcessados.map((item) => [
             venda.id, item.produto_id, item.quantidade, item.preco_unitario,
             item.custo_unitario, empresa_id, item.kit_id
@@ -290,6 +300,11 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                     empresa_id
                 }, client);
             }
+
+            // Comissão: venda legada à vista nasce paga (libera); a prazo espera o recebimento.
+            await comissoesRepository.recalcularLiberacao({
+                venda_id: venda.id, empresa_id, origem: 'venda', executado_por: usuario_id
+            }, client);
 
             await client.query('COMMIT');
             return {
@@ -373,6 +388,16 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
 
             pagamentosCriados.push(pagamento);
         }
+
+        // Comissão: dinheiro recebido pelo vendedor vira repasse a confirmar; o resto do que já
+        // entrou como pago (pix, débito) libera a comissão proporcionalmente, já na venda.
+        await comissoesRepository.registrarRepasses({
+            venda_id: venda.id, empresa_id, vendedor_id: usuario_id, pagamentos: pagamentosCriados
+        }, client);
+
+        await comissoesRepository.recalcularLiberacao({
+            venda_id: venda.id, empresa_id, origem: 'venda', executado_por: usuario_id
+        }, client);
 
         const pagamentosComParcelas = [];
         for (const pagamento of pagamentosCriados) {
@@ -542,6 +567,9 @@ async function cancelar(id, usuario_id, empresa_id, opcoes) {
         // Taxa interna da plataforma: estornada, nunca apagada. Venda histórica
         // sem taxa é no-op.
         await taxasPlataformaRepository.estornarPorVendaId(id, empresa_id, client);
+
+        // Comissão do vendedor: estornada, nunca apagada. Venda sem comissão é no-op.
+        await comissoesRepository.estornarPorVendaId(id, empresa_id, client);
 
         const { rows: pagamentosRows } = await client.query(
             `SELECT * FROM pagamentos_venda WHERE venda_id = $1 AND empresa_id = $2 FOR UPDATE`,
