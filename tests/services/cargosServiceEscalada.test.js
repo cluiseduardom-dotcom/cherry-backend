@@ -10,10 +10,10 @@ beforeEach(() => {
     jest.clearAllMocks();
     cargosRepository.buscar.mockResolvedValue(null);
     cargosRepository.contarUsuariosAtivos.mockResolvedValue(0);
-    cargosRepository.salvar.mockResolvedValue({});
+    cargosRepository.salvarComTravaDeUso.mockResolvedValue({});
 });
 
-const gravado = () => cargosRepository.salvar.mock.calls[0][0];
+const gravado = () => cargosRepository.salvarComTravaDeUso.mock.calls[0][0];
 
 describe('cargosService.atualizar — Admin anexado ao cargo', () => {
     test('editar capacidades NÃO apaga o `administrador` do cargo', async () => {
@@ -54,13 +54,13 @@ describe('cargosService.atualizar — sem escalada de privilégio (quem não é 
         await expect(cargosService.atualizar(7, 'gerente', { capacidades: ['gerir_cargos', 'conceder_admin'] }, gerente))
             .rejects.toMatchObject({ statusCode: 403, message: 'Você só pode editar cargos abaixo do seu nível' });
 
-        expect(cargosRepository.salvar).not.toHaveBeenCalled();
+        expect(cargosRepository.salvarComTravaDeUso).not.toHaveBeenCalled();
     });
 
     test('não edita cargo de nível igual ou acima do seu', async () => {
         await expect(cargosService.atualizar(7, 'diretor', { ativo: true }, gerente)).rejects.toMatchObject({ statusCode: 403 });
         await expect(cargosService.atualizar(7, 'diretor', { nivel: 10 }, gerente)).rejects.toMatchObject({ statusCode: 403 });
-        expect(cargosRepository.salvar).not.toHaveBeenCalled();
+        expect(cargosRepository.salvarComTravaDeUso).not.toHaveBeenCalled();
     });
 
     test('não sobe um cargo para nível igual ou acima do seu', async () => {
@@ -108,5 +108,35 @@ describe('cargosService.atualizar — sem escalada de privilégio (quem não é 
         await cargosService.atualizar(7, 'diretor', { nivel: 89, capacidades: ['conceder_admin', 'gerir_cargos'] }, admin);
 
         expect(gravado()).toMatchObject({ nivel: 89 });
+    });
+});
+
+describe('cargosService.atualizar — desligar cargo em uso', () => {
+    const admin = { id: 1, empresa_id: 7, role: 'admin', nivel: 90, capacidades: [] };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        cargosRepository.buscar.mockResolvedValue({ nivel: 70, ativo: true, capacidades: [] });
+        cargosRepository.salvarComTravaDeUso.mockResolvedValue({});
+    });
+
+    test('desligar um cargo ligado pede a checagem de uso SOB a trava, na mesma gravação', async () => {
+        await cargosService.atualizar(7, 'gerente', { ativo: false }, admin);
+
+        expect(cargosRepository.salvarComTravaDeUso).toHaveBeenCalledTimes(1);
+        expect(cargosRepository.salvarComTravaDeUso.mock.calls[0][1]).toEqual({ bloquearSeEmUso: true });
+        expect(cargosRepository.contarUsuariosAtivos).not.toHaveBeenCalled();
+    });
+
+    test('editar sem desligar não pede a checagem de uso', async () => {
+        await cargosService.atualizar(7, 'gerente', { nivel: 65 }, admin);
+
+        expect(cargosRepository.salvarComTravaDeUso.mock.calls[0][1]).toEqual({ bloquearSeEmUso: false });
+    });
+
+    test('uso no banco vira 409 vindo da gravação (o service repassa o erro)', async () => {
+        cargosRepository.salvarComTravaDeUso.mockRejectedValue(Object.assign(new Error('Há 2 usuário(s)'), { statusCode: 409 }));
+
+        await expect(cargosService.atualizar(7, 'gerente', { ativo: false }, admin)).rejects.toMatchObject({ statusCode: 409 });
     });
 });

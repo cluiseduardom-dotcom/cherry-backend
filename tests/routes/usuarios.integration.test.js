@@ -88,6 +88,85 @@ describe('migration 055', () => {
     });
 });
 
+describe('migration 055: integridade da trilha', () => {
+    const evento = (extra = {}) => db.query(
+        `INSERT INTO usuarios_eventos (empresa_id, acao, alvo_usuario_id, cargo_alvo, executado_por, motivo)
+         VALUES ($1, 'bloquear', $2, 'vendedor', $3, 'motivo de teste') RETURNING id`,
+        [extra.empresa ?? A.empresaId, extra.alvo ?? A.vendedorId, extra.autor ?? A.adminId]
+    );
+
+    test('alvo ou executor de OUTRA empresa é recusado pelo banco (FK composta)', async () => {
+        await expect(evento({ alvo: B.vendedorId })).rejects.toMatchObject({ code: '23503' });
+        await expect(evento({ autor: B.gerenteId })).rejects.toMatchObject({ code: '23503' });
+        await expect(evento({ empresa: B.empresaId })).rejects.toMatchObject({ code: '23503' });
+    });
+
+    test('UPDATE e DELETE na trilha são recusados pelo banco', async () => {
+        const { rows } = await evento();
+
+        await expect(db.query(`UPDATE usuarios_eventos SET motivo = 'adulterado' WHERE id = $1`, [rows[0].id]))
+            .rejects.toMatchObject({ code: '23001' });
+        await expect(db.query('DELETE FROM usuarios_eventos WHERE id = $1', [rows[0].id]))
+            .rejects.toMatchObject({ code: '23001' });
+
+        expect((await db.query('SELECT motivo FROM usuarios_eventos WHERE id = $1', [rows[0].id])).rows[0].motivo).toBe('motivo de teste');
+    });
+});
+
+describe('criar x desligar cargo ao mesmo tempo', () => {
+    const cargosRepository = require('../../src/repositories/cargosRepository');
+    const usuariosRepository = require('../../src/repositories/usuariosRepository');
+    const dados = (papel) => ({
+        nome: `Corrida ${sufixo}`, email: `corrida-${papel}-${crypto.randomBytes(3).toString('hex')}-${sufixo}@teste.invalid`,
+        senhaHash: SENHA_HASH, papel, empresa_id: A.empresaId, executado_por: A.gerenteId, motivo: null
+    });
+
+    test('o cargo é revalidado SOB a trava: desligado no meio, a criação é recusada (409) e nada é criado', async () => {
+        // Cargo ligado e vazio (nenhum usuário nele): é o caso em que o desligar passa pela contagem.
+        await ligarCargo(A, 'supervisor', 50, []);
+
+        // Quem desliga segura a trava do cargo; a criação começa e espera por ela.
+        const desligando = await db.connect();
+        await desligando.query('BEGIN');
+        await cargosRepository.travarCargo(desligando, A.empresaId, 'supervisor');
+
+        const dadosCriacao = dados('supervisor');
+        const criando = usuariosRepository.criarComAuditoria(dadosCriacao);
+        const resultado = criando.then((r) => ({ r }), (e) => ({ e }));
+
+        await new Promise((resolver) => setTimeout(resolver, 300));
+        await desligando.query(`UPDATE cargos_empresa SET ativo = false WHERE empresa_id = $1 AND cargo = 'supervisor'`, [A.empresaId]);
+        await desligando.query('COMMIT');
+        desligando.release();
+
+        const { r, e } = await resultado;
+
+        expect(r).toBeUndefined();
+        expect(e).toMatchObject({ statusCode: 409 });
+        expect((await db.query('SELECT 1 FROM usuarios WHERE email = $1', [dadosCriacao.email])).rowCount).toBe(0);
+    });
+
+    test('desligar um cargo com usuário ativo é recusado dentro da própria gravação (409) e o cargo continua ligado', async () => {
+        await ligarCargo(A, 'supervisor', 50, []);
+        await criarUsuario(A, 'supervisor', 'sup');
+
+        await expect(cargosRepository.salvarComTravaDeUso(
+            { empresa_id: A.empresaId, cargo: 'supervisor', nivel: 50, ativo: false, capacidades: [], usuario_id: A.adminId },
+            { bloquearSeEmUso: true }
+        )).rejects.toMatchObject({ statusCode: 409 });
+
+        expect((await db.query(`SELECT ativo FROM cargos_empresa WHERE empresa_id = $1 AND cargo = 'supervisor'`, [A.empresaId])).rows[0].ativo).toBe(true);
+    });
+
+    test('a criação direta em cargo desligado é recusada mesmo sem passar pelo service', async () => {
+        await db.query(`UPDATE cargos_empresa SET ativo = false WHERE empresa_id = $1 AND cargo = 'diretor'`, [A.empresaId]);
+
+        await expect(usuariosRepository.criarComAuditoria(dados('diretor'))).rejects.toMatchObject({ statusCode: 409 });
+
+        await db.query(`UPDATE cargos_empresa SET ativo = true WHERE empresa_id = $1 AND cargo = 'diretor'`, [A.empresaId]);
+    });
+});
+
 describe('autorização', () => {
     test('Vendedor e Estoquista: 403; sem token: 401', async () => {
         expect((await request(app).get('/usuarios')).status).toBe(401);

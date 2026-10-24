@@ -1,6 +1,8 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { executarComLock } = require('./shared/transacoes');
+const cargosRepository = require('./cargosRepository');
+const { resolverCargo } = require('../services/permissoesService');
 
 // Colunas que o service precisa para resolver o cargo EFETIVO de cada usuário (cargo do
 // catálogo + linha de cargos_empresa + admin concedido), as mesmas que sessaoRepository usa.
@@ -32,12 +34,21 @@ async function listarPorEmpresa(empresa_id) {
 }
 
 // Cria o usuário e grava o evento na MESMA transação: sem trilha, não há usuário.
+// O cargo é REVALIDADO aqui dentro, sob a trava de cargo: se alguém o desligar ao mesmo tempo,
+// a criação vê o cargo desligado e recusa (409) em vez de deixar um usuário ativo sem acesso.
 // O e-mail é único no banco inteiro; a corrida entre duas criações vira 409, não 500.
 async function criarComAuditoria({ nome, email, senhaHash, papel, empresa_id, executado_por, motivo }) {
     const client = await db.connect();
 
     try {
         await client.query('BEGIN');
+        await cargosRepository.travarCargo(client, empresa_id, papel);
+
+        const cargo = resolverCargo(papel, await cargosRepository.buscar(empresa_id, papel, client));
+
+        if (!cargo || !cargo.ativo) {
+            throw new AppError('Cargo não habilitado neste comércio', 409);
+        }
 
         const { rows } = await client.query(
             `INSERT INTO usuarios (nome, email, senha, papel, empresa_id)

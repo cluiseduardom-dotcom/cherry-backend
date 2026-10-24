@@ -95,16 +95,12 @@ async function atualizar(empresaId, cargo, dados, ator) {
         throw new AppError('Este cargo básico não pode ser desativado', 409);
     }
 
-    // Desligar um cargo com gente nele deixaria essas pessoas sem acesso.
-    if (ativo === false && atual.ativo) {
-        const emUso = await cargosRepository.contarUsuariosAtivos(empresaId, cargo);
-
-        if (emUso > 0) {
-            throw new AppError(`Há ${emUso} usuário(s) ativo(s) neste cargo; mude o cargo deles antes de desativar`, 409);
-        }
-    }
-
-    await cargosRepository.salvar({ empresa_id: empresaId, cargo, nivel, ativo, capacidades, usuario_id: ator.id });
+    // Desligar um cargo com gente nele deixaria essas pessoas sem acesso: a checagem de uso e a
+    // gravação acontecem juntas, sob a mesma trava de cargo que a criação de usuário respeita.
+    await cargosRepository.salvarComTravaDeUso(
+        { empresa_id: empresaId, cargo, nivel, ativo, capacidades, usuario_id: ator.id },
+        { bloquearSeEmUso: ativo === false && atual.ativo }
+    );
 
     return apresentar(cargo, { nivel, ativo, capacidades });
 }
