@@ -362,11 +362,19 @@ describe('buscarPorId', () => {
   test('returns custo_unitario as stored on itens_venda, never re-reading produtos.custo', async () => {
     db.query = jest.fn()
       .mockResolvedValueOnce({ rows: [{ id: 1, empresa_id: 9, canal: 'loja_fisica', status: 'finalizada', total: '30.00' }] })
-      .mockResolvedValueOnce({ rows: [{ id: 1, produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00', kit_id: null }] });
+      .mockResolvedValueOnce({ rows: [{ id: 1, produto_id: 1, quantidade: 3, preco_unitario: '10.00', custo_unitario: '4.00', kit_id: null }] })
+      .mockResolvedValueOnce({ rows: [{ id: 5, forma_pagamento: 'dinheiro', valor: '30.00', valor_recebido: '50.00', troco: '20.00', numero_parcelas: 1, status: 'pago' }] });
 
     const resultado = await vendasRepository.buscarPorId(1, 9);
 
     expect(resultado.itens[0].custo_unitario).toBe('4.00');
+    expect(resultado.pagamentos).toEqual([{ id: 5, forma_pagamento: 'dinheiro', valor: '30.00', valor_recebido: '50.00', troco: '20.00', numero_parcelas: 1, status: 'pago' }]);
+
+    // Pagamentos: só campos de exibição, sempre filtrados pela empresa.
+    const [pagamentosSql, pagamentosParams] = db.query.mock.calls[2];
+    expect(pagamentosSql).toContain('empresa_id = $2');
+    expect(pagamentosSql).not.toMatch(/provedor|nsu|autorizacao|transacao_externa/i);
+    expect(pagamentosParams).toEqual([1, 9]);
 
     const itensSql = db.query.mock.calls[1][0];
     expect(itensSql).toContain('custo_unitario');
@@ -380,7 +388,8 @@ describe('buscarPorId', () => {
         { id: 1, produto_id: 1, quantidade: 1, preco_unitario: '10.00', custo_unitario: '4.00', kit_id: 1 },
         { id: 2, produto_id: 2, quantidade: 1, preco_unitario: '5.00', custo_unitario: '2.00', kit_id: 1 },
         { id: 3, produto_id: 3, quantidade: 1, preco_unitario: '10.00', custo_unitario: '4.00', kit_id: null }
-      ] });
+      ] })
+      .mockResolvedValueOnce({ rows: [] });
 
     const resultado = await vendasRepository.buscarPorId(1, 9);
 
