@@ -253,3 +253,21 @@ O cargo `gerente` já existe no catálogo, mas vem **desligado por padrão** em 
 - Novo cargo funcional `financeiro` (rótulo **Analista financeiro**; fora da escada, sem nível, perfil base = vendedor), **desligado por padrão** em cada empresa. Padrão: `ver_vendas_de_todos` + `gerir_financeiro`.
 - Sem o cargo desenhado, o financeiro fica com quem já tem a capacidade por padrão: **Diretor, Gerente e Admin**. Coordenador e Supervisor **não** têm (mudança: antes confirmavam repasse com `ver_vendas_de_todos`); a empresa pode concedê-la em `PUT /cargos/:cargo`.
 - Empresas que já editaram Diretor/Gerente (capacidades explícitas) recebem `gerir_financeiro` na migration, se o cargo tem `ver_vendas_de_todos`, para ninguém perder o que já fazia.
+
+## Quando pagar: opção da empresa (migration 064)
+
+Tabela `comissao_configuracoes` (uma linha por empresa; **sem linha = `liberada`**).
+
+| Modo | Efeito |
+|---|---|
+| `liberada` (padrão) | A comissão liberada já entra no "a pagar". |
+| `fim_do_mes` | Só entram vendas de **mês já fechado** (venda anterior ao dia 1º do mês corrente, fuso America/Sao_Paulo) e comissões que **já têm pagamento/desconto** (para o desconto de estorno ser abatido). Vendas do mês corrente aparecem em `aguardando_fechamento`. |
+
+A regra só decide o que pode ser **pago**; apuração e liberação não mudam. O pagamento usa a mesma regra do "a pagar" (valor da tela que inclua venda do mês corrente = 409).
+
+| Rota | Quem | Descrição |
+|---|---|---|
+| `GET /comissoes/configuracao` | `gerir_financeiro` (admin tem) | `{ modo_pagamento, padrao, atualizado_em, atualizado_por_nome }` |
+| `PUT /comissoes/configuracao` | só admin | `{ modo_pagamento: 'liberada' \| 'fim_do_mes' }` (corpo estrito; `empresa_id` e autor vêm do JWT). Vale de imediato. |
+
+`GET /comissoes/a-pagar` passa a devolver `modo_pagamento`, `items[].aguardando_fechamento` e `totais.aguardando_fechamento`. Um vendedor pode aparecer com `a_pagar: "0.00"` e `aguardando_fechamento > 0` (a tela não deve oferecer "Pagar").

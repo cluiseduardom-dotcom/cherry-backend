@@ -79,10 +79,27 @@ async function historico(comissaoId, usuario) {
 
 // Só quem tem gerir_financeiro chama (rota); empresa_id e quem paga vêm do JWT.
 async function aPagar(empresaId) {
-    const items = await pagamentosRepository.resumoAPagar(empresaId);
-    const totalCentavos = items.reduce((soma, i) => soma + Math.round(Number(i.a_pagar) * 100), 0);
+    const { modo_pagamento, items } = await pagamentosRepository.resumoAPagar(empresaId);
+    const somar = (campo) => (items.reduce((soma, i) => soma + Math.round(Number(i[campo]) * 100), 0) / 100).toFixed(2);
 
-    return { items, totais: { a_pagar: (totalCentavos / 100).toFixed(2) } };
+    return {
+        modo_pagamento,
+        items,
+        totais: { a_pagar: somar('a_pagar'), aguardando_fechamento: somar('aguardando_fechamento') }
+    };
+}
+
+async function configuracao(empresaId) {
+    return pagamentosRepository.obterConfiguracao(empresaId);
+}
+
+// Só admin (rota). empresa_id e autor vêm do JWT.
+async function definirConfiguracao({ modo_pagamento }, usuario) {
+    return pagamentosRepository.definirModoPagamento({
+        empresa_id: usuario.empresa_id,
+        modo_pagamento,
+        atualizado_por: usuario.id
+    });
 }
 
 async function registrarPagamento(dados, usuario) {
@@ -112,5 +129,5 @@ async function pagamentos({ page, pageSize, vendedor_id }, usuario) {
 
 module.exports = {
     minhas, equipe, listarPercentuais, definirPercentual, repasses, confirmarRepasse, historico,
-    aPagar, registrarPagamento, pagamentos
+    aPagar, registrarPagamento, pagamentos, configuracao, definirConfiguracao
 };

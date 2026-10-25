@@ -9,23 +9,80 @@ const { reaisParaCentavos, centavosParaReais } = require('../utils/comissao');
 const SQL_PAGO = `(SELECT COALESCE(SUM(i.valor), 0) FROM comissao_pagamento_itens i
                     WHERE i.comissao_id = c.id AND i.empresa_id = c.empresa_id)`;
 
-// Vendedores com saldo (a pagar ou desconto pendente), com o líquido a pagar. Só leitura.
-async function resumoAPagar(empresa_id) {
-    const { rows } = await db.query(
-        `SELECT u.id AS vendedor_id, u.nome AS vendedor_nome, u.ativo,
-                COUNT(*)::int AS quantidade_comissoes,
-                SUM(GREATEST(c.valor_liberado - ${SQL_PAGO}, 0))::numeric(15,2) AS bruto_a_pagar,
-                SUM(LEAST(c.valor_liberado - ${SQL_PAGO}, 0))::numeric(15,2) AS descontos,
-                SUM(c.valor_liberado - ${SQL_PAGO})::numeric(15,2) AS a_pagar
-         FROM comissoes_venda c
-         JOIN usuarios u ON u.id = c.usuario_id AND u.empresa_id = c.empresa_id
-         WHERE c.empresa_id = $1 AND c.valor_liberado - ${SQL_PAGO} <> 0
-         GROUP BY u.id, u.nome, u.ativo
-         ORDER BY a_pagar DESC, u.nome ASC`,
+const MODO_PADRAO = 'liberada';
+
+// 1º instante do mês corrente em America/Sao_Paulo, no mesmo tipo de comissoes_venda.criado_em
+// (TIMESTAMP gravado por NOW() na hora do servidor): vendas até 23:59:59 do último dia do mês
+// anterior (horário de Brasília) são de mês fechado.
+const SQL_INICIO_DO_MES = `((date_trunc('month', NOW() AT TIME ZONE 'America/Sao_Paulo')) AT TIME ZONE 'America/Sao_Paulo')::timestamp`;
+
+// Modo de pagamento da empresa; sem linha = padrão ('liberada'). `executor` = pool ou client da transação.
+async function obterModoPagamento(empresa_id, executor = db) {
+    const { rows } = await executor.query(
+        'SELECT modo_pagamento FROM comissao_configuracoes WHERE empresa_id = $1',
         [empresa_id]
     );
 
-    return rows;
+    return rows[0] ? rows[0].modo_pagamento : MODO_PADRAO;
+}
+
+async function obterConfiguracao(empresa_id) {
+    const { rows } = await db.query(
+        `SELECT cc.modo_pagamento, cc.atualizado_em, u.nome AS atualizado_por_nome
+         FROM comissao_configuracoes cc
+         JOIN usuarios u ON u.id = cc.atualizado_por AND u.empresa_id = cc.empresa_id
+         WHERE cc.empresa_id = $1`,
+        [empresa_id]
+    );
+
+    return rows[0]
+        ? { ...rows[0], padrao: false }
+        : { modo_pagamento: MODO_PADRAO, atualizado_em: null, atualizado_por_nome: null, padrao: true };
+}
+
+async function definirModoPagamento({ empresa_id, modo_pagamento, atualizado_por }) {
+    await db.query(
+        `INSERT INTO comissao_configuracoes (empresa_id, modo_pagamento, atualizado_por)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (empresa_id) DO UPDATE
+            SET modo_pagamento = EXCLUDED.modo_pagamento,
+                atualizado_por = EXCLUDED.atualizado_por,
+                atualizado_em = NOW()`,
+        [empresa_id, modo_pagamento, atualizado_por]
+    );
+
+    return obterConfiguracao(empresa_id);
+}
+
+// Vendedores com saldo (a pagar ou desconto pendente), com o líquido a pagar. Só leitura.
+// No modo 'fim_do_mes', comissão de venda do mês corrente SEM pagamento/desconto registrado não conta
+// em a_pagar: vira `aguardando_fechamento`. Comissão que já tem pagamento (ou desconto de estorno)
+// entra sempre, para o desconto ser abatido.
+async function resumoAPagar(empresa_id) {
+    const modo = await obterModoPagamento(empresa_id);
+
+    const { rows } = await db.query(
+        `WITH saldos AS (
+             SELECT c.usuario_id, c.empresa_id,
+                    c.valor_liberado - ${SQL_PAGO} AS saldo,
+                    ($2 = 'liberada' OR c.criado_em < ${SQL_INICIO_DO_MES} OR ${SQL_PAGO} <> 0) AS elegivel
+             FROM comissoes_venda c
+             WHERE c.empresa_id = $1 AND c.valor_liberado - ${SQL_PAGO} <> 0
+         )
+         SELECT u.id AS vendedor_id, u.nome AS vendedor_nome, u.ativo,
+                (COUNT(*) FILTER (WHERE s.elegivel))::int AS quantidade_comissoes,
+                COALESCE(SUM(GREATEST(s.saldo, 0)) FILTER (WHERE s.elegivel), 0)::numeric(15,2) AS bruto_a_pagar,
+                COALESCE(SUM(LEAST(s.saldo, 0)) FILTER (WHERE s.elegivel), 0)::numeric(15,2) AS descontos,
+                COALESCE(SUM(s.saldo) FILTER (WHERE s.elegivel), 0)::numeric(15,2) AS a_pagar,
+                COALESCE(SUM(s.saldo) FILTER (WHERE NOT s.elegivel), 0)::numeric(15,2) AS aguardando_fechamento
+         FROM saldos s
+         JOIN usuarios u ON u.id = s.usuario_id AND u.empresa_id = s.empresa_id
+         GROUP BY u.id, u.nome, u.ativo
+         ORDER BY a_pagar DESC, u.nome ASC`,
+        [empresa_id, modo]
+    );
+
+    return { modo_pagamento: modo, items: rows };
 }
 
 // Registra o pagamento DENTRO de uma transação. Trava as comissões do vendedor (ORDER BY id, mesma
@@ -61,25 +118,39 @@ async function registrarPagamento({ empresa_id, vendedor_id, criado_por, valor_e
             [empresa_id, vendedor_id]
         );
 
+        const modo = await obterModoPagamento(empresa_id, client);
+
         const { rows: comissoes } = await client.query(
-            `SELECT c.id, c.venda_id, c.valor_liberado, ${SQL_PAGO} AS pago
+            `SELECT c.id, c.venda_id, c.valor_liberado, ${SQL_PAGO} AS pago,
+                    (c.criado_em < ${SQL_INICIO_DO_MES}) AS mes_fechado
              FROM comissoes_venda c
              WHERE c.empresa_id = $1 AND c.usuario_id = $2
              ORDER BY c.id`,
             [empresa_id, vendedor_id]
         );
 
-        const itens = comissoes
-            .map((c) => ({ comissao_id: c.id, centavos: reaisParaCentavos(c.valor_liberado) - reaisParaCentavos(c.pago) }))
+        const todos = comissoes
+            .map((c) => ({
+                comissao_id: c.id,
+                centavos: reaisParaCentavos(c.valor_liberado) - reaisParaCentavos(c.pago),
+                // Mesma regra do resumo: no fim do mês só vendas de mês fechado ou com pagamento/desconto já registrado.
+                elegivel: modo === 'liberada' || c.mes_fechado || reaisParaCentavos(c.pago) !== 0
+            }))
             .filter((i) => i.centavos !== 0);
+
+        const itens = todos.filter((i) => i.elegivel);
 
         const liquido = itens.reduce((soma, i) => soma + i.centavos, 0);
 
         if (liquido <= 0) {
+            const aguardando = todos.length > itens.length;
+
             throw new AppError(
                 itens.length
                     ? 'Não há comissão a pagar: os descontos de estornos anteriores cobrem o que foi liberado'
-                    : 'Não há comissão liberada a pagar para este vendedor',
+                    : (aguardando
+                        ? 'Não há comissão a pagar agora: as vendas do mês corrente só são pagas após o fechamento do mês'
+                        : 'Não há comissão liberada a pagar para este vendedor'),
                 409
             );
         }
@@ -158,4 +229,6 @@ async function listarPagamentos({ empresa_id, vendedor_id, limit, offset }) {
     return { items: rows, total: total.quantidade, totais: { total_pago: total.total_pago } };
 }
 
-module.exports = { resumoAPagar, registrarPagamento, listarPagamentos };
+module.exports = {
+    obterConfiguracao, definirModoPagamento, resumoAPagar, registrarPagamento, listarPagamentos
+};

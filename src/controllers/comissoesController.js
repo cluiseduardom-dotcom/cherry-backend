@@ -8,7 +8,8 @@ const {
     repassesQuerySchema,
     confirmarRepasseSchema,
     registrarPagamentoComissaoSchema,
-    pagamentosQuerySchema
+    pagamentosQuerySchema,
+    definirModoPagamentoSchema
 } = require('../validations/comissoesValidation');
 
 function parsePaginacao(query) {
@@ -139,6 +140,26 @@ async function aPagar(req, res, next) {
     }
 }
 
+async function configuracao(req, res, next) {
+    try {
+        return response.success(res, await comissoesService.configuracao(req.usuario.empresa_id));
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function definirConfiguracao(req, res, next) {
+    try {
+        const parsed = definirModoPagamentoSchema.safeParse(req.body);
+
+        if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400);
+
+        return response.success(res, await comissoesService.definirConfiguracao(parsed.data, req.usuario));
+    } catch (error) {
+        next(error);
+    }
+}
+
 async function registrarPagamento(req, res, next) {
     try {
         const parsed = registrarPagamentoComissaoSchema.safeParse(req.body);
@@ -169,5 +190,5 @@ async function pagamentos(req, res, next) {
 
 module.exports = {
     minhas, equipe, listarPercentuais, definirPercentual, repasses, confirmarRepasse, historico,
-    aPagar, registrarPagamento, pagamentos
+    aPagar, registrarPagamento, pagamentos, configuracao, definirConfiguracao
 };
