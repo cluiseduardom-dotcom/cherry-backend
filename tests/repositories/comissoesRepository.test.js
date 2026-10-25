@@ -347,7 +347,7 @@ describe('listarDoUsuario', () => {
   test('filtra por tenant E por vendedor, aplica o período e devolve liberado/pendente/a repassar', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ id: 1 }] })
-      .mockResolvedValueOnce({ rows: [{ quantidade: '1', total_base: '100.00', total_comissao: '5.00', total_liberado: '2.00', total_pendente: '3.00', total_estornado: '0' }] })
+      .mockResolvedValueOnce({ rows: [{ quantidade: '1', total_base: '100.00', total_comissao: '5.00', total_liberado: '2.00', total_pendente: '3.00', total_estornado: '0', total_pago: '1.00', a_receber: '1.00' }] })
       .mockResolvedValueOnce({ rows: [{ dinheiro_a_repassar: '40.00' }] });
 
     const resultado = await comissoesRepository.listarDoUsuario({
@@ -357,7 +357,7 @@ describe('listarDoUsuario', () => {
     expect(resultado.total).toBe(1);
     expect(resultado.totais).toEqual({
       total_base: '100.00', total_comissao: '5.00', total_liberado: '2.00',
-      total_pendente: '3.00', total_estornado: '0', dinheiro_a_repassar: '40.00'
+      total_pendente: '3.00', total_estornado: '0', total_pago: '1.00', a_receber: '1.00', dinheiro_a_repassar: '40.00'
     });
 
     const [sql, params] = db.query.mock.calls[0];
@@ -372,8 +372,8 @@ describe('resumoEquipe', () => {
   test('soma os totais por vendedor e filtra pelo tenant', async () => {
     db.query.mockResolvedValueOnce({
       rows: [
-        { usuario_id: 2, nome: 'Ana', cargo: 'vendedor', percentual: '5.0000', quantidade_vendas: '3', total_base: '300.00', total_comissao: '15.00', total_liberado: '10.00', total_pendente: '5.00', total_estornado: '0', dinheiro_a_repassar: '20.00' },
-        { usuario_id: 3, nome: 'Bia', cargo: 'vendedor', percentual: null, quantidade_vendas: '0', total_base: '0', total_comissao: '0', total_liberado: '0', total_pendente: '0', total_estornado: '2.50', dinheiro_a_repassar: '0' }
+        { usuario_id: 2, nome: 'Ana', cargo: 'vendedor', percentual: '5.0000', quantidade_vendas: '3', total_base: '300.00', total_comissao: '15.00', total_liberado: '10.00', total_pendente: '5.00', total_estornado: '0', total_pago: '4.00', a_pagar: '6.00', dinheiro_a_repassar: '20.00' },
+        { usuario_id: 3, nome: 'Bia', cargo: 'vendedor', percentual: null, quantidade_vendas: '0', total_base: '0', total_comissao: '0', total_liberado: '0', total_pendente: '0', total_estornado: '2.50', total_pago: '0', a_pagar: '0', dinheiro_a_repassar: '0' }
       ]
     });
 
@@ -382,7 +382,7 @@ describe('resumoEquipe', () => {
     expect(resultado.items).toHaveLength(2);
     expect(resultado.totais).toEqual({
       total_base: '300.00', total_comissao: '15.00', total_liberado: '10.00',
-      total_pendente: '5.00', total_estornado: '2.50', dinheiro_a_repassar: '20.00'
+      total_pendente: '5.00', total_estornado: '2.50', total_pago: '4.00', a_pagar: '6.00', dinheiro_a_repassar: '20.00'
     });
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain('u.empresa_id = $1');

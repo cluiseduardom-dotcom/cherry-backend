@@ -1,4 +1,5 @@
 const comissoesRepository = require('../repositories/comissoesRepository');
+const pagamentosRepository = require('../repositories/comissaoPagamentosRepository');
 const { temCapacidade } = require('./permissoesService');
 const { CAPACIDADES } = require('../constants/cargos');
 
@@ -74,4 +75,40 @@ async function historico(comissaoId, usuario) {
     });
 }
 
-module.exports = { minhas, equipe, listarPercentuais, definirPercentual, repasses, confirmarRepasse, historico };
+// Só admin chama (rota); empresa_id e quem paga vêm do JWT.
+async function aPagar(empresaId) {
+    const items = await pagamentosRepository.resumoAPagar(empresaId);
+    const totalCentavos = items.reduce((soma, i) => soma + Math.round(Number(i.a_pagar) * 100), 0);
+
+    return { items, totais: { a_pagar: (totalCentavos / 100).toFixed(2) } };
+}
+
+async function registrarPagamento(dados, usuario) {
+    return pagamentosRepository.registrarPagamento({
+        empresa_id: usuario.empresa_id,
+        vendedor_id: dados.vendedor_id,
+        criado_por: usuario.id,
+        valor_esperado: dados.valor_esperado,
+        forma: dados.forma,
+        pago_em: dados.pago_em,
+        observacao: dados.observacao
+    });
+}
+
+// Quem tem `ver_vendas_de_todos` vê os pagamentos da empresa (ou de um vendedor, com filtro);
+// os demais, só os próprios (usuário do JWT) — o filtro do cliente é ignorado para eles.
+async function pagamentos({ page, pageSize, vendedor_id }, usuario) {
+    const { items, total, totais } = await pagamentosRepository.listarPagamentos({
+        empresa_id: usuario.empresa_id,
+        vendedor_id: veTodos(usuario) ? vendedor_id : usuario.id,
+        limit: pageSize,
+        offset: (page - 1) * pageSize
+    });
+
+    return { items, totais, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+module.exports = {
+    minhas, equipe, listarPercentuais, definirPercentual, repasses, confirmarRepasse, historico,
+    aPagar, registrarPagamento, pagamentos
+};

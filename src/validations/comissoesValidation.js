@@ -33,7 +33,32 @@ const confirmarRepasseSchema = z.object({
     observacao: z.string().trim().max(300, 'Observação muito longa').optional()
 }).strict();
 
+const FORMAS_PAGAMENTO_COMISSAO = ['pix', 'transferencia', 'dinheiro', 'outro'];
+
+// valor_esperado = o líquido a pagar que a tela mostrou; o backend recusa (409) se mudou.
+// pago_em: AAAA-MM-DD, não pode ser futuro (tolerância de 1 dia pelo fuso).
+const registrarPagamentoComissaoSchema = z.object({
+    vendedor_id: z.number({ error: 'Vendedor inválido' }).int('Vendedor inválido').positive('Vendedor inválido'),
+    valor_esperado: z.number({ error: 'Valor inválido' })
+        .positive('Valor deve ser maior que zero')
+        .max(1000000000, 'Valor muito alto')
+        .refine((valor) => Math.abs(valor * 100 - Math.round(valor * 100)) < 1e-6, 'Valor aceita até 2 casas decimais'),
+    forma: z.enum(FORMAS_PAGAMENTO_COMISSAO, { error: 'Forma de pagamento inválida' }),
+    pago_em: dataISO('Data do pagamento inválida'),
+    observacao: z.string().trim().max(300, 'Observação muito longa').optional()
+}).strict().refine((dados) => dados.pago_em <= new Date(Date.now() + 86400000).toISOString().slice(0, 10), {
+    message: 'Data do pagamento não pode ser futura',
+    path: ['pago_em']
+});
+
+const pagamentosQuerySchema = z.object({
+    vendedor_id: idSchema.optional()
+});
+
 module.exports = {
+    FORMAS_PAGAMENTO_COMISSAO,
+    registrarPagamentoComissaoSchema,
+    pagamentosQuerySchema,
     periodoSchema,
     definirPercentualSchema,
     idSchema,
