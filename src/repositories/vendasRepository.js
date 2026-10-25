@@ -502,6 +502,14 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
     }
 }
 
+// Como a venda foi paga, para a listagem (Histórico): forma e valor de cada pagamento, na ordem em
+// que foram lançados. Venda anterior ao módulo de pagamentos não tem linhas: volta [] e a tela usa
+// o `forma_pagamento` legado da própria venda. Filtra por empresa_id também aqui.
+const SQL_PAGAMENTOS_RESUMO = `COALESCE(
+                    (SELECT json_agg(json_build_object('forma_pagamento', pv.forma_pagamento, 'valor', pv.valor::text, 'status', pv.status) ORDER BY pv.id)
+                       FROM pagamentos_venda pv WHERE pv.venda_id = v.id AND pv.empresa_id = v.empresa_id),
+                    '[]'::json) AS pagamentos`;
+
 async function listarPaginado({ limit, offset, usuario_id, empresa_id, status, canal, data_de, data_ate }) {
     const condicoes = ['v.empresa_id = $1'];
     const valores = [empresa_id];
@@ -536,7 +544,8 @@ async function listarPaginado({ limit, offset, usuario_id, empresa_id, status, c
     const valoresListagem = [...valores, limit, offset];
     const { rows } = await db.query(
         `SELECT v.*, c.nome AS canal,
-                (SELECT COUNT(*)::int FROM itens_venda iv WHERE iv.venda_id = v.id AND iv.empresa_id = v.empresa_id) AS itens_count
+                (SELECT COUNT(*)::int FROM itens_venda iv WHERE iv.venda_id = v.id AND iv.empresa_id = v.empresa_id) AS itens_count,
+                ${SQL_PAGAMENTOS_RESUMO}
          FROM vendas v
          JOIN canais_venda c ON c.id = v.canal_id
          ${where}
@@ -571,7 +580,14 @@ async function buscarPorId(id, empresa_id) {
         [id]
     );
 
-    return { ...venda, itens: itensRows };
+    // Como foi pago: só o que a tela precisa (nunca provedor, NSU, autorização nem dados de gateway).
+    const { rows: pagamentosRows } = await db.query(
+        `SELECT id, forma_pagamento, valor, valor_recebido, troco, numero_parcelas, status
+         FROM pagamentos_venda WHERE venda_id = $1 AND empresa_id = $2 ORDER BY id`,
+        [id, empresa_id]
+    );
+
+    return { ...venda, itens: itensRows, pagamentos: pagamentosRows };
 }
 
 // Estorna o estoque de cada item (entrada auditada, motivo 'cancelamento_venda')
