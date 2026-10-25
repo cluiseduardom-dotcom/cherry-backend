@@ -6,7 +6,7 @@ Este documento é o contrato que o frontend deve seguir. O backend (PR #126) cal
 
 - A comissão é **por venda**. Ela **nasce `pendente`** quando a venda é finalizada e só vale conforme o **pagamento** é registrado.
 - **Liberação proporcional ao que foi pago**: a cada parcela recebida, libera-se a parte correspondente (ex.: venda de R$ 100 em 3x com comissão de R$ 10 → 3,33 → 6,66 → 10,00). Pix e débito são pagos na hora: a comissão já nasce liberada. O total liberado ao fim é sempre o valor exato, sem resto de centavos.
-- **Dinheiro recebido pelo vendedor** não libera sozinho: vira um **repasse "a repassar"** e a comissão daquela parte fica pendente até um **gerente/admin confirmar que o dinheiro chegou**. O próprio vendedor nunca confirma o seu repasse.
+- **Dinheiro recebido pelo vendedor** não libera sozinho: vira um **repasse "a repassar"** e a comissão daquela parte fica pendente até um **financeiro/gerente/admin (capacidade `gerir_financeiro`) confirmar que o dinheiro chegou**. O próprio vendedor nunca confirma o seu repasse.
 - **Estorno de pagamento** reduz a parte liberada. **Cancelar a venda** estorna a comissão (continua listada como `estornada`, sai dos totais) e cancela os repasses ainda pendentes.
 - Todo movimento (apuração, liberação, redução, estorno) fica no **histórico** da comissão, com quem fez.
 - Base de cálculo = **subtotal − desconto** (sem os juros do crediário). O percentual fica **congelado** na venda.
@@ -21,8 +21,8 @@ Este documento é o contrato que o frontend deve seguir. O backend (PR #126) cal
 |---|---|---|
 | `GET /comissoes/minhas` | admin e perfil vendedor (inclui gerente) | Sempre o usuário do token. Nenhum parâmetro escolhe outro usuário. |
 | `GET /comissoes/equipe` | quem tem a capacidade `ver_vendas_de_todos` (admin tem todas) | Gerente precisa ter o cargo ligado (ver abaixo). |
-| `GET /comissoes/repasses` | admin e perfil vendedor | Vendedor comum vê só os **seus**; quem tem `ver_vendas_de_todos` (e o admin) vê os da empresa. |
-| `POST /comissoes/repasses/:id/confirmar` | quem tem `ver_vendas_de_todos` (admin tem todas) | **Nunca o próprio vendedor** (403). |
+| `GET /comissoes/repasses` | admin e perfil vendedor | Vendedor comum vê só os **seus**; quem tem `ver_vendas_de_todos` ou `gerir_financeiro` (e o admin) vê os da empresa. |
+| `POST /comissoes/repasses/:id/confirmar` | quem tem `gerir_financeiro` (Analista financeiro, Diretor, Gerente; admin tem todas) | **Nunca o próprio vendedor** (403). |
 | `GET /comissoes/:id/historico` | admin e perfil vendedor | Vendedor comum só da **própria** comissão (de outro = 404); gerente/admin, qualquer da empresa. |
 | `GET /comissoes/percentuais` | só admin | |
 | `PUT /comissoes/percentuais` | só admin | |
@@ -145,7 +145,7 @@ Sem paginação. Ordenado por `total_comissao` decrescente. Inclui quem não ven
 - O repasse é criado **automaticamente** quando a venda tem pagamento em dinheiro e comissão. `declarado_em` = quando o vendedor registrou a venda. Vendas sem comissão (ex.: da dona) não geram repasse.
 - `cancelado` = a venda foi cancelada antes da confirmação.
 
-### `POST /comissoes/repasses/:id/confirmar` (gerente/admin)
+### `POST /comissoes/repasses/:id/confirmar` (`gerir_financeiro`)
 
 Corpo opcional: `{ "observacao": "Recebi na loja" }` (até 300 caracteres; campos extras são recusados). Resposta: o repasse com `status: "confirmado"`, `confirmado_por`, `confirmado_em`.
 
@@ -206,6 +206,22 @@ Lista só usuários **ativos** (bloquear um vendedor o tira daqui).
 - Erros: 400 (percentual inválido, ou usuário que não vende), 404 (usuário inexistente ou de outra empresa).
 - Alterar o percentual vale só para vendas **futuras**. Avisar isso na tela.
 
+## Pagamento da comissão ao vendedor (migration `062`)
+
+**Liberada** = o direito foi confirmado pelo pagamento do cliente. **Paga** = a empresa pagou o vendedor e registrou. Não confundir com **repasse**, que é o vendedor repassando à empresa o dinheiro da venda.
+
+A pagar de uma comissão = `valor_liberado` − soma dos itens de pagamento. Positivo = falta pagar; **negativo = a comissão foi paga e depois estornada** (venda cancelada ou pagamento estornado): vira **desconto no próximo pagamento** do vendedor.
+
+| Rota | Quem | O que faz |
+|---|---|---|
+| `GET /comissoes/a-pagar` | `gerir_financeiro` (admin tem) | Por vendedor: `a_pagar` (líquido), `bruto_a_pagar`, `descontos`, `quantidade_comissoes`; `totais.a_pagar`. Só quem tem saldo diferente de zero. |
+| `POST /comissoes/pagamentos` | `gerir_financeiro` (admin tem) | `{ vendedor_id, valor_esperado, forma, pago_em, observacao? }`. Paga **todo** o líquido do vendedor. |
+| `GET /comissoes/pagamentos?vendedor_id=&page=&pageSize=` | quem tem `ver_vendas_de_todos` ou `gerir_financeiro`: todos; vendedor: só os seus | Histórico com as vendas cobertas (`itens`: `comissao_id`, `venda_id`, `valor`, negativo = desconto). |
+
+Regras do `POST`: `forma` ∈ `pix`, `transferencia`, `dinheiro`, `outro`; `pago_em` AAAA-MM-DD, não futuro; **ninguém paga a própria comissão** (403); vendedor de outra empresa = 404. `valor_esperado` é o líquido que a tela mostrou: se mudou (estorno, nova liberação, outro pagamento simultâneo) = **409** e nada é gravado. Líquido ≤ 0 (descontos cobrem o liberado) = 409. As comissões do vendedor são travadas (`FOR UPDATE`, por id) e o "já pago" é lido **depois** da trava, em consulta separada, para que dois pagamentos simultâneos não paguem em dobro. Tabelas `comissao_pagamentos` e `comissao_pagamento_itens` são imutáveis no banco (UPDATE/DELETE recusados) e têm FKs compostas com `empresa_id`.
+
+`GET /comissoes/minhas` ganha `valor_pago` por linha e `total_pago` / `a_receber` nos totais; `GET /comissoes/equipe` ganha `total_pago` / `a_pagar` por vendedor e nos totais (nos dois, sobre as comissões do período). Sem custo, margem ou lucro.
+
 ## Integração no frontend existente (verificado no código atual)
 
 - `src/config/access.js`: registrar `'/comissoes'` em `ALLOWED_ROLES_BY_PATH` com `['admin', 'vendedor']`. O gerente tem `user.role === 'vendedor'` (perfil legado).
@@ -226,7 +242,14 @@ O cargo `gerente` já existe no catálogo, mas vem **desligado por padrão** em 
 
 ## O que não existe (fora do escopo desta entrega)
 
-- Fechamento/pagamento da comissão ao vendedor ("marcar como paga"): **liberada** significa que o direito foi confirmado pelo pagamento do cliente, não que a comissão foi paga ao vendedor.
+- Pagamento automático (Pix/transferência feita pelo sistema): o sistema **registra** o pagamento feito pela empresa (ver "Pagamento da comissão ao vendedor"), mas não move dinheiro.
 - Comissão de vendas anteriores à ativação.
 - Percentual por categoria ou meta escalonada.
 - Recebimento de parcela de crediário pela rota `PATCH /contas-receber/:id/receber` em venda do fluxo novo (`pagamentos[]`): a comissão acompanha o recebimento da **parcela** (`PATCH /parcelas/:id/receber`). Venda legada acompanha a conta a receber.
+
+## Cargo financeiro e capacidade `gerir_financeiro` (migration 063)
+
+- Nova capacidade `gerir_financeiro`: confirmar repasse de dinheiro, ver o "a pagar" e registrar pagamento de comissão. Não dá acesso a custo, margem nem a configurações.
+- Novo cargo funcional `financeiro` (rótulo **Analista financeiro**; fora da escada, sem nível, perfil base = vendedor), **desligado por padrão** em cada empresa. Padrão: `ver_vendas_de_todos` + `gerir_financeiro`.
+- Sem o cargo desenhado, o financeiro fica com quem já tem a capacidade por padrão: **Diretor, Gerente e Admin**. Coordenador e Supervisor **não** têm (mudança: antes confirmavam repasse com `ver_vendas_de_todos`); a empresa pode concedê-la em `PUT /cargos/:cargo`.
+- Empresas que já editaram Diretor/Gerente (capacidades explícitas) recebem `gerir_financeiro` na migration, se o cargo tem `ver_vendas_de_todos`, para ninguém perder o que já fazia.

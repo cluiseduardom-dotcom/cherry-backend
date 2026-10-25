@@ -6,7 +6,9 @@ const {
     definirPercentualSchema,
     idSchema,
     repassesQuerySchema,
-    confirmarRepasseSchema
+    confirmarRepasseSchema,
+    registrarPagamentoComissaoSchema,
+    pagamentosQuerySchema
 } = require('../validations/comissoesValidation');
 
 function parsePaginacao(query) {
@@ -129,4 +131,43 @@ async function historico(req, res, next) {
     }
 }
 
-module.exports = { minhas, equipe, listarPercentuais, definirPercentual, repasses, confirmarRepasse, historico };
+async function aPagar(req, res, next) {
+    try {
+        return response.success(res, await comissoesService.aPagar(req.usuario.empresa_id));
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function registrarPagamento(req, res, next) {
+    try {
+        const parsed = registrarPagamentoComissaoSchema.safeParse(req.body);
+
+        if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400);
+
+        const resultado = await comissoesService.registrarPagamento(parsed.data, req.usuario);
+
+        return response.success(res, resultado, 201);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function pagamentos(req, res, next) {
+    try {
+        const query = pagamentosQuerySchema.safeParse({ vendedor_id: req.query.vendedor_id });
+
+        if (!query.success) throw new AppError(query.error.issues[0].message, 400);
+
+        const resultado = await comissoesService.pagamentos({ ...parsePaginacao(req.query), ...query.data }, req.usuario);
+
+        return response.success(res, resultado);
+    } catch (error) {
+        next(error);
+    }
+}
+
+module.exports = {
+    minhas, equipe, listarPercentuais, definirPercentual, repasses, confirmarRepasse, historico,
+    aPagar, registrarPagamento, pagamentos
+};

@@ -333,6 +333,11 @@ function filtroPeriodo(valores, { data_inicio, data_fim }) {
     return condicoes;
 }
 
+// Quanto da comissão já foi paga ao vendedor (soma dos itens de comissao_pagamento_itens; um item
+// negativo é desconto de estorno posterior). `c` = alias de comissoes_venda.
+const SQL_PAGO = `(SELECT COALESCE(SUM(i.valor), 0) FROM comissao_pagamento_itens i
+                    WHERE i.comissao_id = c.id AND i.empresa_id = c.empresa_id)`;
+
 // Comissões de UM vendedor (o usuário autenticado). empresa_id e usuario_id vêm do JWT.
 // valor = comissão total da venda; valor_liberado = parte já liberada pelo pagamento;
 // valor_pendente = o que ainda falta liberar (0 se estornada).
@@ -344,7 +349,7 @@ async function listarDoUsuario({ limit, offset, empresa_id, usuario_id, data_ini
 
     const { rows } = await db.query(
         `SELECT c.id, c.venda_id, v.data AS data_venda, c.percentual, c.base_calculo,
-                c.valor, c.valor_liberado,
+                c.valor, c.valor_liberado, ${SQL_PAGO} AS valor_pago,
                 CASE WHEN c.status = 'estornada' THEN 0 ELSE c.valor - c.valor_liberado END AS valor_pendente,
                 c.status, c.criado_em, c.estornado_em
          FROM comissoes_venda c
@@ -361,7 +366,9 @@ async function listarDoUsuario({ limit, offset, empresa_id, usuario_id, data_ini
                 COALESCE(SUM(c.valor) FILTER (WHERE c.status <> 'estornada'), 0) AS total_comissao,
                 COALESCE(SUM(c.valor_liberado) FILTER (WHERE c.status <> 'estornada'), 0) AS total_liberado,
                 COALESCE(SUM(c.valor - c.valor_liberado) FILTER (WHERE c.status <> 'estornada'), 0) AS total_pendente,
-                COALESCE(SUM(c.valor) FILTER (WHERE c.status = 'estornada'), 0) AS total_estornado
+                COALESCE(SUM(c.valor) FILTER (WHERE c.status = 'estornada'), 0) AS total_estornado,
+                COALESCE(SUM(${SQL_PAGO}), 0) AS total_pago,
+                COALESCE(SUM(c.valor_liberado - ${SQL_PAGO}), 0) AS a_receber
          FROM comissoes_venda c
          JOIN vendas v ON v.id = c.venda_id AND v.empresa_id = c.empresa_id
          ${where}`,
@@ -384,6 +391,8 @@ async function listarDoUsuario({ limit, offset, empresa_id, usuario_id, data_ini
             total_liberado: totaisRows[0].total_liberado,
             total_pendente: totaisRows[0].total_pendente,
             total_estornado: totaisRows[0].total_estornado,
+            total_pago: totaisRows[0].total_pago,
+            a_receber: totaisRows[0].a_receber,
             dinheiro_a_repassar: repasseRows[0].dinheiro_a_repassar
         }
     };
@@ -416,6 +425,8 @@ async function resumoEquipe({ empresa_id, data_inicio, data_fim }) {
                 COALESCE(SUM(c.valor_liberado) FILTER (WHERE c.status <> 'estornada'), 0) AS total_liberado,
                 COALESCE(SUM(c.valor - c.valor_liberado) FILTER (WHERE c.status <> 'estornada'), 0) AS total_pendente,
                 COALESCE(SUM(c.valor) FILTER (WHERE c.status = 'estornada'), 0) AS total_estornado,
+                COALESCE(SUM(${SQL_PAGO}), 0) AS total_pago,
+                COALESCE(SUM(c.valor_liberado - ${SQL_PAGO}), 0) AS a_pagar,
                 COALESCE((SELECT SUM(r.valor) FROM comissao_repasses r
                            WHERE r.empresa_id = u.empresa_id AND r.vendedor_id = u.id AND r.status = 'a_repassar'), 0) AS dinheiro_a_repassar
          FROM usuarios u
@@ -436,7 +447,7 @@ async function resumoEquipe({ empresa_id, data_inicio, data_fim }) {
     const somar = (campo) => rows.reduce((acc, linha) => acc + Math.round(Number(linha[campo]) * 100), 0);
     const totais = {};
 
-    for (const campo of ['total_base', 'total_comissao', 'total_liberado', 'total_pendente', 'total_estornado', 'dinheiro_a_repassar']) {
+    for (const campo of ['total_base', 'total_comissao', 'total_liberado', 'total_pendente', 'total_estornado', 'total_pago', 'a_pagar', 'dinheiro_a_repassar']) {
         totais[campo] = (somar(campo) / 100).toFixed(2);
     }
 
