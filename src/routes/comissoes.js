@@ -14,15 +14,17 @@ router.get('/minhas', requireVendedor, controller.minhas);
 // Gerente/admin: quem tem `ver_vendas_de_todos` (Admin tem todas) vê a equipe inteira.
 router.get('/equipe', requireCapacidade(CAPACIDADES.VER_VENDAS_DE_TODOS), controller.equipe);
 
-// Dinheiro recebido pelo vendedor: o vendedor vê os seus; quem tem `ver_vendas_de_todos` vê os
-// da empresa e é quem CONFIRMA o repasse (o próprio vendedor nunca confirma o seu).
+// Dinheiro recebido pelo vendedor: o vendedor vê os seus; quem tem `ver_vendas_de_todos` ou
+// `gerir_financeiro` vê os da empresa. CONFIRMAR o repasse é de quem tem `gerir_financeiro`
+// (Analista financeiro, Diretor, Gerente, Admin); o próprio vendedor nunca confirma o seu.
 router.get('/repasses', requireVendedor, controller.repasses);
-router.post('/repasses/:id/confirmar', requireCapacidade(CAPACIDADES.VER_VENDAS_DE_TODOS), controller.confirmarRepasse);
+router.post('/repasses/:id/confirmar', requireCapacidade(CAPACIDADES.GERIR_FINANCEIRO), controller.confirmarRepasse);
 
-// Pagamento da comissão AO vendedor (a empresa pagando). Só admin vê o que há a pagar e registra o
-// pagamento (nunca o da própria comissão); o histórico é do admin/gerente (todos) ou do vendedor (só o seu).
-router.get('/a-pagar', requireAdmin, controller.aPagar);
-router.post('/pagamentos', requireAdmin, controller.registrarPagamento);
+// Pagamento da comissão AO vendedor (a empresa pagando). Ver o que há a pagar e registrar o pagamento
+// é de quem tem `gerir_financeiro` (nunca o da própria comissão); o histórico é de quem vê o dinheiro
+// da equipe (todos) ou do vendedor (só o seu).
+router.get('/a-pagar', requireCapacidade(CAPACIDADES.GERIR_FINANCEIRO), controller.aPagar);
+router.post('/pagamentos', requireCapacidade(CAPACIDADES.GERIR_FINANCEIRO), controller.registrarPagamento);
 router.get('/pagamentos', requireVendedor, controller.pagamentos);
 
 // Histórico de uma comissão: o dono vê a sua; gerente/admin vê qualquer uma da empresa.

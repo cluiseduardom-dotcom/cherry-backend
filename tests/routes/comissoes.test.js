@@ -10,24 +10,29 @@ const adminToken = makeToken({ id: 1, role: 'admin', empresa_id: 7 });
 const vendedorToken = makeToken({ id: 2, role: 'vendedor', empresa_id: 7 });
 const estoquistaToken = makeToken({ id: 3, role: 'estoquista', empresa_id: 7 });
 const gerenteToken = makeToken({ id: 4, role: 'gerente', empresa_id: 7 });
+const supervisorToken = makeToken({ id: 5, role: 'supervisor', empresa_id: 7 });
+const financeiroToken = makeToken({ id: 6, role: 'financeiro', empresa_id: 7 });
 
 const sessaoBase = { ativo: true, token_version: 0, empresa_status: 'ativa' };
 
 beforeEach(() => {
   jest.resetAllMocks();
   // Gerente é um cargo ligado pelo admin do comércio (ativo_padrao = false no catálogo).
-  sessaoRepository.buscarEstado.mockImplementation(async (usuarioId) => (
-    usuarioId === 4
-      ? {
-          ...sessaoBase,
-          papel: 'gerente',
-          cargo_configurado: true,
-          cargo_nivel: 70,
-          cargo_ativo: true,
-          cargo_capacidades: ['ver_vendas_de_todos']
-        }
-      : sessaoBase
-  ));
+  const cargoLigado = (papel, nivel, capacidades) => ({
+    ...sessaoBase,
+    papel,
+    cargo_configurado: true,
+    cargo_nivel: nivel,
+    cargo_ativo: true,
+    cargo_capacidades: capacidades
+  });
+  const sessoes = {
+    4: cargoLigado('gerente', 70, ['ver_vendas_de_todos', 'gerir_financeiro']),
+    // Supervisor vê a equipe, mas NÃO mexe no dinheiro (sem gerir_financeiro).
+    5: cargoLigado('supervisor', 50, ['ver_vendas_de_todos']),
+    6: cargoLigado('financeiro', null, ['ver_vendas_de_todos', 'gerir_financeiro'])
+  };
+  sessaoRepository.buscarEstado.mockImplementation(async (usuarioId) => sessoes[usuarioId] || sessaoBase);
 });
 
 describe('GET /comissoes/minhas', () => {
@@ -174,10 +179,10 @@ describe('GET /comissoes/repasses', () => {
 });
 
 describe('POST /comissoes/repasses/:id/confirmar', () => {
-  test('401 sem token; 403 sem `ver_vendas_de_todos` (vendedor, estoquista)', async () => {
+  test('401 sem token; 403 sem `gerir_financeiro` (vendedor, estoquista, supervisor que só vê a equipe)', async () => {
     expect((await request(app).post('/comissoes/repasses/5/confirmar').send({})).status).toBe(401);
 
-    for (const token of [vendedorToken, estoquistaToken]) {
+    for (const token of [vendedorToken, estoquistaToken, supervisorToken]) {
       const res = await request(app).post('/comissoes/repasses/5/confirmar').set('Authorization', `Bearer ${token}`).send({});
       expect(res.status).toBe(403);
     }
@@ -185,15 +190,16 @@ describe('POST /comissoes/repasses/:id/confirmar', () => {
     expect(comissoesService.confirmarRepasse).not.toHaveBeenCalled();
   });
 
-  test('gerente e admin confirmam, com o usuário do token como autor', async () => {
+  test('gerente, analista financeiro e admin confirmam, com o usuário do token como autor', async () => {
     comissoesService.confirmarRepasse.mockResolvedValue({ id: 5, status: 'confirmado' });
 
-    for (const token of [gerenteToken, adminToken]) {
+    for (const token of [gerenteToken, financeiroToken, adminToken]) {
       const res = await request(app).post('/comissoes/repasses/5/confirmar').set('Authorization', `Bearer ${token}`).send({ observacao: 'Recebi' });
       expect(res.status).toBe(200);
     }
 
     expect(comissoesService.confirmarRepasse).toHaveBeenCalledWith(5, { observacao: 'Recebi' }, expect.objectContaining({ id: 4, empresa_id: 7 }));
+    expect(comissoesService.confirmarRepasse).toHaveBeenCalledWith(5, { observacao: 'Recebi' }, expect.objectContaining({ id: 6, empresa_id: 7 }));
   });
 
   test('400 para id inválido e para campo desconhecido (strict)', async () => {
@@ -223,5 +229,33 @@ describe('GET /comissoes/:id/historico', () => {
 
     expect((await request(app).get('/comissoes/percentuais').set('Authorization', `Bearer ${adminToken}`)).status).toBe(200);
     expect(comissoesService.historico).not.toHaveBeenCalled();
+  });
+});
+
+describe('pagamento de comissão: GET /comissoes/a-pagar e POST /comissoes/pagamentos', () => {
+  const corpo = { vendedor_id: 2, valor_esperado: 10, forma: 'pix', pago_em: '2026-10-01' };
+
+  test('403 sem `gerir_financeiro` (vendedor, estoquista, supervisor); 401 sem token', async () => {
+    expect((await request(app).get('/comissoes/a-pagar')).status).toBe(401);
+
+    for (const token of [vendedorToken, estoquistaToken, supervisorToken]) {
+      expect((await request(app).get('/comissoes/a-pagar').set('Authorization', `Bearer ${token}`)).status).toBe(403);
+      expect((await request(app).post('/comissoes/pagamentos').set('Authorization', `Bearer ${token}`).send(corpo)).status).toBe(403);
+    }
+
+    expect(comissoesService.aPagar).not.toHaveBeenCalled();
+    expect(comissoesService.registrarPagamento).not.toHaveBeenCalled();
+  });
+
+  test('analista financeiro, gerente e admin acessam; quem paga é o usuário do token', async () => {
+    comissoesService.aPagar.mockResolvedValue({ items: [], totais: { a_pagar: '0.00' } });
+    comissoesService.registrarPagamento.mockResolvedValue({ id: 1 });
+
+    for (const token of [financeiroToken, gerenteToken, adminToken]) {
+      expect((await request(app).get('/comissoes/a-pagar').set('Authorization', `Bearer ${token}`)).status).toBe(200);
+      expect((await request(app).post('/comissoes/pagamentos').set('Authorization', `Bearer ${token}`).send(corpo)).status).toBe(201);
+    }
+
+    expect(comissoesService.registrarPagamento).toHaveBeenCalledWith(expect.objectContaining(corpo), expect.objectContaining({ id: 6, empresa_id: 7 }));
   });
 });
