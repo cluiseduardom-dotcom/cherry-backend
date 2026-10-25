@@ -15,7 +15,7 @@ function parseId(value) {
 
 async function listar(req, res, next) {
     try {
-        const clientes = await clientesService.listar(req.usuario.empresa_id);
+        const clientes = await clientesService.listar(req.usuario);
         return response.success(res, clientes);
     } catch (error) {
         next(error);
@@ -30,7 +30,7 @@ async function criar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const cliente = await clientesService.criar(parsed.data, req.usuario.empresa_id);
+        const cliente = await clientesService.criar(parsed.data, req.usuario);
 
         return response.success(res, cliente, 201);
     } catch (error) {
@@ -48,7 +48,7 @@ async function atualizar(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const cliente = await clientesService.atualizar(id, parsed.data, req.usuario.empresa_id);
+        const cliente = await clientesService.atualizar(id, parsed.data, req.usuario);
 
         return response.success(res, cliente);
     } catch (error) {
@@ -60,7 +60,7 @@ async function historico(req, res, next) {
     try {
         const id = parseId(req.params.id);
 
-        const registros = await clientesService.historico(id, req.usuario.empresa_id);
+        const registros = await clientesService.historico(id, req.usuario);
 
         return response.success(res, registros);
     } catch (error) {
@@ -70,7 +70,7 @@ async function historico(req, res, next) {
 
 async function ranking(req, res, next) {
     try {
-        const dados = await clientesService.ranking(req.usuario.empresa_id);
+        const dados = await clientesService.ranking(req.usuario);
         return response.success(res, dados);
     } catch (error) {
         next(error);
@@ -81,7 +81,7 @@ async function totalGasto(req, res, next) {
     try {
         const id = parseId(req.params.id);
 
-        const dados = await clientesService.totalGasto(id, req.usuario.empresa_id);
+        const dados = await clientesService.totalGasto(id, req.usuario);
 
         return response.success(res, dados);
     } catch (error) {

@@ -178,7 +178,7 @@ function criarResolvedorDeLocal(client, { empresa_id, usuario_id }) {
     };
 }
 
-async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null }) {
+async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null, somente_clientes_do_usuario }) {
     validarLimitesDeParcelamento(pagamentos, meses_prazo);
 
     const client = await db.connect();
@@ -216,8 +216,12 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
 
         if (cliente_id != null) {
             const { rows: clienteRows } = await client.query(
-                'SELECT id FROM clientes WHERE id = $1 AND empresa_id = $2',
-                [cliente_id, empresa_id]
+                somente_clientes_do_usuario === undefined
+                    ? 'SELECT id FROM clientes WHERE id = $1 AND empresa_id = $2'
+                    : 'SELECT id FROM clientes WHERE id = $1 AND empresa_id = $2 AND criado_por = $3',
+                somente_clientes_do_usuario === undefined
+                    ? [cliente_id, empresa_id]
+                    : [cliente_id, empresa_id, somente_clientes_do_usuario]
             );
             if (!clienteRows.length) throw new AppError('Cliente não encontrado', 404);
         }

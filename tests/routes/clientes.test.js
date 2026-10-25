@@ -68,7 +68,7 @@ test('GET /clientes/:id/total-gasto returns 404 when the service throws', async 
     .set('Authorization', `Bearer ${token}`);
 
   expect(res.status).toBe(404);
-  expect(clientesService.totalGasto).toHaveBeenCalledWith(999, 1);
+  expect(clientesService.totalGasto).toHaveBeenCalledWith(999, expect.objectContaining({ empresa_id: 1 }));
 });
 
 test('GET /clientes/:id/historico returns 200 with the registros', async () => {
@@ -184,7 +184,7 @@ describe('PATCH /clientes/:id', () => {
       .send(payload);
 
     expect(res.status).toBe(200);
-    expect(clientesService.atualizar).toHaveBeenCalledWith(1, payload, 1);
+    expect(clientesService.atualizar).toHaveBeenCalledWith(1, payload, expect.objectContaining({ empresa_id: 1 }));
   });
 });
 

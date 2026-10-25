@@ -23,7 +23,7 @@ async function maisVendidos(empresaId) {
     return vendasRepository.getMaisVendidosPeriodo(empresaId);
 }
 
-async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_prazo, desconto, juros, itens }, usuario_id, empresaId, idempotencyKey = null) {
+async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_prazo, desconto, juros, itens }, usuario_id, empresaId, idempotencyKey = null, somenteClientesDoUsuario = undefined) {
     const canalRow = await precosRepository.buscarCanalPorNome(canal || 'loja_fisica', empresaId);
 
     if (!canalRow) {
@@ -44,7 +44,9 @@ async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_pra
         ...(juros !== undefined ? { juros } : {}),
         ...(forma_pagamento !== undefined ? { forma_pagamento } : {}),
         ...(meses_prazo !== undefined ? { meses_prazo } : {}),
-        ...(idempotencyKey ? { idempotencyKey } : {})
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+        // Quem só vê os próprios clientes só vende para eles (o backend, não a tela, decide).
+        ...(somenteClientesDoUsuario !== undefined ? { somente_clientes_do_usuario: somenteClientesDoUsuario } : {})
     });
 }
 async function listar({ page, pageSize, status, canal, data_de, data_ate }, usuario) {

@@ -2,37 +2,55 @@ const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { executarComLock } = require('./shared/transacoes');
 
-async function listar(empresa_id) {
-    const { rows } = await db.query('SELECT * FROM clientes WHERE empresa_id = $1', [empresa_id]);
+// `somente_do_usuario` (id do usuário do JWT) restringe aos clientes que ele cadastrou; undefined = todos
+// da empresa (quem tem `ver_todos_clientes`). O filtro de empresa vale SEMPRE.
+async function listar(empresa_id, somente_do_usuario) {
+    if (somente_do_usuario === undefined) {
+        const { rows } = await db.query('SELECT * FROM clientes WHERE empresa_id = $1', [empresa_id]);
+        return rows;
+    }
+
+    const { rows } = await db.query(
+        'SELECT * FROM clientes WHERE empresa_id = $1 AND criado_por = $2',
+        [empresa_id, somente_do_usuario]
+    );
     return rows;
 }
 
 async function criar({
     nome, telefone, email, cpf_cnpj, cep, endereco, numero, complemento, bairro, cidade, uf,
-    data_nascimento, observacoes, empresa_id
+    data_nascimento, observacoes, empresa_id, criado_por
 }) {
     const { rows } = await db.query(
         `INSERT INTO clientes (
             nome, telefone, email, cpf_cnpj, cep, endereco, numero, complemento, bairro, cidade, uf,
-            data_nascimento, observacoes, empresa_id
+            data_nascimento, observacoes, empresa_id, criado_por
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING *`,
         [
             nome, telefone, email,
             cpf_cnpj ?? null, cep ?? null, endereco ?? null, numero ?? null, complemento ?? null,
             bairro ?? null, cidade ?? null, uf ?? null, data_nascimento ?? null, observacoes ?? null,
-            empresa_id
+            empresa_id, criado_por ?? null
         ]
     );
 
     return rows[0];
 }
 
-async function buscarPorId(id, empresa_id) {
+async function buscarPorId(id, empresa_id, somente_do_usuario) {
+    const valores = [id, empresa_id];
+    let filtro = '';
+
+    if (somente_do_usuario !== undefined) {
+        valores.push(somente_do_usuario);
+        filtro = 'AND criado_por = $3';
+    }
+
     const { rows } = await db.query(
-        'SELECT * FROM clientes WHERE id = $1 AND empresa_id = $2',
-        [id, empresa_id]
+        `SELECT * FROM clientes WHERE id = $1 AND empresa_id = $2 ${filtro}`,
+        valores
     );
     return rows.length ? rows[0] : null;
 }
@@ -40,7 +58,7 @@ async function buscarPorId(id, empresa_id) {
 // Sem `atualizado_em = NOW()` (diferente do padrão de fornecedoresRepository.
 // atualizar): a coluna não existe em `clientes` — decisão já tomada de não
 // adicionar criado_em/atualizado_em nesta tabela.
-async function atualizar(id, dados, empresa_id) {
+async function atualizar(id, dados, empresa_id, somente_do_usuario) {
     const campos = [
         'nome', 'telefone', 'email', 'cpf_cnpj', 'cep', 'endereco', 'numero', 'complemento',
         'bairro', 'cidade', 'uf', 'data_nascimento', 'observacoes', 'ativo'
@@ -59,16 +77,30 @@ async function atualizar(id, dados, empresa_id) {
     }
 
     valores.push(id, empresa_id);
+    let filtro = '';
+
+    if (somente_do_usuario !== undefined) {
+        valores.push(somente_do_usuario);
+        filtro = `AND criado_por = $${i + 2}`;
+    }
 
     const { rows } = await db.query(
-        `UPDATE clientes SET ${sets.join(', ')} WHERE id = $${i} AND empresa_id = $${i + 1} RETURNING *`,
+        `UPDATE clientes SET ${sets.join(', ')} WHERE id = $${i} AND empresa_id = $${i + 1} ${filtro} RETURNING *`,
         valores
     );
 
     return rows.length ? rows[0] : null;
 }
 
-async function getHistorico(id, empresa_id) {
+async function getHistorico(id, empresa_id, somente_do_usuario) {
+    const valores = [id, empresa_id];
+    let filtro = '';
+
+    if (somente_do_usuario !== undefined) {
+        valores.push(somente_do_usuario);
+        filtro = `AND EXISTS (SELECT 1 FROM clientes c WHERE c.id = v.cliente_id AND c.empresa_id = v.empresa_id AND c.criado_por = $3)`;
+    }
+
     const { rows } = await db.query(`
         SELECT
           v.id AS venda_id,
@@ -82,14 +114,22 @@ async function getHistorico(id, empresa_id) {
         FROM vendas v
         JOIN itens_venda iv ON iv.venda_id = v.id
         JOIN produtos p ON p.id = iv.produto_id
-        WHERE v.cliente_id = $1 AND v.empresa_id = $2
+        WHERE v.cliente_id = $1 AND v.empresa_id = $2 ${filtro}
         ORDER BY v.data DESC
-    `, [id, empresa_id]);
+    `, valores);
 
     return rows;
 }
 
-async function getRanking(empresa_id) {
+async function getRanking(empresa_id, somente_do_usuario) {
+    const valores = [empresa_id];
+    let filtro = '';
+
+    if (somente_do_usuario !== undefined) {
+        valores.push(somente_do_usuario);
+        filtro = 'AND c.criado_por = $2';
+    }
+
     const { rows } = await db.query(`
         SELECT
           c.id,
@@ -99,15 +139,23 @@ async function getRanking(empresa_id) {
           ROUND(COALESCE(AVG(v.total), 0), 2) AS ticket_medio
         FROM clientes c
         LEFT JOIN vendas v ON v.cliente_id = c.id AND v.empresa_id = c.empresa_id AND v.status = 'finalizada'
-        WHERE c.empresa_id = $1
+        WHERE c.empresa_id = $1 ${filtro}
         GROUP BY c.id, c.nome
         ORDER BY total_gasto DESC
-    `, [empresa_id]);
+    `, valores);
 
     return rows;
 }
 
-async function getTotalGasto(id, empresa_id) {
+async function getTotalGasto(id, empresa_id, somente_do_usuario) {
+    const valores = [id, empresa_id];
+    let filtro = '';
+
+    if (somente_do_usuario !== undefined) {
+        valores.push(somente_do_usuario);
+        filtro = 'AND c.criado_por = $3';
+    }
+
     const { rows } = await db.query(`
         SELECT
           c.id,
@@ -117,9 +165,9 @@ async function getTotalGasto(id, empresa_id) {
           ROUND(COALESCE(AVG(v.total), 0), 2) AS ticket_medio
         FROM clientes c
         LEFT JOIN vendas v ON v.cliente_id = c.id AND v.empresa_id = c.empresa_id AND v.status = 'finalizada'
-        WHERE c.id = $1 AND c.empresa_id = $2
+        WHERE c.id = $1 AND c.empresa_id = $2 ${filtro}
         GROUP BY c.id, c.nome
-    `, [id, empresa_id]);
+    `, valores);
 
     return rows.length ? rows[0] : null;
 }
