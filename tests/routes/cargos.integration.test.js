@@ -87,7 +87,7 @@ describe('cargos por comércio com banco real', () => {
         expect(res.status).toBe(200);
         const ativos = res.body.data.filter((c) => c.ativo).map((c) => c.cargo).sort();
         expect(ativos).toEqual(['admin', 'estoquista', 'vendedor']);
-        expect(res.body.data.map((c) => c.cargo)).toHaveLength(11);
+        expect(res.body.data.map((c) => c.cargo)).toHaveLength(12);
     });
 
     test('Vendedor recebe 403 em /cargos mesmo com JWT dizendo admin', async () => {

@@ -43,13 +43,15 @@ async function definirPercentual({ usuario_id, percentual }, usuario) {
 }
 
 const veTodos = (usuario) => temCapacidade(usuario, CAPACIDADES.VER_VENDAS_DE_TODOS);
+// Repasses e pagamentos: o financeiro vê os da empresa mesmo se o cargo dele não vê as vendas de todos.
+const veDinheiroDeTodos = (usuario) => veTodos(usuario) || temCapacidade(usuario, CAPACIDADES.GERIR_FINANCEIRO);
 
-// Quem tem `ver_vendas_de_todos` (gerente/admin) vê os repasses da empresa; os demais,
+// Quem tem `ver_vendas_de_todos` ou `gerir_financeiro` vê os repasses da empresa; os demais,
 // só os próprios (usuário do JWT).
 async function repasses({ page, pageSize, status }, usuario) {
     const { items, total, totais } = await comissoesRepository.listarRepasses({
         empresa_id: usuario.empresa_id,
-        vendedor_id: veTodos(usuario) ? undefined : usuario.id,
+        vendedor_id: veDinheiroDeTodos(usuario) ? undefined : usuario.id,
         status,
         limit: pageSize,
         offset: (page - 1) * pageSize
@@ -75,7 +77,7 @@ async function historico(comissaoId, usuario) {
     });
 }
 
-// Só admin chama (rota); empresa_id e quem paga vêm do JWT.
+// Só quem tem gerir_financeiro chama (rota); empresa_id e quem paga vêm do JWT.
 async function aPagar(empresaId) {
     const items = await pagamentosRepository.resumoAPagar(empresaId);
     const totalCentavos = items.reduce((soma, i) => soma + Math.round(Number(i.a_pagar) * 100), 0);
@@ -95,12 +97,12 @@ async function registrarPagamento(dados, usuario) {
     });
 }
 
-// Quem tem `ver_vendas_de_todos` vê os pagamentos da empresa (ou de um vendedor, com filtro);
+// Quem tem `ver_vendas_de_todos` ou `gerir_financeiro` vê os pagamentos da empresa (ou de um vendedor, com filtro);
 // os demais, só os próprios (usuário do JWT) — o filtro do cliente é ignorado para eles.
 async function pagamentos({ page, pageSize, vendedor_id }, usuario) {
     const { items, total, totais } = await pagamentosRepository.listarPagamentos({
         empresa_id: usuario.empresa_id,
-        vendedor_id: veTodos(usuario) ? vendedor_id : usuario.id,
+        vendedor_id: veDinheiroDeTodos(usuario) ? vendedor_id : usuario.id,
         limit: pageSize,
         offset: (page - 1) * pageSize
     });

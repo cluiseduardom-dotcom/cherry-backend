@@ -76,12 +76,18 @@ beforeAll(async () => {
 
     for (const papel of ['admin', 'gerente', 'vendedor']) await criarUsuario(A, papel);
     await criarUsuario(A, 'vendedor', 'vendedor2');
+    await criarUsuario(A, 'supervisor');
+    await criarUsuario(A, 'financeiro');
     await criarUsuario(B, 'gerente');
     await criarUsuario(B, 'vendedor');
 
     // Gerente vem desligado por padrão: a empresa liga e ele passa a ver a equipe.
-    await ligarCargo(A, 'gerente', 70, ['ver_vendas_de_todos']);
-    await ligarCargo(B, 'gerente', 70, ['ver_vendas_de_todos']);
+    await ligarCargo(A, 'gerente', 70, ['ver_vendas_de_todos', 'gerir_financeiro']);
+    // Supervisor vê a equipe, mas o dinheiro (confirmar repasse, pagar comissão) é do financeiro.
+    await ligarCargo(A, 'supervisor', 50, ['ver_vendas_de_todos']);
+    // Analista financeiro: cargo funcional (sem nível), desligado por padrão e ligado pela empresa.
+    await ligarCargo(A, 'financeiro', null, ['ver_vendas_de_todos', 'gerir_financeiro']);
+    await ligarCargo(B, 'gerente', 70, ['ver_vendas_de_todos', 'gerir_financeiro']);
 
     for (const alvo of [A, B]) {
         await db.query(`INSERT INTO comissao_percentuais (empresa_id, usuario_id, percentual) VALUES ($1, NULL, 10)`, [alvo.empresaId]);
@@ -237,6 +243,16 @@ describe('dinheiro recebido pelo vendedor: dois passos', () => {
         expect((await repassesDaVenda(vendaId))[0].status).toBe('a_repassar');
     });
 
+    test('o supervisor vê o repasse da equipe, mas não confirma (403, nada muda)', async () => {
+        const lista = await request(app).get('/comissoes/repasses').set(auth(A, 'supervisor'));
+        expect(lista.body.data.items.some((r) => r.id === repasseId)).toBe(true);
+
+        const res = await request(app).post(`/comissoes/repasses/${repasseId}/confirmar`).set(auth(A, 'supervisor')).send({});
+
+        expect(res.status).toBe(403);
+        expect((await repassesDaVenda(vendaId))[0].status).toBe('a_repassar');
+    });
+
     test('o gerente confirma: o repasse fecha, a comissão é liberada e o histórico diz quem confirmou', async () => {
         const res = await request(app).post(`/comissoes/repasses/${repasseId}/confirmar`).set(auth(A, 'gerente')).send({ observacao: 'Recebi na loja' });
 
@@ -268,6 +284,29 @@ describe('dinheiro recebido pelo vendedor: dois passos', () => {
         expect(await comissaoDaVenda(res.body.data.id)).toMatchObject({ status: 'pendente' });
 
         await db.query(`DELETE FROM comissao_percentuais WHERE empresa_id = $1 AND usuario_id = $2`, [A.empresaId, A.u.gerente]);
+    });
+});
+
+describe('Analista financeiro', () => {
+    test('confirma o repasse de dinheiro e o confirmador gravado é ele', async () => {
+        const res = await vender(A, 'vendedor2', { pagamentos: [{ forma_pagamento: 'dinheiro', valor: 100, valor_recebido: 100 }] });
+        const [repasse] = await repassesDaVenda(res.body.data.id);
+
+        const confirmou = await request(app).post(`/comissoes/repasses/${repasse.id}/confirmar`).set(auth(A, 'financeiro')).send({ observacao: 'Conferido no caixa' });
+
+        expect(confirmou.status).toBe(200);
+        expect(confirmou.body.data).toMatchObject({ status: 'confirmado', confirmado_por: A.u.financeiro });
+        expect(await comissaoDaVenda(res.body.data.id)).toMatchObject({ valor_liberado: '10.00', status: 'liberada' });
+    });
+
+    test('desligado pela empresa, perde o acesso na hora', async () => {
+        await db.query(`UPDATE cargos_empresa SET ativo = false WHERE empresa_id = $1 AND cargo = 'financeiro'`, [A.empresaId]);
+        try {
+            const res = await request(app).get('/comissoes/a-pagar').set(auth(A, 'financeiro'));
+            expect(res.status).toBe(403);
+        } finally {
+            await db.query(`UPDATE cargos_empresa SET ativo = true WHERE empresa_id = $1 AND cargo = 'financeiro'`, [A.empresaId]);
+        }
     });
 });
 
