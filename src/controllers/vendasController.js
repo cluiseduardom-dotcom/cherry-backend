@@ -6,6 +6,7 @@ const { criarVendaSchema } = require('../validations/vendasValidation');
 const { cancelarVendaSchema } = require('../validations/cancelamentosValidation');
 const { listarVendasSchema } = require('../validations/listarVendasValidation');
 const { podeVerCustosOperacionais } = require('../services/permissoesService');
+const { escopoDeClientes } = require('../services/clientesService');
 
 function parseId(value) {
     const id = Number(value);
@@ -89,9 +90,14 @@ async function criar(req, res, next) {
             throw new AppError('Idempotency-Key excede 200 caracteres', 400);
         }
 
-        const venda = idempotencyKey
-            ? await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id, idempotencyKey)
-            : await vendasService.criar(parsed.data, req.usuario.id, req.usuario.empresa_id);
+        // Sem `ver_todos_clientes`, o cliente da venda precisa ser um que o próprio usuário cadastrou.
+        const venda = await vendasService.criar(
+            parsed.data,
+            req.usuario.id,
+            req.usuario.empresa_id,
+            idempotencyKey,
+            escopoDeClientes(req.usuario)
+        );
 
         return response.success(res, filtrarParaRole(venda, req.usuario), 201);
     } catch (error) {

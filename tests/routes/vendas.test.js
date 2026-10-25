@@ -111,7 +111,8 @@ describe('POST /vendas (admin and vendedor only)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.total).toBe('30.00');
-    expect(vendasService.criar).toHaveBeenCalledWith({ itens: [{ produto_id: 1, quantidade: 3 }] }, 2, 1);
+    // 4º: Idempotency-Key (ausente = null); 5º: vendedor sem `ver_todos_clientes` só vende para clientes dele (id 2).
+    expect(vendasService.criar).toHaveBeenCalledWith({ itens: [{ produto_id: 1, quantidade: 3 }] }, 2, 1, null, 2);
   });
 
   test('returns 201 for an admin too', async () => {
@@ -199,7 +200,9 @@ describe('POST /vendas (admin and vendedor only)', () => {
     expect(vendasService.criar).toHaveBeenCalledWith(
       { forma_pagamento: 'prazo', meses_prazo: 3, itens: [{ produto_id: 1, quantidade: 1 }] },
       2,
-      1
+      1,
+      null,
+      2
     );
   });
 

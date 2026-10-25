@@ -92,7 +92,7 @@ beforeAll(async () => {
     for (const alvo of [A, B]) {
         await db.query(`INSERT INTO comissao_percentuais (empresa_id, usuario_id, percentual) VALUES ($1, NULL, 10)`, [alvo.empresaId]);
         alvo.produtoId = await criarProduto(alvo, 100);
-        alvo.clienteId = (await db.query(`INSERT INTO clientes (empresa_id, nome) VALUES ($1, $2) RETURNING id`, [alvo.empresaId, `Cliente ${sufixo}`])).rows[0].id;
+        alvo.clienteId = (await db.query(`INSERT INTO clientes (empresa_id, nome, criado_por) VALUES ($1, $2, $3) RETURNING id`, [alvo.empresaId, `Cliente ${sufixo}`, alvo.u.vendedor])).rows[0].id;
     }
 });
 

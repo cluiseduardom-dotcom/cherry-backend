@@ -27,7 +27,8 @@ describe('criar', () => {
             uf: 'SP',
             data_nascimento: '1990-05-20',
             observacoes: 'Prefere contato por telefone',
-            empresa_id: 9
+            empresa_id: 9,
+            criado_por: 3
         });
 
         expect(resultado.id).toBe(1);
@@ -47,7 +48,8 @@ describe('criar', () => {
             'SP',
             '1990-05-20',
             'Prefere contato por telefone',
-            9
+            9,
+            3
         ]);
     });
 
@@ -71,7 +73,8 @@ describe('criar', () => {
             null,
             null,
             null,
-            9
+            9,
+            null
         ]);
     });
 });
@@ -226,5 +229,49 @@ describe('anonimizar', () => {
             message: 'Cliente já foi anonimizado'
         });
         expect(client.query).not.toHaveBeenCalled();
+    });
+});
+
+describe('escopo por usuário (somente_do_usuario)', () => {
+    beforeEach(() => {
+        db.query = jest.fn().mockResolvedValue({ rows: [{ id: 1 }] });
+    });
+
+    test('listar: sem escopo só filtra a empresa; com escopo filtra também criado_por na própria query', async () => {
+        await clientesRepository.listar(9);
+        await clientesRepository.listar(9, 4);
+
+        expect(db.query.mock.calls[0]).toEqual(['SELECT * FROM clientes WHERE empresa_id = $1', [9]]);
+        expect(db.query.mock.calls[1][0]).toContain('empresa_id = $1 AND criado_por = $2');
+        expect(db.query.mock.calls[1][1]).toEqual([9, 4]);
+    });
+
+    test('buscarPorId, getRanking, getTotalGasto e getHistorico acrescentam criado_por só com escopo', async () => {
+        await clientesRepository.buscarPorId(1, 9, 4);
+        await clientesRepository.getRanking(9, 4);
+        await clientesRepository.getTotalGasto(1, 9, 4);
+        await clientesRepository.getHistorico(1, 9, 4);
+
+        for (const [sql, params] of db.query.mock.calls) {
+            expect(sql).toContain('criado_por = $');
+            expect(params).toContain(4);
+            expect(params).toContain(9);
+        }
+
+        db.query.mockClear();
+        await clientesRepository.buscarPorId(1, 9);
+        await clientesRepository.getRanking(9);
+        await clientesRepository.getTotalGasto(1, 9);
+        await clientesRepository.getHistorico(1, 9);
+
+        for (const [sql] of db.query.mock.calls) expect(sql).not.toContain('criado_por');
+    });
+
+    test('atualizar com escopo restringe o UPDATE ao dono', async () => {
+        await clientesRepository.atualizar(1, { nome: 'X' }, 9, 4);
+
+        const [sql, params] = db.query.mock.calls[0];
+        expect(sql).toContain('WHERE id = $2 AND empresa_id = $3 AND criado_por = $4');
+        expect(params).toEqual(['X', 1, 9, 4]);
     });
 });
