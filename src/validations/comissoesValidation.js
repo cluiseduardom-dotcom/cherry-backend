@@ -51,6 +51,11 @@ const registrarPagamentoComissaoSchema = z.object({
     path: ['pago_em']
 });
 
+// Quando a empresa paga a comissão: assim que liberada, ou só de vendas de meses já fechados.
+const definirModoPagamentoSchema = z.object({
+    modo_pagamento: z.enum(['liberada', 'fim_do_mes'], { error: 'Modo de pagamento inválido' })
+}).strict();
+
 const pagamentosQuerySchema = z.object({
     vendedor_id: idSchema.optional()
 });
@@ -59,6 +64,7 @@ module.exports = {
     FORMAS_PAGAMENTO_COMISSAO,
     registrarPagamentoComissaoSchema,
     pagamentosQuerySchema,
+    definirModoPagamentoSchema,
     periodoSchema,
     definirPercentualSchema,
     idSchema,

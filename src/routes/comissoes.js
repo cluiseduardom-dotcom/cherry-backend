@@ -27,6 +27,11 @@ router.get('/a-pagar', requireCapacidade(CAPACIDADES.GERIR_FINANCEIRO), controll
 router.post('/pagamentos', requireCapacidade(CAPACIDADES.GERIR_FINANCEIRO), controller.registrarPagamento);
 router.get('/pagamentos', requireVendedor, controller.pagamentos);
 
+// Quando a empresa paga a comissão (assim que liberada, ou só no fechamento do mês). Quem paga lê; só o
+// admin altera (regra de dinheiro da empresa).
+router.get('/configuracao', requireCapacidade(CAPACIDADES.GERIR_FINANCEIRO), controller.configuracao);
+router.put('/configuracao', requireAdmin, controller.definirConfiguracao);
+
 // Histórico de uma comissão: o dono vê a sua; gerente/admin vê qualquer uma da empresa.
 router.get('/:id/historico', requireVendedor, controller.historico);
 

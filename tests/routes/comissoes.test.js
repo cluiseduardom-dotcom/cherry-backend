@@ -259,3 +259,31 @@ describe('pagamento de comissão: GET /comissoes/a-pagar e POST /comissoes/pagam
     expect(comissoesService.registrarPagamento).toHaveBeenCalledWith(expect.objectContaining(corpo), expect.objectContaining({ id: 6, empresa_id: 7 }));
   });
 });
+
+describe('/comissoes/configuracao', () => {
+  test('GET: 403 sem gerir_financeiro (vendedor, supervisor); financeiro lê', async () => {
+    for (const token of [vendedorToken, supervisorToken]) {
+      expect((await request(app).get('/comissoes/configuracao').set('Authorization', `Bearer ${token}`)).status).toBe(403);
+    }
+
+    comissoesService.configuracao.mockResolvedValue({ modo_pagamento: 'liberada', padrao: true });
+    const res = await request(app).get('/comissoes/configuracao').set('Authorization', `Bearer ${financeiroToken}`);
+    expect(res.status).toBe(200);
+    expect(comissoesService.configuracao).toHaveBeenCalledWith(7);
+  });
+
+  test('PUT: só admin (financeiro e gerente = 403); corpo estrito', async () => {
+    for (const token of [financeiroToken, gerenteToken, vendedorToken]) {
+      expect((await request(app).put('/comissoes/configuracao').set('Authorization', `Bearer ${token}`).send({ modo_pagamento: 'fim_do_mes' })).status).toBe(403);
+    }
+    expect(comissoesService.definirConfiguracao).not.toHaveBeenCalled();
+
+    expect((await request(app).put('/comissoes/configuracao').set('Authorization', `Bearer ${adminToken}`).send({ modo_pagamento: 'quinzenal' })).status).toBe(400);
+    expect((await request(app).put('/comissoes/configuracao').set('Authorization', `Bearer ${adminToken}`).send({ modo_pagamento: 'liberada', empresa_id: 1 })).status).toBe(400);
+
+    comissoesService.definirConfiguracao.mockResolvedValue({ modo_pagamento: 'fim_do_mes' });
+    const ok = await request(app).put('/comissoes/configuracao').set('Authorization', `Bearer ${adminToken}`).send({ modo_pagamento: 'fim_do_mes' });
+    expect(ok.status).toBe(200);
+    expect(comissoesService.definirConfiguracao).toHaveBeenCalledWith({ modo_pagamento: 'fim_do_mes' }, expect.objectContaining({ id: 1, empresa_id: 7 }));
+  });
+});
