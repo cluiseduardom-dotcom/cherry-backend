@@ -19,6 +19,12 @@ router.get('/equipe', requireCapacidade(CAPACIDADES.VER_VENDAS_DE_TODOS), contro
 router.get('/repasses', requireVendedor, controller.repasses);
 router.post('/repasses/:id/confirmar', requireCapacidade(CAPACIDADES.VER_VENDAS_DE_TODOS), controller.confirmarRepasse);
 
+// Pagamento da comissão AO vendedor (a empresa pagando). Só admin vê o que há a pagar e registra o
+// pagamento (nunca o da própria comissão); o histórico é do admin/gerente (todos) ou do vendedor (só o seu).
+router.get('/a-pagar', requireAdmin, controller.aPagar);
+router.post('/pagamentos', requireAdmin, controller.registrarPagamento);
+router.get('/pagamentos', requireVendedor, controller.pagamentos);
+
 // Histórico de uma comissão: o dono vê a sua; gerente/admin vê qualquer uma da empresa.
 router.get('/:id/historico', requireVendedor, controller.historico);
 

@@ -206,6 +206,22 @@ Lista só usuários **ativos** (bloquear um vendedor o tira daqui).
 - Erros: 400 (percentual inválido, ou usuário que não vende), 404 (usuário inexistente ou de outra empresa).
 - Alterar o percentual vale só para vendas **futuras**. Avisar isso na tela.
 
+## Pagamento da comissão ao vendedor (migration `062`)
+
+**Liberada** = o direito foi confirmado pelo pagamento do cliente. **Paga** = a empresa pagou o vendedor e registrou. Não confundir com **repasse**, que é o vendedor repassando à empresa o dinheiro da venda.
+
+A pagar de uma comissão = `valor_liberado` − soma dos itens de pagamento. Positivo = falta pagar; **negativo = a comissão foi paga e depois estornada** (venda cancelada ou pagamento estornado): vira **desconto no próximo pagamento** do vendedor.
+
+| Rota | Quem | O que faz |
+|---|---|---|
+| `GET /comissoes/a-pagar` | admin | Por vendedor: `a_pagar` (líquido), `bruto_a_pagar`, `descontos`, `quantidade_comissoes`; `totais.a_pagar`. Só quem tem saldo diferente de zero. |
+| `POST /comissoes/pagamentos` | admin | `{ vendedor_id, valor_esperado, forma, pago_em, observacao? }`. Paga **todo** o líquido do vendedor. |
+| `GET /comissoes/pagamentos?vendedor_id=&page=&pageSize=` | admin/gerente: todos; vendedor: só os seus | Histórico com as vendas cobertas (`itens`: `comissao_id`, `venda_id`, `valor`, negativo = desconto). |
+
+Regras do `POST`: `forma` ∈ `pix`, `transferencia`, `dinheiro`, `outro`; `pago_em` AAAA-MM-DD, não futuro; **nunca o admin paga a própria comissão** (403); vendedor de outra empresa = 404. `valor_esperado` é o líquido que a tela mostrou: se mudou (estorno, nova liberação, outro pagamento simultâneo) = **409** e nada é gravado. Líquido ≤ 0 (descontos cobrem o liberado) = 409. As comissões do vendedor são travadas (`FOR UPDATE`, por id) e o "já pago" é lido **depois** da trava, em consulta separada, para que dois pagamentos simultâneos não paguem em dobro. Tabelas `comissao_pagamentos` e `comissao_pagamento_itens` são imutáveis no banco (UPDATE/DELETE recusados) e têm FKs compostas com `empresa_id`.
+
+`GET /comissoes/minhas` ganha `valor_pago` por linha e `total_pago` / `a_receber` nos totais; `GET /comissoes/equipe` ganha `total_pago` / `a_pagar` por vendedor e nos totais (nos dois, sobre as comissões do período). Sem custo, margem ou lucro.
+
 ## Integração no frontend existente (verificado no código atual)
 
 - `src/config/access.js`: registrar `'/comissoes'` em `ALLOWED_ROLES_BY_PATH` com `['admin', 'vendedor']`. O gerente tem `user.role === 'vendedor'` (perfil legado).
@@ -226,7 +242,7 @@ O cargo `gerente` já existe no catálogo, mas vem **desligado por padrão** em 
 
 ## O que não existe (fora do escopo desta entrega)
 
-- Fechamento/pagamento da comissão ao vendedor ("marcar como paga"): **liberada** significa que o direito foi confirmado pelo pagamento do cliente, não que a comissão foi paga ao vendedor.
+- Pagamento automático (Pix/transferência feita pelo sistema): o sistema **registra** o pagamento feito pela empresa (ver "Pagamento da comissão ao vendedor"), mas não move dinheiro.
 - Comissão de vendas anteriores à ativação.
 - Percentual por categoria ou meta escalonada.
 - Recebimento de parcela de crediário pela rota `PATCH /contas-receber/:id/receber` em venda do fluxo novo (`pagamentos[]`): a comissão acompanha o recebimento da **parcela** (`PATCH /parcelas/:id/receber`). Venda legada acompanha a conta a receber.
