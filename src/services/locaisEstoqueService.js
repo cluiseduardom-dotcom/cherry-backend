@@ -2,8 +2,8 @@ const AppError = require('../errors/AppError');
 const repo = require('../repositories/locaisEstoqueRepository');
 const { ehEquipe, podeVerLocal } = require('./shared/locaisEstoquePermissao');
 
-// Equipe: todos os locais ativos (menos o Em trânsito, que é interno). Demais: o Central (só
-// identificação, para devolver e vender; o saldo dele segue restrito à equipe) e a própria maleta.
+// Equipe: todos os locais ativos (menos o Em trânsito, que é interno). Demais: o Central (para devolver
+// e vender) e a própria maleta.
 async function listar(usuario) {
     return repo.listarVisiveis({
         empresa_id: usuario.empresa_id,
@@ -14,7 +14,11 @@ async function listar(usuario) {
 async function saldos(local_id, { busca, page, pageSize }, usuario) {
     const local = await repo.obterLocal(usuario.empresa_id, local_id);
 
-    if (!podeVerLocal(local, usuario) || local.tipo === 'transito') {
+    // O saldo do Central é legível por qualquer usuário autenticado da empresa (o PDV precisa dele para
+    // vender do Central); só quantidade, nunca custo. Acerto e conferências seguem restritos (podeVerLocal).
+    const podeVerSaldo = local && (local.tipo === 'central' || podeVerLocal(local, usuario));
+
+    if (!podeVerSaldo || local.tipo === 'transito') {
         throw new AppError('Local de estoque não encontrado', 404);
     }
 

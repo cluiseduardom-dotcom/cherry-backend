@@ -105,7 +105,7 @@ Lista as conferências do local com os itens e as diferenças. Equipe vê qualqu
 Qualquer usuário autenticado; a visibilidade é a mesma do acerto: equipe (admin/estoquista) vê qualquer local, os demais só a **própria** maleta.
 
 ## `GET /estoque/locais`
-Locais **ativos**, exceto Em trânsito (interno). Equipe: Central, maletas e consignados. Vendedor: o **Central** (só identificação, para devolver e vender; o saldo do Central continua restrito à equipe) e a própria maleta, se tiver. Cada item: `id, tipo, nome, usuario_id, usuario_nome, cliente_id, cliente_nome, ativo`.
+Locais **ativos**, exceto Em trânsito (interno). Equipe: Central, maletas e consignados. Vendedor: o **Central** (para devolver e vender) e a própria maleta, se tiver. Cada item: `id, tipo, nome, usuario_id, usuario_nome, cliente_id, cliente_nome, ativo`.
 
 ## `GET /estoque/locais/:id/saldos?busca=&page=&pageSize=`
-Produtos com **saldo > 0** no local: `produto_id, nome, sku, ativo, saldo`, ordenados por nome. `busca` filtra por nome ou SKU (parcial, sem diferenciar maiúsculas). Padrão 500 por página, máximo 1000. Local fora da visibilidade, inexistente, de outra empresa ou Em trânsito = 404. Nunca traz custo, margem ou lucro.
+Produtos com **saldo > 0** no local: `produto_id, nome, sku, ativo, saldo`, ordenados por nome. `busca` filtra por nome ou SKU (parcial, sem diferenciar maiúsculas). Padrão 500 por página, máximo 1000. O **Central** é legível por qualquer usuário autenticado da empresa (o PDV precisa do saldo para vender do Central; só quantidade); maleta só pela equipe ou pelo dono; consignado só pela equipe. Acerto e conferências continuam restritos (equipe; dono na própria maleta). Local fora da visibilidade, inexistente, de outra empresa ou Em trânsito = 404. Nunca traz custo, margem ou lucro.

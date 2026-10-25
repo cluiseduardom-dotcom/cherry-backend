@@ -34,11 +34,21 @@ describe('saldos', () => {
         expect(r.local).toMatchObject({ id: 5, tipo: 'maleta' });
     });
 
+    test.each([['vendedor', usuario('vendedor', 10)], ['estoquista', usuario('estoquista')], ['admin', usuario('admin')]])(
+        'Central: %s lê o saldo',
+        async (_, quem) => {
+            repo.obterLocal.mockResolvedValue({ id: 1, tipo: 'central', nome: 'Central', usuario_id: null });
+            const r = await service.saldos(1, { page: 1, pageSize: 10 }, quem);
+            expect(repo.saldosDoLocal).toHaveBeenCalledWith({ empresa_id: 7, local_id: 1, busca: undefined, limit: 10, offset: 0 });
+            expect(r.local).toMatchObject({ id: 1, tipo: 'central' });
+        }
+    );
+
     test.each([
         ['outro vendedor', maleta, usuario('vendedor', 11)],
         ['local inexistente', null, usuario('admin')],
         ['Em trânsito, mesmo para o admin', { id: 9, tipo: 'transito' }, usuario('admin')],
-        ['central para vendedor', { id: 1, tipo: 'central' }, usuario('vendedor', 10)]
+        ['consignado para vendedor', { id: 3, tipo: 'consignado' }, usuario('vendedor', 10)]
     ])('404 para %s', async (_, local, quem) => {
         repo.obterLocal.mockResolvedValue(local);
         await expect(service.saldos(5, { page: 1, pageSize: 10 }, quem)).rejects.toMatchObject({ statusCode: 404 });

@@ -126,8 +126,13 @@ describe('GET /estoque/locais/:id/saldos', () => {
         expect((await saldos(A, 'admin', A.centralId, '?busca=%25')).body.data.total).toBe(0);
     });
 
-    test('vendedor não vê Central, maleta alheia nem consignado (404); outra empresa e Em trânsito também 404', async () => {
-        for (const id of [A.centralId, A.maletaBeto, A.consignado, B.maleta, 99999999]) {
+    test('vendedor lê o saldo do Central (PDV), mas não de maleta alheia nem consignado (404); outra empresa e Em trânsito também 404', async () => {
+        const central = await saldos(A, 'ana', A.centralId);
+        expect(central.status).toBe(200);
+        expect(central.body.data.local.tipo).toBe('central');
+        expect(central.body.data.items.map((i) => [i.produto_id, i.saldo])).toEqual([[A.p1, 10], [A.p2, 5], [A.p3, 7]]);
+        expect(JSON.stringify(central.body)).not.toMatch(/custo|margem|lucro/i);
+        for (const id of [A.maletaBeto, A.consignado, B.maleta, 99999999]) {
             expect((await saldos(A, 'ana', id)).status).toBe(404);
         }
         expect((await saldos(A, 'admin', A.transitoId)).status).toBe(404);
