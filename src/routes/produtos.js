@@ -5,6 +5,8 @@ const estoqueController = require('../controllers/estoqueController');
 const precosController = require('../controllers/precosController');
 const fichasTecnicasController = require('../controllers/fichasTecnicasController');
 const produtosCodigosController = require('../controllers/produtosCodigosController');
+const produtoImagensController = require('../controllers/produtoImagensController');
+const uploadImagemProduto = require('../middlewares/uploadImagemProduto');
 const requireAdmin = require('../middlewares/requireAdmin');
 const requireEstoquista = require('../middlewares/requireEstoquista');
 
@@ -34,6 +36,12 @@ router.patch('/:id/categoria', requireEstoquista, controller.categorizar);
 router.get('/:id/codigos', produtosCodigosController.listar);
 router.post('/:id/codigos', requireEstoquista, produtosCodigosController.adicionar);
 router.delete('/:id/codigos/:codigoId', requireEstoquista, produtosCodigosController.remover);
+
+// Fotos do produto: ler é de qualquer usuário autenticado; enviar, apagar e reordenar é de admin/estoquista.
+router.get('/:id/imagens', produtoImagensController.listar);
+router.post('/:id/imagens', requireEstoquista, uploadImagemProduto, produtoImagensController.adicionar);
+router.put('/:id/imagens/ordem', requireEstoquista, produtoImagensController.reordenar);
+router.delete('/:id/imagens/:imagemId', requireEstoquista, produtoImagensController.remover);
 
 router.get('/:id/movimentacoes', estoqueController.historico);
 router.post('/:id/movimentacoes', requireEstoquista, estoqueController.registrarMovimentacao);

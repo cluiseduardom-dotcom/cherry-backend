@@ -1,4 +1,7 @@
 const produtosRepository = require('../repositories/produtosRepository');
+const produtoImagensRepository = require('../repositories/produtoImagensRepository');
+const imagensStorage = require('./storage/imagensStorage');
+const { paraResposta: imagemParaResposta } = require('./produtoImagensService');
 const precosRepository = require('../repositories/precosRepository');
 const categoriasRepository = require('../repositories/categoriasRepository');
 const skuService = require('./skuService');
@@ -61,10 +64,14 @@ async function listar({ page, pageSize, canal }, empresaId) {
         categoriasPorProduto.get(produto_id).push(categoria);
     }
 
+    const principais = await produtoImagensRepository.principaisPorProdutoIds(items.map((produto) => produto.id), empresaId);
+    const imagemPorProduto = new Map(principais.map((linha) => [linha.produto_id, imagensStorage.urlPublica(linha.chave)]));
+
     return {
         items: items.map((produto) => ({
             ...comPrecoCanal(comMargem(produto), canalRow.nome, precosPorProduto.get(produto.id)),
-            categorias: categoriasPorProduto.get(produto.id) || []
+            categorias: categoriasPorProduto.get(produto.id) || [],
+            imagem_url: imagemPorProduto.get(produto.id) || null
         })),
         page,
         pageSize,
@@ -84,7 +91,14 @@ async function buscarPorId(id, canal, empresaId) {
     const precoRow = await precosRepository.buscarPrecoVigente(id, canalRow.id, empresaId);
     const categorias = await produtosRepository.buscarCategoriasDoProduto(id, empresaId);
 
-    return { ...comPrecoCanal(comMargem(produto), canalRow.nome, precoRow), categorias };
+    const imagens = (await produtoImagensRepository.listarPorProduto(id, empresaId)).map(imagemParaResposta);
+
+    return {
+        ...comPrecoCanal(comMargem(produto), canalRow.nome, precoRow),
+        categorias,
+        imagens,
+        imagem_url: imagens.length ? imagens[0].url : null
+    };
 }
 
 async function criar(dados, empresaId, usuarioId) {
