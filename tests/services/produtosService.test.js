@@ -1,4 +1,5 @@
 jest.mock('../../src/repositories/produtosRepository');
+jest.mock('../../src/repositories/produtoImagensRepository');
 jest.mock('../../src/repositories/precosRepository');
 jest.mock('../../src/repositories/categoriasRepository');
 jest.mock('../../src/services/skuService');
@@ -6,6 +7,7 @@ jest.mock('../../src/repositories/historicoSkuRepository');
 jest.mock('../../src/config/db');
 
 const produtosRepository = require('../../src/repositories/produtosRepository');
+const produtoImagensRepository = require('../../src/repositories/produtoImagensRepository');
 const precosRepository = require('../../src/repositories/precosRepository');
 const categoriasRepository = require('../../src/repositories/categoriasRepository');
 const skuService = require('../../src/services/skuService');
@@ -20,6 +22,8 @@ beforeEach(() => {
   precosRepository.buscarPrecoVigente.mockResolvedValue(null);
   produtosRepository.buscarCategoriasDoProduto.mockResolvedValue([]);
   produtosRepository.buscarCategoriasPorProdutoIds.mockResolvedValue([]);
+  produtoImagensRepository.principaisPorProdutoIds.mockResolvedValue([]);
+  produtoImagensRepository.listarPorProduto.mockResolvedValue([]);
 });
 
 describe('listar', () => {
@@ -36,7 +40,8 @@ describe('listar', () => {
       items: [{
         id: 1, preco_venda: '20.00', custo: '10.00', margem_percentual: 50,
         preco_canal: { canal: 'loja_fisica', preco_venda: null, markup_percentual: null, margem_percentual: null, vigente_desde: null },
-        categorias: []
+        categorias: [],
+        imagem_url: null
       }],
       page: 1,
       pageSize: 20,
