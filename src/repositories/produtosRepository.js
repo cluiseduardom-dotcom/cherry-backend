@@ -44,7 +44,7 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
         nome,
         descricao ?? null,
         categoria ?? null,
-        preco_venda,
+        preco_venda ?? null,
         custo,
         estoque,
         estoque_minimo ?? 0,

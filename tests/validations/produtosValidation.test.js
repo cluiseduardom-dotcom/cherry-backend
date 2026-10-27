@@ -45,10 +45,23 @@ describe('criarProdutoSchema', () => {
     expect(result.error.issues[0].message).toBe('Nome é obrigatório');
   });
 
-  test.each([undefined, -10, 0, 'abc'])('rejects preco_venda = %p', (preco_venda) => {
+  test('accepts a product without preco_venda (price is set per channel)', () => {
+    const { preco_venda, ...semPreco } = valid;
+    const result = criarProdutoSchema.safeParse(semPreco);
+    expect(result.success).toBe(true);
+    expect(result.data.preco_venda).toBeUndefined();
+  });
+
+  test.each([-10, 0])('rejects preco_venda = %p when provided', (preco_venda) => {
     const result = criarProdutoSchema.safeParse({ ...valid, preco_venda });
     expect(result.success).toBe(false);
-    expect(result.error.issues[0].message).toBe('Preço de venda é obrigatório');
+    expect(result.error.issues[0].message).toBe('Preço de venda deve ser maior que zero');
+  });
+
+  test('rejects a non-numeric preco_venda', () => {
+    const result = criarProdutoSchema.safeParse({ ...valid, preco_venda: 'abc' });
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('Preço de venda inválido');
   });
 
   test.each([undefined, -5, 0])('rejects custo = %p', (custo) => {
