@@ -77,7 +77,9 @@ module.exports = async (req, res, next) => {
             nivel: permissoes.nivel,
             capacidades: permissoes.capacidades,
             empresa_id: payload.empresa_id,
-            senha_temporaria: estado.senha_temporaria === true
+            senha_temporaria: estado.senha_temporaria === true,
+            // Operador da plataforma (leitura entre empresas em /plataforma). Vem do banco, nunca do token.
+            plataforma_admin: estado.plataforma_admin === true
         };
 
         return next();

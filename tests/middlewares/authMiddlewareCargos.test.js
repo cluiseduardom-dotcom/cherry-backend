@@ -44,7 +44,7 @@ describe('authMiddleware — cargo e capacidades vindos do banco', () => {
 
         expect(next).toHaveBeenCalledWith();
         expect(req.usuario).toEqual({
-            id: 42, role: 'vendedor', cargo: 'gerente', nivel: 70, capacidades: ['ver_custos'], empresa_id: 7, senha_temporaria: false
+            id: 42, role: 'vendedor', cargo: 'gerente', nivel: 70, capacidades: ['ver_custos'], empresa_id: 7, senha_temporaria: false, plataforma_admin: false
         });
     });
 
