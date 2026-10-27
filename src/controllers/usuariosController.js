@@ -1,7 +1,7 @@
 const usuariosService = require('../services/usuariosService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
-const { criarUsuarioSchema, editarDadosSchema, bloqueioSchema, usuarioIdSchema } = require('../validations/usuariosValidation');
+const { criarUsuarioSchema, editarDadosSchema, bloqueioSchema, usuarioIdSchema, redefinirSenhaSchema } = require('../validations/usuariosValidation');
 
 function parsePaginacao(query) {
     let page = parseInt(query.page, 10);
@@ -116,4 +116,30 @@ async function eventos(req, res, next) {
     }
 }
 
-module.exports = { listar, cargosAtribuiveis, criar, detalhar, editarDados, bloquear, eventos };
+async function redefinirSenha(req, res, next) {
+    try {
+        const id = usuarioIdSchema.safeParse(req.params.id);
+
+        if (!id.success) {
+            throw new AppError(id.error.issues[0].message, 400);
+        }
+
+        const parsed = redefinirSenhaSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        const resultado = await usuariosService.redefinirSenha(id.data, parsed.data.senha_confirmacao, req.usuario);
+
+        // A senha temporária aparece só nesta resposta: nada de cache.
+        res.set('Cache-Control', 'no-store');
+
+        return response.success(res, resultado);
+    } catch (error) {
+        next(error);
+    }
+}
+
+module.exports = {
+    redefinirSenha, listar, cargosAtribuiveis, criar, detalhar, editarDados, bloquear, eventos };
