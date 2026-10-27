@@ -61,7 +61,36 @@ async function register(nome, email, senha, papel, empresa_id) {
     return { usuario };
 }
 
+// Troca da própria senha: exige a senha atual (quem roubou uma sessão não troca), a nova tem de
+// diferir da atual e o token_version avança (outras sessões caem). Devolve um token novo para a
+// sessão que trocou continuar logada.
+async function alterarPropriaSenha(ator, senhaAtual, novaSenha) {
+
+    const hash = await usuarioRepository.buscarSenhaHash(ator.empresa_id, ator.id);
+
+    // Sempre paga um bcrypt.compare (sem diferença de tempo observável).
+    const valida = await bcrypt.compare(senhaAtual, hash ?? HASH_DESCARTAVEL);
+
+    if (!hash || !valida) {
+        throw new AppError('Senha atual inválida', 403);
+    }
+
+    if (await bcrypt.compare(novaSenha, hash)) {
+        throw new AppError('A nova senha deve ser diferente da atual', 400);
+    }
+
+    const senhaHash = await bcrypt.hash(novaSenha, 10);
+    const atualizado = await usuarioRepository.trocarPropriaSenha({ id: ator.id, empresa_id: ator.empresa_id, senhaHash });
+
+    if (!atualizado) {
+        throw new AppError('Usuário não encontrado', 404);
+    }
+
+    return { token: tokenService.emitirToken(atualizado) };
+}
+
 module.exports = {
     login,
-    register
+    register,
+    alterarPropriaSenha
 };

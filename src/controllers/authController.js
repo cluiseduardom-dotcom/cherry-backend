@@ -1,7 +1,7 @@
 const authService = require('../services/authService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
-const { loginSchema, registerSchema } = require('../validations/authValidation');
+const { loginSchema, registerSchema, alterarSenhaSchema } = require('../validations/authValidation');
 
 async function login(req, res, next) {
 
@@ -69,8 +69,33 @@ async function register(req, res, next) {
 
 }
 
+async function alterarSenha(req, res, next) {
+
+    try {
+
+        const parsed = alterarSenhaSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        const { senha_atual, nova_senha } = parsed.data;
+
+        const resultado = await authService.alterarPropriaSenha(req.usuario, senha_atual, nova_senha);
+
+        return response.success(res, resultado);
+
+    } catch (error) {
+
+        next(error);
+
+    }
+
+}
+
 module.exports = {
     login,
     register,
-    me
+    me,
+    alterarSenha
 };

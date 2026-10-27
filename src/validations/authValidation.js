@@ -13,7 +13,13 @@ const registerSchema = z.object({
     papel: z.enum(CARGOS, { message: 'Papel inválido' })
 });
 
+const alterarSenhaSchema = z.object({
+    senha_atual: z.string().min(1, 'Senha atual é obrigatória').max(128, 'Senha muito longa'),
+    nova_senha: z.string().min(8, 'A nova senha deve ter no mínimo 8 caracteres').max(128, 'Senha muito longa')
+});
+
 module.exports = {
     loginSchema,
-    registerSchema
+    registerSchema,
+    alterarSenhaSchema
 };
