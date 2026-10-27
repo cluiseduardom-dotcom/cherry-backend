@@ -1,6 +1,8 @@
 const app = require('./app');
 const { validarRuntime } = require('./config/runtimeConfig');
 const { main: executarMigrations } = require('./database/migrate');
+const { iniciarPingBanco } = require('./observabilidade/latencia');
+const pool = require('./config/db');
 
 validarRuntime();
 
@@ -11,6 +13,7 @@ async function iniciarServidor() {
 
   app.listen(PORT, () => {
     console.log('Servidor rodando na porta ' + PORT);
+    iniciarPingBanco(pool);
   });
 }
 
