@@ -117,6 +117,8 @@ const onboardingRoutes = require('./routes/onboarding');
 const authMiddleware = require('./middlewares/authMiddleware');
 const requireAdmin = require('./middlewares/requireAdmin');
 const empresaRoutes = require('./routes/empresa');
+const plataformaRoutes = require('./routes/plataforma');
+const requirePlataformaAdmin = require('./middlewares/requirePlataformaAdmin');
 const requireEstoquista = require('./middlewares/requireEstoquista');
 const requireVendedor = require('./middlewares/requireVendedor');
 const requireCapacidade = require('./middlewares/requireCapacidade');
@@ -144,6 +146,8 @@ app.use('/canais-venda', authMiddleware, canaisVendaRoutes);
 app.use('/dashboard', authMiddleware, requireAdmin, dashboardRoutes);
 app.use('/notificacoes', authMiddleware, notificacoesRoutes);
 app.use('/empresa', authMiddleware, requireAdmin, empresaRoutes);
+// Operador da plataforma: leitura agregada entre empresas (única exceção deliberada ao filtro por empresa_id).
+app.use('/plataforma', authMiddleware, requirePlataformaAdmin, plataformaRoutes);
 app.use('/consumos', authMiddleware, requireEstoquista, consumosRoutes);
 app.use('/contas-pagar', authMiddleware, requireAdmin, contasPagarRoutes);
 app.use('/contas-receber', authMiddleware, requireAdmin, contasReceberRoutes);

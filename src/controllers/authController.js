@@ -33,9 +33,9 @@ async function me(req, res, next) {
 
     try {
 
-        const { id, empresa_id, role, cargo, nivel, capacidades, senha_temporaria } = req.usuario;
+        const { id, empresa_id, role, cargo, nivel, capacidades, senha_temporaria, plataforma_admin } = req.usuario;
 
-        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades, senha_temporaria: senha_temporaria === true });
+        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades, senha_temporaria: senha_temporaria === true, plataforma_admin: plataforma_admin === true });
 
     } catch (error) {
 
