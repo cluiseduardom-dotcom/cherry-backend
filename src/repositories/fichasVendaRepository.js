@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { calcularCustoSku } = require('../utils/custoSku');
+const { executarComLock } = require('./shared/transacoes');
 
 const SELECT_ITENS = `
     SELECT i.id, i.insumo_produto_id, i.quantidade, p.nome AS insumo_nome, p.sku AS insumo_sku, p.custo AS custo_unitario
@@ -148,4 +149,95 @@ async function buscarHistoricoPorProduto(produto_id, empresa_id) {
     return fichas;
 }
 
-module.exports = { criarVersao, buscarVigentePorProduto, buscarHistoricoPorProduto };
+const QUANTIDADE_MAXIMA_FICHA = 1000;
+
+// Fichas VIGENTES que usam o insumo (produto, quantidade por unidade). Para a prévia da substituição em lote.
+async function listarFichasVigentesComInsumo(insumo_id, empresa_id, executor = db) {
+    const { rows } = await executor.query(
+        `SELECT f.id AS ficha_venda_id, f.produto_id, p.sku, p.nome, i.quantidade
+         FROM fichas_venda f
+         JOIN itens_ficha_venda i ON i.ficha_venda_id = f.id AND i.empresa_id = f.empresa_id
+         JOIN produtos p ON p.id = f.produto_id AND p.empresa_id = f.empresa_id
+         WHERE f.empresa_id = $1 AND f.vigente = true AND i.insumo_produto_id = $2
+         ORDER BY f.produto_id`,
+        [empresa_id, insumo_id]
+    );
+
+    return rows;
+}
+
+async function previaSubstituicao(de_insumo_id, empresa_id) {
+    const { rows } = await db.query(
+        'SELECT id, tipo, sku, nome FROM produtos WHERE id = $1 AND empresa_id = $2',
+        [de_insumo_id, empresa_id]
+    );
+    if (!rows.length) throw new AppError('Insumo não encontrado', 404);
+    if (rows[0].tipo !== 'insumo') throw new AppError("Produto deve ser do tipo 'insumo'", 400);
+
+    return { insumo: rows[0], afetados: await listarFichasVigentesComInsumo(de_insumo_id, empresa_id) };
+}
+
+// Substituição em lote ("em todos os SKUs que usam a embalagem X, trocar por Y"): para cada ficha vigente que usa X,
+// cria uma NOVA versão com Y no lugar (quantidade preservada; se Y já estava na ficha, as quantidades somam). Nunca
+// edita versão antiga; vendas passadas guardam o próprio snapshot. Tudo numa transação; o insumo substituído é
+// travado (serializa duas substituições do mesmo insumo) e os produtos afetados são travados em ordem de id.
+async function substituirInsumoEmLote({ de_insumo_id, para_insumo_id, usuario_id, empresa_id }) {
+    return executarComLock('produtos', { coluna: 'id', valor: de_insumo_id }, empresa_id, undefined, async (de, client) => {
+        if (!de) throw new AppError('Insumo atual não encontrado', 404);
+        if (de.tipo !== 'insumo') throw new AppError("O insumo atual deve ser do tipo 'insumo'", 400);
+
+        const { rows: paraRows } = await client.query(
+            'SELECT id, tipo, ativo FROM produtos WHERE id = $1 AND empresa_id = $2',
+            [para_insumo_id, empresa_id]
+        );
+        if (!paraRows.length) throw new AppError('Insumo substituto não encontrado', 404);
+        if (paraRows[0].tipo !== 'insumo') throw new AppError("O insumo substituto deve ser do tipo 'insumo'", 400);
+        if (!paraRows[0].ativo) throw new AppError('O insumo substituto está inativo', 400);
+
+        const afetados = await listarFichasVigentesComInsumo(de_insumo_id, empresa_id, client);
+        if (!afetados.length) return { afetados: [] };
+
+        await client.query(
+            'SELECT id FROM produtos WHERE empresa_id = $1 AND id = ANY($2::int[]) ORDER BY id FOR UPDATE',
+            [empresa_id, afetados.map((a) => a.produto_id)]
+        );
+
+        for (const afetado of afetados) {
+            const { rows: itens } = await client.query(
+                'SELECT insumo_produto_id, quantidade FROM itens_ficha_venda WHERE ficha_venda_id = $1 AND empresa_id = $2 ORDER BY id',
+                [afetado.ficha_venda_id, empresa_id]
+            );
+
+            const novos = new Map();
+            for (const item of itens) {
+                const insumoId = item.insumo_produto_id === de_insumo_id ? para_insumo_id : item.insumo_produto_id;
+                novos.set(insumoId, (novos.get(insumoId) ?? 0) + item.quantidade);
+            }
+
+            for (const quantidade of novos.values()) {
+                if (quantidade > QUANTIDADE_MAXIMA_FICHA) {
+                    throw new AppError(`A substituição passaria de ${QUANTIDADE_MAXIMA_FICHA} un. por venda no SKU ${afetado.sku || afetado.nome}`, 400);
+                }
+            }
+
+            await client.query(
+                'UPDATE fichas_venda SET vigente = false WHERE produto_id = $1 AND empresa_id = $2 AND vigente = true',
+                [afetado.produto_id, empresa_id]
+            );
+            const { rows: fichaRows } = await client.query(
+                `INSERT INTO fichas_venda (empresa_id, produto_id, vigente, criado_por) VALUES ($1, $2, true, $3) RETURNING id`,
+                [empresa_id, afetado.produto_id, usuario_id]
+            );
+            for (const [insumoId, quantidade] of novos) {
+                await client.query(
+                    `INSERT INTO itens_ficha_venda (empresa_id, ficha_venda_id, insumo_produto_id, quantidade) VALUES ($1, $2, $3, $4)`,
+                    [empresa_id, fichaRows[0].id, insumoId, quantidade]
+                );
+            }
+        }
+
+        return { afetados: afetados.map(({ produto_id, sku, nome }) => ({ produto_id, sku, nome })) };
+    });
+}
+
+module.exports = { criarVersao, buscarVigentePorProduto, buscarHistoricoPorProduto, previaSubstituicao, substituirInsumoEmLote };

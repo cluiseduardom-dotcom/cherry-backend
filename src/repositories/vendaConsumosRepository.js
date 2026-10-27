@@ -39,12 +39,13 @@ function calcularConsumosPrevistos(itensVendidos, fichas) {
         .sort((a, b) => a.produto_id - b.produto_id || a.ficha_venda_id - b.ficha_venda_id);
 }
 
-// Baixa os insumos no Central e grava o snapshot. Devolve as pendências (linhas com falta) para quem chamou.
-// Os produtos (inclusive insumos) já foram travados em ordem de id pela venda; criarMovimentacao trava de novo
-// (a trava é reentrante na mesma transação).
-async function registrarConsumosDaVenda({ venda_id, itensVendidos, fichas, usuario_id, empresa_id }, client) {
-    const previstos = calcularConsumosPrevistos(itensVendidos, fichas);
-    if (!previstos.length) return [];
+// Baixa cada linha prevista no Central (só o que houver de saldo) e grava o snapshot em venda_consumos.
+// Serve à venda (origem 'ficha') e aos ajustes por venda (acrescentar: brinde/substituicao/outro).
+// `previstos`: [{ ficha_venda_id, produto_id, quantidade_prevista, origem, observacao }], já ordenados por insumo.
+// Os produtos já devem estar travados (a venda os trava em ordem de id; ajustes travam a venda e o insumo).
+// Devolve as pendências (linhas com falta) e as linhas gravadas.
+async function baixarLinhasDeConsumo({ venda_id, previstos, usuario_id, empresa_id, motivoMovimentacao }, client) {
+    if (!previstos.length) return { pendencias: [], linhas: [] };
 
     const centralId = await estoqueRepository.garantirLocalCentral(client, empresa_id);
     const insumoIds = [...new Set(previstos.map((p) => p.produto_id))];
@@ -62,6 +63,7 @@ async function registrarConsumosDaVenda({ venda_id, itensVendidos, fichas, usuar
     const saldoRestante = new Map(saldoRows.map((r) => [r.produto_id, r.saldo]));
 
     const pendencias = [];
+    const linhas = [];
 
     for (const previsto of previstos) {
         if (!custoPorInsumo.has(previsto.produto_id)) continue;
@@ -74,7 +76,7 @@ async function registrarConsumosDaVenda({ venda_id, itensVendidos, fichas, usuar
                 produto_id: previsto.produto_id,
                 tipo: 'saida',
                 quantidade: baixar,
-                motivo: `Consumo venda #${venda_id}`,
+                motivo: motivoMovimentacao ?? `Consumo venda #${venda_id}`,
                 usuario_id,
                 empresa_id,
                 local_id: centralId
@@ -87,13 +89,16 @@ async function registrarConsumosDaVenda({ venda_id, itensVendidos, fichas, usuar
             saldoRestante.set(previsto.produto_id, saldo - baixar);
         }
 
-        await client.query(
+        const { rows } = await client.query(
             `INSERT INTO venda_consumos
-             (empresa_id, venda_id, produto_id, ficha_venda_id, local_id, origem, quantidade_prevista, quantidade_baixada, custo_unitario)
-             VALUES ($1, $2, $3, $4, $5, 'ficha', $6, $7, $8)`,
-            [empresa_id, venda_id, previsto.produto_id, previsto.ficha_venda_id, centralId,
-                previsto.quantidade_prevista, baixar, custoPorInsumo.get(previsto.produto_id)]
+             (empresa_id, venda_id, produto_id, ficha_venda_id, local_id, origem, quantidade_prevista, quantidade_baixada,
+              custo_unitario, observacao, criado_por)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+            [empresa_id, venda_id, previsto.produto_id, previsto.ficha_venda_id ?? null, centralId,
+                previsto.origem ?? 'ficha', previsto.quantidade_prevista, baixar,
+                custoPorInsumo.get(previsto.produto_id), previsto.observacao ?? null, usuario_id]
         );
+        linhas.push(rows[0]);
 
         if (baixar < previsto.quantidade_prevista) {
             pendencias.push({
@@ -104,6 +109,16 @@ async function registrarConsumosDaVenda({ venda_id, itensVendidos, fichas, usuar
             });
         }
     }
+
+    return { pendencias, linhas };
+}
+
+// Baixa automática da venda: o previsto vem das fichas vigentes. Devolve as pendências.
+async function registrarConsumosDaVenda({ venda_id, itensVendidos, fichas, usuario_id, empresa_id }, client) {
+    const previstos = calcularConsumosPrevistos(itensVendidos, fichas)
+        .map((p) => ({ ...p, origem: 'ficha' }));
+
+    const { pendencias } = await baixarLinhasDeConsumo({ venda_id, previstos, usuario_id, empresa_id }, client);
 
     return pendencias;
 }
@@ -138,8 +153,9 @@ async function devolverConsumosDaVenda({ venda_id, usuario_id, empresa_id }, cli
         }
 
         await client.query(
-            'UPDATE venda_consumos SET devolvido_em = NOW() WHERE id = $1 AND empresa_id = $2',
-            [consumo.id, empresa_id]
+            `UPDATE venda_consumos SET devolvido_em = NOW(), devolucao_tipo = 'cancelamento', devolvido_por = $3
+             WHERE id = $1 AND empresa_id = $2`,
+            [consumo.id, empresa_id, usuario_id]
         );
     }
 
@@ -165,6 +181,7 @@ async function listarPendenciasPorInsumo(empresa_id, executor) {
 }
 
 module.exports = {
+    baixarLinhasDeConsumo,
     buscarFichasVigentes,
     calcularConsumosPrevistos,
     registrarConsumosDaVenda,
