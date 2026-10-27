@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const estoqueRepository = require('./estoqueRepository');
+const vendaConsumosRepository = require('./vendaConsumosRepository');
 const precosRepository = require('./precosRepository');
 const contasReceberRepository = require('./contasReceberRepository');
 const pagamentosVendaRepository = require('./pagamentosVendaRepository');
@@ -239,9 +240,16 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
         // ordem diferente travavam uma à outra (deadlock) ao baixar item por item na ordem recebida.
         // Com todos travados nesta ordem global, quem chega depois apenas espera. Existência e
         // ativo continuam sendo validados item a item abaixo.
+        //
+        // Insumos da ficha de venda (#150 fatia 1b) entram na MESMA trava, na mesma ordem global de id: assim o
+        // consumo automático não cria deadlock com outra venda que use os mesmos insumos.
+        const produtoIdsVendidos = [...new Set(itens.map((item) => item.produto_id))];
+        const fichasVigentes = await vendaConsumosRepository.buscarFichasVigentes(produtoIdsVendidos, empresa_id, client);
+        const idsParaTravar = [...new Set([...produtoIdsVendidos, ...fichasVigentes.map((linha) => linha.insumo_produto_id)])];
+
         await client.query(
             'SELECT id FROM produtos WHERE empresa_id = $1 AND id = ANY($2::int[]) ORDER BY id FOR UPDATE',
-            [empresa_id, itens.map((item) => item.produto_id)]
+            [empresa_id, idsParaTravar]
         );
 
         let subtotal = 0;
@@ -353,6 +361,16 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
              VALUES ${placeholders} RETURNING *`,
             valores.flat()
         );
+
+        // Baixa automática dos insumos da ficha de venda (só do Central). Falta de saldo não bloqueia a venda:
+        // baixa o que existe e deixa a pendência registrada (aparece no sino). Mesma transação da venda.
+        await vendaConsumosRepository.registrarConsumosDaVenda({
+            venda_id: venda.id,
+            itensVendidos: itensProcessados,
+            fichas: fichasVigentes,
+            usuario_id,
+            empresa_id
+        }, client);
 
         // Compatibilidade: chamadas legadas não entram no novo núcleo financeiro.
         // O frontend será migrado para pagamentos[] em etapa própria; enquanto
@@ -733,6 +751,9 @@ async function cancelar(id, usuario_id, empresa_id, opcoes) {
 
             quantidadeDevolvida += item.quantidade;
         }
+
+        // Insumos consumidos pela venda (ficha de venda) voltam ao Central; pendências dessa venda se encerram.
+        await vendaConsumosRepository.devolverConsumosDaVenda({ venda_id: id, usuario_id, empresa_id }, client);
 
         const { rows: atualizadaRows } = await client.query(
             `UPDATE vendas SET status = 'cancelada' WHERE id = $1 AND empresa_id = $2 RETURNING *`,

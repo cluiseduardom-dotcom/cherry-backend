@@ -18,7 +18,8 @@ const TIPOS = Object.freeze({
     ABAIXO_MINIMO: 'abaixo_minimo',
     PERTO_DE_ACABAR: 'perto_de_acabar',
     PARADO: 'parado',
-    ALTO_GIRO: 'alto_giro'
+    ALTO_GIRO: 'alto_giro',
+    INSUMO_PENDENTE: 'insumo_pendente'
 });
 
 const PRIORIDADE = Object.freeze({ alta: 0, media: 1, baixa: 2 });
@@ -26,9 +27,10 @@ const PRIORIDADE = Object.freeze({ alta: 0, media: 1, baixa: 2 });
 // Quais tipos cada perfil recebe. Giro e "parado" derivam de vendas: só quem já vê o
 // dashboard (admin). Estoquista recebe reposição; os demais, só falta/abaixo do mínimo.
 // Insumo só aparece em falta / abaixo do mínimo / perto de acabar.
+// `insumo_pendente` (insumo que faltou no consumo automático de uma venda) é aviso de reposição: admin e estoquista.
 function tiposPermitidos({ administrador, estoquista }) {
     if (administrador) return new Set(Object.values(TIPOS));
-    if (estoquista) return new Set([TIPOS.FALTA, TIPOS.ABAIXO_MINIMO, TIPOS.PERTO_DE_ACABAR]);
+    if (estoquista) return new Set([TIPOS.FALTA, TIPOS.ABAIXO_MINIMO, TIPOS.PERTO_DE_ACABAR, TIPOS.INSUMO_PENDENTE]);
     return new Set([TIPOS.FALTA, TIPOS.ABAIXO_MINIMO]);
 }
 
@@ -52,7 +54,8 @@ function base(p, tipo, prioridade, titulo, mensagem, acao, dados) {
     };
 }
 
-function montarNotificacoes(produtos, perfil) {
+// pendencias: uma linha por insumo com falta em vendas finalizadas ({ produto_id, sku, nome, quantidade_pendente, vendas }).
+function montarNotificacoes(produtos, perfil, pendencias = []) {
     const permitidos = tiposPermitidos(perfil);
     const veInsumo = Boolean(perfil.administrador || perfil.estoquista);
     const itens = [];
@@ -122,6 +125,19 @@ function montarNotificacoes(produtos, perfil) {
         const giro = calcularGiro(vendido90, estoque);
         if (giro !== null && giro >= LIMITES.GIRO_MINIMO_DESTAQUE) {
             candidatosGiro.push({ p, estoque, giro, vendido90 });
+        }
+    }
+
+    if (permitidos.has(TIPOS.INSUMO_PENDENTE)) {
+        for (const pend of pendencias) {
+            const p = { id: pend.produto_id, sku: pend.sku, nome: pend.nome, tipo: 'insumo' };
+            const qtd = Number(pend.quantidade_pendente);
+            const vendas = Number(pend.vendas);
+            itens.push(base(p, TIPOS.INSUMO_PENDENTE, 'alta',
+                'Insumo faltou em venda',
+                `${rotulo(p)} não tinha saldo no Central em ${vendas} venda(s): ${qtd} un. ficaram sem baixa.`,
+                'Repor o insumo no Central e regularizar o consumo pendente.',
+                { quantidade_pendente: qtd, vendas }));
         }
     }
 

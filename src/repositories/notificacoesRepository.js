@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const vendaConsumosRepository = require('./vendaConsumosRepository');
 
 // Uma linha por produto ativo da empresa, com os números que as regras do sino usam.
 // Só vendas finalizadas contam. Tudo filtrado por empresa_id nas próprias consultas.
@@ -36,4 +37,9 @@ async function listarBaseDeProdutos(empresa_id) {
     return rows;
 }
 
-module.exports = { listarBaseDeProdutos };
+// Insumos com consumo pendente (faltou saldo no Central na hora de uma venda). Filtrado por empresa_id.
+async function listarPendenciasDeInsumo(empresa_id) {
+    return vendaConsumosRepository.listarPendenciasPorInsumo(empresa_id, db);
+}
+
+module.exports = { listarBaseDeProdutos, listarPendenciasDeInsumo };
