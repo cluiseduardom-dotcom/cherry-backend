@@ -118,6 +118,9 @@ const authMiddleware = require('./middlewares/authMiddleware');
 const requireAdmin = require('./middlewares/requireAdmin');
 const empresaRoutes = require('./routes/empresa');
 const plataformaRoutes = require('./routes/plataforma');
+const integracoesMercadoPagoRoutes = require('./routes/integracoesMercadoPago');
+const pagamentosGatewayRoutes = require('./routes/pagamentosGateway');
+const webhooksMercadoPagoRoutes = require('./routes/webhooksMercadoPago');
 const requirePlataformaAdmin = require('./middlewares/requirePlataformaAdmin');
 const requireEstoquista = require('./middlewares/requireEstoquista');
 const requireVendedor = require('./middlewares/requireVendedor');
@@ -148,6 +151,11 @@ app.use('/notificacoes', authMiddleware, notificacoesRoutes);
 app.use('/empresa', authMiddleware, requireAdmin, empresaRoutes);
 // Operador da plataforma: leitura agregada entre empresas (única exceção deliberada ao filtro por empresa_id).
 app.use('/plataforma', authMiddleware, requirePlataformaAdmin, plataformaRoutes);
+// Mercado Pago: conexão da loja (admin; o retorno do OAuth é público, por `state`), cobrança Pix
+// (admin/vendedor) e webhook público protegido por assinatura. Sem as variáveis MP_* respondem 503.
+app.use('/integracoes/mercadopago', integracoesMercadoPagoRoutes);
+app.use('/pagamentos-gateway', authMiddleware, requireVendedor, pagamentosGatewayRoutes);
+app.use('/webhooks/mercadopago', webhooksMercadoPagoRoutes);
 app.use('/consumos', authMiddleware, requireEstoquista, consumosRoutes);
 app.use('/contas-pagar', authMiddleware, requireAdmin, contasPagarRoutes);
 app.use('/contas-receber', authMiddleware, requireAdmin, contasReceberRoutes);
