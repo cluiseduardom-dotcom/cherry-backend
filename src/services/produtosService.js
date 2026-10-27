@@ -10,9 +10,9 @@ const db = require('../config/db');
 const AppError = require('../errors/AppError');
 
 function comMargem(produto) {
-    const precoVenda = Number(produto.preco_venda);
+    const precoVenda = produto.preco_venda == null ? null : Number(produto.preco_venda);
     const custo = Number(produto.custo);
-    const margem_percentual = precoVenda > 0 ? Number((((precoVenda - custo) / precoVenda) * 100).toFixed(2)) : null;
+    const margem_percentual = precoVenda != null && precoVenda > 0 ? Number((((precoVenda - custo) / precoVenda) * 100).toFixed(2)) : null;
 
     return { ...produto, margem_percentual };
 }

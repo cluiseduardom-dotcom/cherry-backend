@@ -4,7 +4,8 @@ const criarProdutoSchema = z.object({
     nome: z.string({ error: 'Nome é obrigatório' }).min(1, 'Nome é obrigatório'),
     descricao: z.string().optional(),
     categoria: z.string().optional(),
-    preco_venda: z.coerce.number({ error: 'Preço de venda é obrigatório' }).positive('Preço de venda é obrigatório'),
+    // Opcional: o preço de venda é definido por canal (Precificar por canal). Se vier, precisa ser > 0.
+    preco_venda: z.coerce.number({ error: 'Preço de venda inválido' }).positive('Preço de venda deve ser maior que zero').optional(),
     custo: z.coerce.number({ error: 'Custo é obrigatório' }).positive('Custo é obrigatório'),
     estoque_atual: z.coerce.number({ error: 'Estoque atual inválido' }).int('Estoque atual inválido').nonnegative('Estoque atual inválido').optional(),
     estoque_minimo: z.coerce.number({ error: 'Estoque mínimo inválido' }).int('Estoque mínimo inválido').nonnegative('Estoque mínimo inválido').optional(),

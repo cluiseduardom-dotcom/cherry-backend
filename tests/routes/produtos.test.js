@@ -171,7 +171,7 @@ describe('POST /produtos (admin only)', () => {
       .send({ nome: 'X' });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Preço de venda é obrigatório');
+    expect(res.body.message).toBe('Custo é obrigatório');
   });
 
   test('returns 201 and the created produto for an admin, without requiring sku (regressão)', async () => {
