@@ -4,6 +4,7 @@ const controller = require('../controllers/produtosController');
 const estoqueController = require('../controllers/estoqueController');
 const precosController = require('../controllers/precosController');
 const fichasTecnicasController = require('../controllers/fichasTecnicasController');
+const fichasVendaController = require('../controllers/fichasVendaController');
 const produtosCodigosController = require('../controllers/produtosCodigosController');
 const produtoImagensController = require('../controllers/produtoImagensController');
 const uploadImagemProduto = require('../middlewares/uploadImagemProduto');
@@ -54,5 +55,10 @@ router.put('/:id/precos/:canalId', requireAdmin, precosController.definirPreco);
 router.post('/:id/ficha-tecnica', requireEstoquista, fichasTecnicasController.criar);
 router.get('/:id/ficha-tecnica', requireEstoquista, fichasTecnicasController.buscarVigente);
 router.get('/:id/ficha-tecnica/historico', requireAdmin, fichasTecnicasController.historico);
+
+// Ficha de venda do SKU (o que sai do estoque a cada unidade vendida): admin e estoquista.
+router.post('/:id/ficha-venda', requireEstoquista, fichasVendaController.criar);
+router.get('/:id/ficha-venda', requireEstoquista, fichasVendaController.buscarVigente);
+router.get('/:id/ficha-venda/historico', requireEstoquista, fichasVendaController.historico);
 
 module.exports = router;
