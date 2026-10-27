@@ -12,7 +12,11 @@ async function listar(usuario) {
     };
 
     const produtos = await notificacoesRepository.listarBaseDeProdutos(usuario.empresa_id);
-    const itens = montarNotificacoes(produtos, perfil);
+    // Só quem recebe esse tipo de aviso (admin/estoquista) paga a consulta de pendências.
+    const pendencias = perfil.administrador || perfil.estoquista
+        ? await notificacoesRepository.listarPendenciasDeInsumo(usuario.empresa_id)
+        : [];
+    const itens = montarNotificacoes(produtos, perfil, pendencias);
 
     return { total: itens.length, itens };
 }

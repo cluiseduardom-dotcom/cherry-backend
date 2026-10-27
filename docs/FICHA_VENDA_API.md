@@ -14,7 +14,7 @@ venda e a pendência de insumo faltando vêm na fatia 1b; o consumo avulso e a t
 ## Resposta
 `{ id, produto_id, vigente, criado_por, criado_em, itens: [{ id, insumo_produto_id, insumo_nome, insumo_sku, quantidade, custo_unitario, subtotal_custo }], custo_item, custo_insumos, custo_total_sku }`.
 `custo_total_sku = custo do item + Σ(quantidade × custo unitário do insumo)`, em centavos inteiros (sem erro de ponto flutuante).
-O custo usa o **custo atual** dos insumos (o snapshot por venda congela o valor na fatia 1b).
+O custo usa o **custo atual** dos insumos (o snapshot por venda congela o valor: `venda_consumos.custo_unitario`).
 
 ## Regras
 - Produto da ficha: `tipo = 'acabado'`. Itens: `tipo = 'insumo'`, **ativos**, da mesma empresa. `quantidade` inteira, 1 a 1000, sem repetir insumo.

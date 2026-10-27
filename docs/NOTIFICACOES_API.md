@@ -22,13 +22,14 @@ a partir do estoque e das vendas finalizadas da empresa do JWT (`req.usuario.emp
 | `perto_de_acabar` | média | cobertura ≤ 7 dias (estoque ÷ média diária dos últimos 30 dias); não repete se já está `abaixo_minimo` |
 | `parado` | baixa | produto acabado, estoque > 0, sem venda há ≥ 90 dias (ou nunca vendeu) **e** primeira movimentação de estoque há ≥ 90 dias |
 | `alto_giro` | baixa | top 3 produtos acabados com giro (vendido em 90 dias ÷ estoque) ≥ 1 |
+| `insumo_pendente` | alta | insumo da ficha de venda sem saldo no Central em vendas finalizadas (admin e estoquista) |
 
 Só vendas `finalizada` contam (cancelada não conta). Insumos (`tipo = 'insumo'`) só entram em `falta`, `abaixo_minimo` e
-`perto_de_acabar`. O aviso de "pendência de consumo" (falta de insumo na venda) entra aqui na fatia do consumo por venda (#150).
+`perto_de_acabar`. O aviso `insumo_pendente` (alta) — insumo que não tinha saldo no Central na hora de uma venda, uma linha por insumo com a soma pendente e o nº de vendas — vem de `venda_consumos` (ver `docs/CONSUMO_INSUMOS_VENDA.md`); some quando a venda é cancelada.
 
 ## Quem recebe o quê (RBAC)
 - **Admin** (perfil admin, por cargo ou concessão): todos os tipos, produtos e insumos.
-- **Estoquista**: `falta`, `abaixo_minimo`, `perto_de_acabar` (produtos e insumos). Sem `parado`/`alto_giro` (derivam de vendas).
+- **Estoquista**: `falta`, `abaixo_minimo`, `perto_de_acabar` (produtos e insumos) e `insumo_pendente`. Sem `parado`/`alto_giro` (derivam de vendas).
 - **Demais perfis** (vendedor etc.): só `falta` e `abaixo_minimo` de produtos; nunca insumos.
 - Nenhum perfil recebe custo, margem ou lucro.
 

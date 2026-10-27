@@ -114,6 +114,28 @@ describe('montarNotificacoes', () => {
         });
     });
 
+    describe('insumo_pendente (consumo da venda sem saldo)', () => {
+        const pendencias = [{ produto_id: 7, sku: 'TAG-1', nome: 'Tag logo', quantidade_pendente: 3, vendas: 2 }];
+
+        test('admin e estoquista recebem, com SKU, quantidade e prioridade alta', () => {
+            for (const perfil of [admin, estoquista]) {
+                const [n] = montarNotificacoes([], perfil, pendencias);
+                expect(n).toMatchObject({ tipo: 'insumo_pendente', prioridade: 'alta', sku: 'TAG-1', item: 'insumo', id: 'insumo_pendente:7' });
+                expect(n.mensagem).toContain('SKU TAG-1');
+                expect(n.dados).toEqual({ quantidade_pendente: 3, vendas: 2 });
+            }
+        });
+
+        test('vendedor nunca recebe', () => {
+            expect(montarNotificacoes([], vendedor, pendencias)).toEqual([]);
+        });
+
+        test('sem pendências (ou omitido) não gera aviso', () => {
+            expect(montarNotificacoes([], admin, [])).toEqual([]);
+            expect(montarNotificacoes([], admin)).toEqual([]);
+        });
+    });
+
     test('limita o total de itens', () => {
         const muitos = Array.from({ length: 80 }, (_, i) => prod({ id: i + 1, estoque_atual: 0, estoque_minimo: 1 }));
         expect(montarNotificacoes(muitos, admin)).toHaveLength(LIMITES.MAXIMO_ITENS);
