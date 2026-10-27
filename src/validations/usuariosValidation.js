@@ -57,7 +57,12 @@ const bloqueioSchema = z.object({
 
 const usuarioIdSchema = z.coerce.number({ error: 'Usuário inválido' }).int('Usuário inválido').positive('Usuário inválido');
 
+const redefinirSenhaSchema = z.strictObject({
+    senha_confirmacao: z.string({ error: 'Senha de confirmação é obrigatória' }).min(1, 'Senha de confirmação é obrigatória').max(128, 'Senha muito longa')
+});
+
 module.exports = {
+    redefinirSenhaSchema,
     criarUsuarioSchema,
     editarDadosSchema,
     CAMPOS_DADOS,

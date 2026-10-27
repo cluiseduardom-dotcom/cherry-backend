@@ -227,7 +227,34 @@ async function editarDados({ empresa_id, usuario_id, dados, executado_por, autor
     });
 }
 
+// Redefinição por admin: trava o alvo (filtrado por empresa_id), grava o hash, marca a senha como
+// temporária, avança token_version (derruba as sessões dele) e registra a trilha — tudo numa transação.
+async function redefinirSenha({ alvo_id, empresa_id, senhaHash, executado_por }) {
+    return executarComLock('usuarios', { coluna: 'id', valor: alvo_id }, empresa_id, null, async (alvo, client) => {
+        if (!alvo) throw new AppError('Usuário não encontrado', 404);
+
+        if (alvo.id === executado_por) {
+            throw new AppError('Para trocar a sua própria senha use "Alterar senha"', 400);
+        }
+
+        await client.query(
+            `UPDATE usuarios SET senha = $1, senha_temporaria = true, token_version = token_version + 1
+             WHERE id = $2 AND empresa_id = $3`,
+            [senhaHash, alvo.id, empresa_id]
+        );
+
+        await client.query(
+            `INSERT INTO usuarios_eventos (empresa_id, acao, alvo_usuario_id, cargo_alvo, executado_por, motivo, campos)
+             VALUES ($1, 'editar', $2, $3, $4, NULL, ARRAY['senha'])`,
+            [empresa_id, alvo.id, alvo.papel, executado_por]
+        );
+
+        return { id: alvo.id, nome: alvo.nome, email: alvo.email };
+    });
+}
+
 module.exports = {
+    redefinirSenha,
     obterDetalhe,
     editarDados,
     listarPorEmpresa,

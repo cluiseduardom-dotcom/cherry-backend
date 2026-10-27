@@ -42,7 +42,7 @@ async function trocarPropriaSenha({ id, empresa_id, senhaHash }) {
         await client.query('BEGIN');
 
         const { rows } = await client.query(
-            `UPDATE usuarios SET senha = $1, token_version = token_version + 1
+            `UPDATE usuarios SET senha = $1, senha_temporaria = false, token_version = token_version + 1
              WHERE id = $2 AND empresa_id = $3 AND ativo = true
              RETURNING id, papel, empresa_id, token_version`,
             [senhaHash, id, empresa_id]

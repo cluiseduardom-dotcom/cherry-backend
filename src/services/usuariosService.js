@@ -6,6 +6,9 @@ const cargosRepository = require('../repositories/cargosRepository');
 const cargosService = require('./cargosService');
 const { resolverCargo, aplicarConcessoes } = require('./permissoesService');
 const { PERFIL_ADMIN } = require('../constants/cargos');
+const { gerarSenhaTemporaria } = require('../utils/senhaTemporaria');
+
+const HASH_DESCARTAVEL = bcrypt.hashSync('hash-descartavel-sem-usuario', 10);
 const { CAMPOS_DADOS } = require('../validations/usuariosValidation');
 
 // Gestão de usuários delegada a quem tem `gerir_usuarios` (diretor a supervisor por padrão;
@@ -212,7 +215,32 @@ async function listarEventos({ page, pageSize }, empresaId) {
     };
 }
 
+// Redefinição de senha por um admin: confirma a senha DO ADMIN (sessão roubada não redefine),
+// gera uma senha aleatória, grava só o hash e devolve a senha em texto UMA vez. O usuário fica
+// obrigado a trocá-la no primeiro acesso. A rota já restringe a admin.
+async function redefinirSenha(alvoId, senhaConfirmacao, ator) {
+    const hash = await usuarioRepository.buscarSenhaHash(ator.empresa_id, ator.id);
+    const valida = await bcrypt.compare(senhaConfirmacao, hash ?? HASH_DESCARTAVEL);
+
+    if (!hash || !valida) {
+        throw new AppError('Senha de confirmação inválida', 403);
+    }
+
+    const senhaTemporaria = gerarSenhaTemporaria();
+    const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
+
+    const usuario = await usuariosRepository.redefinirSenha({
+        alvo_id: alvoId,
+        empresa_id: ator.empresa_id,
+        senhaHash,
+        executado_por: ator.id
+    });
+
+    return { usuario, senha_temporaria: senhaTemporaria };
+}
+
 module.exports = {
+    redefinirSenha,
     avaliarAlvo,
     permissoesDoUsuario,
     listar,

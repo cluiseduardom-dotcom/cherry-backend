@@ -37,6 +37,7 @@ async function login(email, senha) {
             email: usuario.email,
             papel: usuario.papel,
             empresa_id: usuario.empresa_id,
+            senha_temporaria: usuario.senha_temporaria === true,
             // Identidade visual da empresa do próprio usuário (lida do banco, nunca da requisição).
             empresa: { id: usuario.empresa_id, tema: resolverTemaVisual(usuario.empresa_tema) }
         }

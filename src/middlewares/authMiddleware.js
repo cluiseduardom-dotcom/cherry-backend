@@ -5,6 +5,9 @@ const { resolverCargo, aplicarConcessoes } = require('../services/permissoesServ
 
 const MENSAGEM_TOKEN_INVALIDO = 'Token inválido ou expirado';
 
+// Com senha temporária (definida por um admin) só dá para ver quem sou e trocar a senha.
+const ROTAS_COM_SENHA_TEMPORARIA = ['/auth/me', '/auth/senha'];
+
 module.exports = async (req, res, next) => {
 
     const authHeader = req.headers.authorization;
@@ -37,6 +40,14 @@ module.exports = async (req, res, next) => {
             return next(new AppError(MENSAGEM_TOKEN_INVALIDO, 401));
         }
 
+        if (estado.senha_temporaria === true) {
+            const rota = (req.originalUrl || '').split('?')[0];
+
+            if (!ROTAS_COM_SENHA_TEMPORARIA.includes(rota)) {
+                return next(new AppError('Troque a senha temporária para continuar', 403));
+            }
+        }
+
         // O cargo vem do banco (estado.papel); o do JWT só vale quando a consulta não o devolve.
         const cargo = estado.papel ?? payload.role;
         const linha = estado.cargo_configurado
@@ -65,7 +76,8 @@ module.exports = async (req, res, next) => {
             cargo: permissoes.cargo,
             nivel: permissoes.nivel,
             capacidades: permissoes.capacidades,
-            empresa_id: payload.empresa_id
+            empresa_id: payload.empresa_id,
+            senha_temporaria: estado.senha_temporaria === true
         };
 
         return next();
