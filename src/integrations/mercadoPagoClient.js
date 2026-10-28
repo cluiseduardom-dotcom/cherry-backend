@@ -120,6 +120,10 @@ async function criarPagamentoPix(config, { accessToken, codigo, valor, descricao
 
     if (taxaPlataforma > 0) corpo.application_fee = taxaPlataforma;
 
+    // Só em teste: a documentação do Mercado Pago define o resultado do pagamento de teste pelo nome
+    // do pagador ("APRO" = aprovado). Nunca em produção.
+    if (config.sandbox) corpo.payer.first_name = 'APRO';
+
     const dados = await chamar(config, {
         metodo: 'POST', base: config.apiUrl, caminho: '/v1/payments', corpo, token: accessToken, idempotencia: codigo
     });

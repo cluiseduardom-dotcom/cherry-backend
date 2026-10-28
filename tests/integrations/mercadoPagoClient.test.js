@@ -90,6 +90,16 @@ describe('criarPagamentoPix', () => {
         });
     });
 
+    test('em sandbox o pagador de teste é APRO; fora do sandbox nunca', async () => {
+        global.fetch.mockResolvedValue(resposta(ok, 201));
+        await client.criarPagamentoPix({ ...config, sandbox: true }, entrada);
+        expect(JSON.parse(global.fetch.mock.calls[0][1].body).payer).toEqual({ email: 'loja@x.com', first_name: 'APRO' });
+
+        global.fetch.mockClear();
+        await client.criarPagamentoPix({ ...config, sandbox: false }, entrada);
+        expect(JSON.parse(global.fetch.mock.calls[0][1].body).payer).toEqual({ email: 'loja@x.com' });
+    });
+
     test('comissão zero não envia application_fee', async () => {
         global.fetch.mockResolvedValue(resposta(ok, 201));
         await client.criarPagamentoPix(config, { ...entrada, taxaPlataforma: 0 });
