@@ -43,7 +43,9 @@ function formatarExpiracao(data) {
 
 // O que o PDV pode ver: nunca a taxa da plataforma, nunca ids internos.
 function paraResposta(cobranca) {
-    const expirada = cobranca.status === 'pendente' && cobranca.expira_em && new Date(cobranca.expira_em).getTime() < Date.now();
+    const agora = Date.now();
+    const alvo = cobranca.expira_em ? new Date(cobranca.expira_em).getTime() : NaN;
+    const expirada = cobranca.status === 'pendente' && cobranca.expira_em && alvo < agora;
 
     return {
         codigo: cobranca.codigo,
@@ -53,6 +55,9 @@ function paraResposta(cobranca) {
         qr_code_base64: cobranca.qr_code_base64,
         ticket_url: cobranca.ticket_url,
         expira_em: cobranca.expira_em,
+        // Segundos até expirar, pelo relógio do servidor: o PDV conta a partir daqui e não depende
+        // do relógio do computador do operador (que pode estar errado).
+        expira_em_segundos: Number.isNaN(alvo) ? null : Math.max(0, Math.floor((alvo - agora) / 1000)),
         expirada: Boolean(expirada)
     };
 }
