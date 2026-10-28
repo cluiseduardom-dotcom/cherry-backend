@@ -261,7 +261,10 @@ describe('POST /pagamentos-gateway/pix', () => {
         expect(res.headers['cache-control']).toContain('no-store');
         expect(res.body.data).toMatchObject({ status: 'pendente', valor: '1000.00', expirada: false });
         expect(res.body.data.qr_code).toMatch(/^QR-/);
-        expect(Object.keys(res.body.data).sort()).toEqual(['codigo', 'expira_em', 'expirada', 'qr_code', 'qr_code_base64', 'status', 'ticket_url', 'valor']);
+        expect(Object.keys(res.body.data).sort()).toEqual(['codigo', 'expira_em', 'expira_em_segundos', 'expirada', 'qr_code', 'qr_code_base64', 'status', 'ticket_url', 'valor']);
+        // validade do Pix = 30 min (relógio do servidor), com folga para a execução do teste
+        expect(res.body.data.expira_em_segundos).toBeGreaterThan(29 * 60);
+        expect(res.body.data.expira_em_segundos).toBeLessThanOrEqual(30 * 60);
 
         const [config, entrada] = client.criarPagamentoPix.mock.calls[0];
         expect(config.appId).toBe('123456');
@@ -393,6 +396,7 @@ describe('GET /pagamentos-gateway/:codigo', () => {
         await db.query(`UPDATE cobrancas_pagamento SET expira_em = NOW() - INTERVAL '1 minute', consultado_em = NOW() WHERE id = $1`, [cobranca.id]);
         const res = await auth(request(app).get(`/pagamentos-gateway/${cobranca.codigo}`), A, 'vendedor');
         expect(res.body.data.expirada).toBe(true);
+        expect(res.body.data.expira_em_segundos).toBe(0);
     });
 });
 
