@@ -279,14 +279,15 @@ describe('POST /pagamentos-gateway/pix', () => {
         expect(JSON.stringify(res.body)).not.toMatch(/AT-|RT-|1\.50|taxa/);
     });
 
-    test('e-mail do cliente informado tem precedência sobre o e-mail da empresa; sem nenhum e-mail, 409', async () => {
+    test('e-mail do cliente informado tem precedência sobre o e-mail da empresa; sem nenhum e-mail, 400 (não 409: o PDV só cai no Pix manual com 409)', async () => {
         client.criarPagamentoPix.mockResolvedValue(respostaPix(proximoId()));
         await auth(request(app).post('/pagamentos-gateway/pix'), A, 'vendedor').send({ valor: 10, cliente_email: 'cliente@x.com' });
         expect(client.criarPagamentoPix.mock.calls[0][1].emailPagador).toBe('cliente@x.com');
 
         await db.query('UPDATE empresas SET email_contato = NULL WHERE id = $1', [B.empresaId]);
         const res = await auth(request(app).post('/pagamentos-gateway/pix'), B, 'vendedor').send({ valor: 10 });
-        expect(res.status).toBe(409);
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/e-mail de contato/);
         await db.query('UPDATE empresas SET email_contato = $2 WHERE id = $1', [B.empresaId, `loja-b-${sufixo}@teste.invalid`]);
     });
 

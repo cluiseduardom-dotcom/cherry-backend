@@ -64,7 +64,9 @@ async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }) {
     const emailPagador = cliente_email ?? await cobrancasRepository.buscarEmailContatoEmpresa(empresa_id);
 
     if (!emailPagador) {
-        throw new AppError('Informe o e-mail de contato da empresa em Dados da empresa para gerar o Pix.', 409);
+        // 400 (e não 409): o PDV só cai no Pix manual com 409 (integração desligada / loja sem Mercado Pago).
+        // Cadastro incompleto precisa aparecer ao operador, não ser engolido.
+        throw new AppError('Informe o e-mail de contato da empresa em Dados da empresa para gerar o Pix.', 400);
     }
 
     // Falha cedo (409) se a loja não conectou o Mercado Pago, antes de gravar qualquer cobrança.
