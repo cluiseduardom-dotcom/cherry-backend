@@ -7,6 +7,7 @@ const pagamentosVendaRepository = require('./pagamentosVendaRepository');
 const parcelasPagamentoRepository = require('./parcelasPagamentoRepository');
 const estornosPagamentoRepository = require('./estornosPagamentoRepository');
 const taxasPlataformaRepository = require('./taxasPlataformaRepository');
+const cobrancasPagamentoRepository = require('./cobrancasPagamentoRepository');
 const comissoesRepository = require('./comissoesRepository');
 const cancelamentosRepository = require('./cancelamentosRepository');
 const { executarComLock } = require('./shared/transacoes');
@@ -424,6 +425,14 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             const imediato = ['pix', 'dinheiro', 'debito'].includes(forma);
             const status = imediato ? 'pago' : 'pendente';
 
+            // Pix cobrado pelo Mercado Pago: a origem "gateway" só nasce aqui, depois de o backend
+            // conferir a cobrança (mesma empresa, paga, mesmo valor, nunca usada). O cliente não a declara.
+            const cobranca = pagamentoInput.cobranca_codigo
+                ? await cobrancasPagamentoRepository.consumirParaVenda({
+                    codigo: pagamentoInput.cobranca_codigo, empresa_id, venda_id: venda.id, valor
+                }, client)
+                : null;
+
             const pagamento = await pagamentosVendaRepository.criar({
                 venda_id: venda.id,
                 empresa_id,
@@ -433,7 +442,9 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 troco,
                 numero_parcelas: parcelas,
                 status,
-                origem: 'manual',
+                origem: cobranca ? 'gateway' : 'manual',
+                provedor: cobranca ? cobranca.provedor : null,
+                transacao_externa_id: cobranca ? cobranca.id_externo : null,
                 usuario_id,
                 observacao: pagamentoInput.observacao ?? null
             }, client);

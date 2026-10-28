@@ -49,3 +49,20 @@ Erro do provedor responde **424** (o `errorHandler` esconde a mensagem de 5xx; o
 ## Limitações conhecidas
 - Se o banco falhar depois de o Mercado Pago criar o Pix, a cobrança fica sem `id_externo` e o webhook não a encontra (o pagamento existiria sem registro). Risco baixo; a reconciliação fica para a PR que liga a cobrança à venda.
 - A cobrança ainda **não é consumida por uma venda**: a validação (mesma empresa, paga, mesmo valor, uso único) e o abatimento da taxa já cobrada pelo gateway na tela de taxas a receber entram na PR seguinte.
+
+## Pix cobrado na venda (cobrança → venda)
+
+- `POST /vendas` aceita `cobranca_codigo` (UUID) em um pagamento `pix` de `pagamentos[]`. O backend, na transação da venda, trava a cobrança e confere: mesma empresa (do JWT), `status = 'pago'`, valor idêntico ao do pagamento e ainda não usada. Qualquer divergência desfaz a venda inteira.
+- O pagamento nasce com `origem = 'gateway'`, `provedor = 'mercadopago'` e `transacao_externa_id` = id do pagamento no Mercado Pago. O cliente nunca declara origem/provedor (o schema é estrito); Pix sem `cobranca_codigo` segue manual.
+- A cobrança recebe `venda_id`/`usada_em` e não entra em outra venda.
+- **Cancelar a venda não estorna o Pix no Mercado Pago.** O estorno é feito no painel do Mercado Pago (a comissão é devolvida proporcionalmente, segundo a documentação do provedor). Estorno automático fica para uma PR própria.
+
+## Taxas a receber (`GET /plataforma/taxas`)
+
+O ledger `taxas_venda` continua registrando a taxa de toda venda. A comissão que o Mercado Pago já reteve (`cobrancas_pagamento.taxa_plataforma` das cobranças pagas ligadas à venda apurada) é abatida para não cobrar duas vezes:
+
+- `total_taxa`: taxa apurada no mês (todas as vendas);
+- `total_cobrado_gateway`: parte já retida pelo Mercado Pago;
+- `total_a_receber`: `max(0, total_taxa − total_cobrado_gateway)`, o que falta cobrar na fatura mensal.
+
+Vendas canceladas (taxa estornada) ficam fora dos dois lados.

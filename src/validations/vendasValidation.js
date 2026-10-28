@@ -10,7 +10,9 @@ const pagamentoSchema = z.object({
     valor_recebido: z.coerce.number({ error: 'Valor recebido inválido' }).nonnegative('Valor recebido não pode ser negativo').max(MAX_VALOR_MONETARIO, 'Valor recebido acima do permitido').optional(),
     numero_parcelas: z.coerce.number({ error: 'Número de parcelas inválido' }).int().positive('Número de parcelas deve ser maior que zero').max(MAX_PARCELAS, `Número de parcelas deve ser no máximo ${MAX_PARCELAS}`).optional(),
     meses_prazo: z.coerce.number({ error: 'Prazo em meses inválido' }).int().positive('Prazo em meses deve ser maior que zero').max(MAX_MESES_PRAZO, `Prazo em meses deve ser no máximo ${MAX_MESES_PRAZO}`).optional(),
-    observacao: z.string().max(500, 'Observação muito longa').optional()
+    observacao: z.string().max(500, 'Observação muito longa').optional(),
+    // Pix cobrado pelo Mercado Pago (POST /pagamentos-gateway/pix): o backend confere empresa, status pago e valor.
+    cobranca_codigo: z.string().uuid('Código de cobrança inválido').optional()
 }).strict();
 
 const criarVendaSchema = z.object({
@@ -62,7 +64,21 @@ const criarVendaSchema = z.object({
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Crediário exige cliente identificado', path: ['cliente_id'] });
     }
 
+    const codigosCobranca = [];
+
     for (const [index, pagamento] of (data.pagamentos ?? []).entries()) {
+        if (pagamento.cobranca_codigo !== undefined) {
+            if (pagamento.forma_pagamento !== 'pix') {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Cobrança do Mercado Pago só vale para Pix', path: ['pagamentos', index, 'cobranca_codigo'] });
+            }
+
+            if (codigosCobranca.includes(pagamento.cobranca_codigo)) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A mesma cobrança Pix não pode ser usada duas vezes', path: ['pagamentos', index, 'cobranca_codigo'] });
+            }
+
+            codigosCobranca.push(pagamento.cobranca_codigo);
+        }
+
         if (pagamento.forma_pagamento === 'crediario' && (pagamento.numero_parcelas ?? 1) > 1 && pagamento.meses_prazo == null) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Informe meses_prazo para crediário parcelado', path: ['pagamentos', index, 'meses_prazo'] });
         }

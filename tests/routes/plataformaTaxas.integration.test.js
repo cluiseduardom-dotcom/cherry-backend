@@ -198,6 +198,6 @@ describe('GET /plataforma/taxas — dados (operador)', () => {
     test('só agregados: nenhum dado de venda ou cliente na resposta', async () => {
         const res = await get(A, 'admin', '?mes=2026-03');
         const chaves = Object.keys(res.body.data.items[0]).sort();
-        expect(chaves).toEqual(['empresa_id', 'empresa_nome', 'percentuais', 'qtd_estornadas', 'qtd_vendas', 'total_base', 'total_estornado', 'total_taxa']);
+        expect(chaves).toEqual(['empresa_id', 'empresa_nome', 'percentuais', 'qtd_estornadas', 'qtd_vendas', 'total_a_receber', 'total_base', 'total_cobrado_gateway', 'total_estornado', 'total_taxa']);
     });
 });
