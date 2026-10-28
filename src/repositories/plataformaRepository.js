@@ -23,6 +23,7 @@ async function taxasPorEmpresa(mes) {
                 COUNT(t.id) FILTER (WHERE t.status = 'apurada') AS qtd_vendas,
                 COALESCE(SUM(t.base_calculo) FILTER (WHERE t.status = 'apurada'), 0) AS total_base,
                 COALESCE(SUM(t.valor) FILTER (WHERE t.status = 'apurada'), 0) AS total_taxa,
+                COALESCE(SUM(t.cobrada_gateway) FILTER (WHERE t.status = 'apurada'), 0) AS total_cobrado_gateway,
                 COUNT(t.id) FILTER (WHERE t.status = 'estornada') AS qtd_estornadas,
                 COALESCE(SUM(t.valor) FILTER (WHERE t.status = 'estornada'), 0) AS total_estornado,
                 COALESCE(
@@ -31,7 +32,13 @@ async function taxasPorEmpresa(mes) {
                 ) AS percentuais
          FROM empresas e
          LEFT JOIN (
-             SELECT tv.id, tv.empresa_id, tv.status, tv.base_calculo, tv.valor, tv.percentual
+             SELECT tv.id, tv.empresa_id, tv.status, tv.base_calculo, tv.valor, tv.percentual,
+                    -- Comissão que o Mercado Pago já reteve nos Pix desta venda (application_fee): não se cobra de novo.
+                    COALESCE((
+                        SELECT SUM(cp.taxa_plataforma)
+                        FROM cobrancas_pagamento cp
+                        WHERE cp.venda_id = tv.venda_id AND cp.empresa_id = tv.empresa_id AND cp.status = 'pago'
+                    ), 0) AS cobrada_gateway
              FROM taxas_venda tv
              JOIN vendas v ON v.id = tv.venda_id AND v.empresa_id = tv.empresa_id
              WHERE v.data >= ${INICIO_SQL}

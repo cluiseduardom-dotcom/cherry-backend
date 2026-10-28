@@ -21,6 +21,10 @@ async function taxasPorEmpresa(mesInformado) {
         qtd_vendas: Number(linha.qtd_vendas),
         total_base: dinheiro(linha.total_base),
         total_taxa: dinheiro(linha.total_taxa),
+        total_cobrado_gateway: dinheiro(linha.total_cobrado_gateway),
+        total_a_receber: centavosParaReais(
+            Math.max(0, reaisParaCentavos(linha.total_taxa) - reaisParaCentavos(linha.total_cobrado_gateway))
+        ),
         qtd_estornadas: Number(linha.qtd_estornadas),
         total_estornado: dinheiro(linha.total_estornado),
         percentuais: (linha.percentuais ?? []).map(Number)
@@ -32,7 +36,9 @@ async function taxasPorEmpresa(mesInformado) {
         totais: {
             qtd_vendas: items.reduce((acc, item) => acc + item.qtd_vendas, 0),
             total_base: somar(items, 'total_base'),
-            total_taxa: somar(items, 'total_taxa')
+            total_taxa: somar(items, 'total_taxa'),
+            total_cobrado_gateway: somar(items, 'total_cobrado_gateway'),
+            total_a_receber: somar(items, 'total_a_receber')
         }
     };
 }

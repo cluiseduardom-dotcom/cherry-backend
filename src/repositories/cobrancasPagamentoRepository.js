@@ -1,4 +1,7 @@
 const db = require('../config/db');
+const AppError = require('../errors/AppError');
+const { executarComLock } = require('./shared/transacoes');
+const { reaisParaCentavos } = require('../utils/taxaPlataforma');
 
 const COLUNAS = `id, codigo, empresa_id, provedor, metodo, valor, taxa_plataforma, status, id_externo,
                  qr_code, qr_code_base64, ticket_url, expira_em, venda_id, usada_em, consultado_em, criado_em, atualizado_em`;
@@ -74,6 +77,38 @@ async function registrarConsulta(id, empresa_id) {
     );
 }
 
+// Consome a cobrança paga numa venda, DENTRO da transação da venda (client dela): trava a linha,
+// confere empresa (pelo filtro do lock), status pago, valor idêntico e que ainda não foi usada.
+// Uma cobrança só entra em uma venda; qualquer divergência derruba a venda inteira (ROLLBACK).
+async function consumirParaVenda({ codigo, empresa_id, venda_id, valor }, client) {
+    return executarComLock('cobrancas_pagamento', { coluna: 'codigo', valor: codigo }, empresa_id, client, async (cobranca, tx) => {
+        if (!cobranca) {
+            throw new AppError('Cobrança Pix não encontrada', 404);
+        }
+
+        if (cobranca.venda_id !== null) {
+            throw new AppError('Esta cobrança Pix já foi usada em outra venda', 409);
+        }
+
+        if (cobranca.status !== 'pago') {
+            throw new AppError('O Pix ainda não foi confirmado pelo Mercado Pago', 409);
+        }
+
+        if (reaisParaCentavos(cobranca.valor) !== reaisParaCentavos(valor)) {
+            throw new AppError('O valor do pagamento não confere com a cobrança Pix', 400);
+        }
+
+        const { rows } = await tx.query(
+            `UPDATE cobrancas_pagamento SET venda_id = $1, usada_em = NOW(), atualizado_em = NOW()
+             WHERE id = $2 AND empresa_id = $3
+             RETURNING ${COLUNAS}`,
+            [venda_id, cobranca.id, empresa_id]
+        );
+
+        return rows[0];
+    });
+}
+
 async function buscarEmailContatoEmpresa(empresa_id) {
     const { rows } = await db.query('SELECT email_contato FROM empresas WHERE id = $1', [empresa_id]);
 
@@ -88,5 +123,6 @@ module.exports = {
     buscarPorIdExterno,
     atualizarStatus,
     registrarConsulta,
+    consumirParaVenda,
     buscarEmailContatoEmpresa
 };
