@@ -13,4 +13,13 @@ const criarPixSchema = z.strictObject({
 
 const codigoCobrancaSchema = z.string().uuid('Código de cobrança inválido');
 
-module.exports = { criarPixSchema, codigoCobrancaSchema };
+const devolucaoSchema = z.strictObject({
+    motivo: z.string('Informe o motivo da devolução').trim().min(3, 'Informe o motivo da devolução').max(200, 'O motivo deve ter no máximo 200 caracteres')
+});
+
+const paginacaoDevolucoesSchema = z.object({
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    offset: z.coerce.number().int().min(0).default(0)
+});
+
+module.exports = { criarPixSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema };

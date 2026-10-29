@@ -56,7 +56,7 @@ Erro do provedor responde **424** (o `errorHandler` esconde a mensagem de 5xx; o
 - `POST /vendas` aceita `cobranca_codigo` (UUID) em um pagamento `pix` de `pagamentos[]`. O backend, na transação da venda, trava a cobrança e confere: mesma empresa (do JWT), `status = 'pago'`, valor idêntico ao do pagamento e ainda não usada. Qualquer divergência desfaz a venda inteira.
 - O pagamento nasce com `origem = 'gateway'`, `provedor = 'mercadopago'` e `transacao_externa_id` = id do pagamento no Mercado Pago. O cliente nunca declara origem/provedor (o schema é estrito); Pix sem `cobranca_codigo` segue manual.
 - A cobrança recebe `venda_id`/`usada_em` e não entra em outra venda.
-- **Cancelar a venda não estorna o Pix no Mercado Pago.** O estorno é feito no painel do Mercado Pago (a comissão é devolvida proporcionalmente, segundo a documentação do provedor). Estorno automático fica para uma PR própria.
+- **Cancelar a venda não estorna o Pix no Mercado Pago.** A devolução é um pedido explícito do financeiro (ver "Devolução de Pix" abaixo).
 
 ## Taxas a receber (`GET /plataforma/taxas`)
 
@@ -67,3 +67,29 @@ O ledger `taxas_venda` continua registrando a taxa de toda venda. A comissão qu
 - `total_a_receber`: `max(0, total_taxa − total_cobrado_gateway)`, o que falta cobrar na fatura mensal.
 
 Vendas canceladas (taxa estornada) ficam fora dos dois lados.
+
+## Devolução de Pix (migration 076)
+
+Devolve ao pagador um Pix **pago** que não está numa venda ativa: **sem venda** (o cliente pagou e a venda não foi concluída) ou de **venda cancelada**. Só quem tem `gerir_financeiro` (Admin, Diretor, Gerente, Analista financeiro por padrão). Pix de venda ativa não se devolve: cancele a venda antes.
+
+| Rota | Quem | O que faz |
+|---|---|---|
+| `GET /pagamentos-gateway/a-devolver?limit=&offset=` | `gerir_financeiro` | `{ items: [{ codigo, valor, criado_em, venda_id, situacao: 'sem_venda' \| 'venda_cancelada' }], total, valor_total }`. Nunca traz taxa, id do provedor ou do banco |
+| `POST /pagamentos-gateway/:codigo/devolucao` `{ motivo }` | `gerir_financeiro` | devolve o valor integral. `{ codigo, valor, status: 'concluida' \| 'solicitada' }` |
+| `GET /pagamentos-gateway/devolucoes?limit=&offset=` | `gerir_financeiro` | histórico: valor, status, motivo, quem pediu, quando |
+
+Fluxo (`cobrancasPagamentoService.devolver`):
+1. Reconsulta o provedor (se já foi devolvido pelo painel do Mercado Pago, só reflete: 409 "já foi devolvido").
+2. Reserva o pedido em `cobranca_devolucoes` **sob a trava da cobrança**, conferindo: Pix pago, sem devolução ativa, e sem venda ou com venda cancelada. Índice único parcial: uma devolução ativa por cobrança.
+3. Chama `POST /v1/payments/{id}/refunds` (corpo vazio = total) com o token da loja e `X-Idempotency-Key: devolucao-<id>`.
+4. `approved` → `concluida` e a cobrança vira `estornado`. Outro status (em processamento) → fica `solicitada` e a consulta/webhook seguinte conclui. Recusa/erro → `falhou` (mensagem curta, sem detalhe do provedor) e dá para pedir de novo (nova chave de idempotência).
+- Um Pix com devolução ativa **não entra em venda** (`consumirParaVenda` confere sob a mesma trava).
+- `empresa_id` sempre do JWT; toda query filtra por empresa.
+
+**NÃO validado contra o Mercado Pago real** (o sandbox não aprova Pix; os testes simulam o provedor). Confirmar no primeiro uso com dinheiro real, com valor pequeno:
+1. O endpoint e o corpo vazio como devolução total, e o `status` `approved` na resposta.
+2. O prazo máximo para devolver Pix.
+3. Se a conta da loja precisa ter saldo no momento da devolução.
+4. Se a comissão da Vertumno (`application_fee`) é devolvida junto e em que proporção (a documentação consultada não diz; se não for, a taxa retida precisa ser tratada à parte).
+5. Que o webhook `payment.updated` chega com `refunded` (a cobrança passa a `estornado` por ele quando a resposta da devolução se perder).
+Cancelar a venda **não** devolve o Pix sozinho: a devolução é um pedido explícito do financeiro.

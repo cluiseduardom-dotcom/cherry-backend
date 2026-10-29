@@ -4,7 +4,7 @@ const mercadoPagoService = require('../services/mercadoPagoService');
 const cobrancasService = require('../services/cobrancasPagamentoService');
 const { obterConfigMercadoPago } = require('../config/mercadoPagoConfig');
 const { assinaturaValida } = require('../utils/mercadoPagoAssinatura');
-const { criarPixSchema, codigoCobrancaSchema } = require('../validations/mercadoPagoValidation');
+const { criarPixSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema } = require('../validations/mercadoPagoValidation');
 
 async function status(req, res, next) {
     try {
@@ -88,6 +88,66 @@ async function criarPix(req, res, next) {
     }
 }
 
+function paginacao(req) {
+    const parsed = paginacaoDevolucoesSchema.safeParse(req.query);
+
+    if (!parsed.success) {
+        throw new AppError(parsed.error.issues[0].message, 400);
+    }
+
+    return parsed.data;
+}
+
+async function devolverPix(req, res, next) {
+    try {
+        const codigo = codigoCobrancaSchema.safeParse(req.params.codigo);
+
+        if (!codigo.success) {
+            throw new AppError('Cobrança não encontrada', 404);
+        }
+
+        const corpo = devolucaoSchema.safeParse(req.body);
+
+        if (!corpo.success) {
+            throw new AppError(corpo.error.issues[0].message, 400);
+        }
+
+        res.set('Cache-Control', 'no-store');
+
+        return response.success(res, await cobrancasService.devolver(
+            { empresa_id: req.usuario.empresa_id, usuario_id: req.usuario.id },
+            codigo.data,
+            corpo.data
+        ));
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function pixADevolver(req, res, next) {
+    try {
+        const pagina = paginacao(req);
+
+        res.set('Cache-Control', 'no-store');
+
+        return response.success(res, await cobrancasService.listarADevolver(req.usuario.empresa_id, pagina));
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function devolucoes(req, res, next) {
+    try {
+        const pagina = paginacao(req);
+
+        res.set('Cache-Control', 'no-store');
+
+        return response.success(res, await cobrancasService.listarDevolucoes(req.usuario.empresa_id, pagina));
+    } catch (error) {
+        next(error);
+    }
+}
+
 async function consultarCobranca(req, res, next) {
     try {
         const codigo = codigoCobrancaSchema.safeParse(req.params.codigo);
@@ -139,4 +199,4 @@ async function webhook(req, res, next) {
     }
 }
 
-module.exports = { status, disponibilidade, conectar, desconectar, callback, criarPix, consultarCobranca, webhook };
+module.exports = { status, disponibilidade, conectar, desconectar, callback, criarPix, consultarCobranca, webhook, devolverPix, pixADevolver, devolucoes };
