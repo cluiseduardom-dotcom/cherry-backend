@@ -69,7 +69,7 @@ async function resumoAPagar(empresa_id) {
              FROM comissoes_venda c
              WHERE c.empresa_id = $1 AND c.valor_liberado - ${SQL_PAGO} <> 0
          )
-         SELECT u.id AS vendedor_id, u.nome AS vendedor_nome, u.ativo,
+         SELECT u.id AS vendedor_id, u.nome AS vendedor_nome, uf.chave AS vendedor_foto_chave, u.ativo,
                 (COUNT(*) FILTER (WHERE s.elegivel))::int AS quantidade_comissoes,
                 COALESCE(SUM(GREATEST(s.saldo, 0)) FILTER (WHERE s.elegivel), 0)::numeric(15,2) AS bruto_a_pagar,
                 COALESCE(SUM(LEAST(s.saldo, 0)) FILTER (WHERE s.elegivel), 0)::numeric(15,2) AS descontos,
@@ -77,7 +77,8 @@ async function resumoAPagar(empresa_id) {
                 COALESCE(SUM(s.saldo) FILTER (WHERE NOT s.elegivel), 0)::numeric(15,2) AS aguardando_fechamento
          FROM saldos s
          JOIN usuarios u ON u.id = s.usuario_id AND u.empresa_id = s.empresa_id
-         GROUP BY u.id, u.nome, u.ativo
+         LEFT JOIN usuarios_fotos uf ON uf.usuario_id = u.id AND uf.empresa_id = u.empresa_id
+         GROUP BY u.id, u.nome, uf.chave, u.ativo
          ORDER BY a_pagar DESC, u.nome ASC`,
         [empresa_id, modo]
     );
@@ -204,7 +205,7 @@ async function listarPagamentos({ empresa_id, vendedor_id, limit, offset }) {
     }
 
     const { rows } = await db.query(
-        `SELECT p.id, p.vendedor_id, vend.nome AS vendedor_nome, p.valor, p.forma, p.pago_em::text AS pago_em,
+        `SELECT p.id, p.vendedor_id, vend.nome AS vendedor_nome, vf.chave AS vendedor_foto_chave, p.valor, p.forma, p.pago_em::text AS pago_em,
                 p.observacao, p.criado_por, pagador.nome AS criado_por_nome, p.criado_em,
                 COALESCE((SELECT json_agg(json_build_object('comissao_id', i.comissao_id, 'venda_id', c.venda_id, 'valor', i.valor) ORDER BY i.comissao_id)
                             FROM comissao_pagamento_itens i
@@ -212,6 +213,7 @@ async function listarPagamentos({ empresa_id, vendedor_id, limit, offset }) {
                            WHERE i.pagamento_id = p.id AND i.empresa_id = p.empresa_id), '[]'::json) AS itens
          FROM comissao_pagamentos p
          JOIN usuarios vend ON vend.id = p.vendedor_id AND vend.empresa_id = p.empresa_id
+         LEFT JOIN usuarios_fotos vf ON vf.usuario_id = vend.id AND vf.empresa_id = vend.empresa_id
          JOIN usuarios pagador ON pagador.id = p.criado_por AND pagador.empresa_id = p.empresa_id
          WHERE p.empresa_id = $1 ${filtroVendedor}
          ORDER BY p.id DESC

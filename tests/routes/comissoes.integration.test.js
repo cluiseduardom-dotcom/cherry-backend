@@ -443,6 +443,45 @@ describe('histórico e visões', () => {
         expect(items.every((i) => Number(i.total_comissao).toFixed(2) === (Number(i.total_liberado) + Number(i.total_pendente)).toFixed(2))).toBe(true);
     });
 
+    test('foto do vendedor: URL pública (nunca a chave) em equipe, a pagar, pagamentos e repasses; sem foto é null', async () => {
+        const chave = `${A.empresaId}/usuarios/${A.u.vendedor}/${crypto.randomUUID()}.webp`;
+        const baseAnterior = process.env.R2_PUBLIC_BASE_URL;
+        process.env.R2_PUBLIC_BASE_URL = 'https://fotos.exemplo.test';
+
+        await db.query(
+            `INSERT INTO usuarios_fotos (usuario_id, empresa_id, chave, content_type, tamanho_bytes) VALUES ($1, $2, $3, 'image/webp', 10)`,
+            [A.u.vendedor, A.empresaId, chave]
+        );
+
+        try {
+            const esperada = `https://fotos.exemplo.test/${chave}`;
+            const equipe = (await request(app).get('/comissoes/equipe').set(auth(A, 'gerente'))).body.data.items;
+            expect(equipe.find((i) => i.usuario_id === A.u.vendedor).foto_url).toBe(esperada);
+            expect(equipe.find((i) => i.usuario_id === A.u.admin).foto_url).toBeNull();
+            expect(equipe.every((i) => !('foto_chave' in i))).toBe(true);
+
+            const aPagar = await request(app).get('/comissoes/a-pagar').set(auth(A, 'financeiro'));
+            expect(aPagar.status).toBe(200);
+            expect(aPagar.body.data.items.every((i) => !('vendedor_foto_chave' in i))).toBe(true);
+            for (const i of aPagar.body.data.items.filter((x) => x.vendedor_id === A.u.vendedor)) {
+                expect(i.vendedor_foto_url).toBe(esperada);
+            }
+
+            for (const rota of ['/comissoes/pagamentos', '/comissoes/repasses']) {
+                const res = await request(app).get(rota).set(auth(A, 'gerente'));
+                expect(res.status).toBe(200);
+                expect(res.body.data.items.every((i) => !('vendedor_foto_chave' in i))).toBe(true);
+                for (const i of res.body.data.items.filter((x) => x.vendedor_id === A.u.vendedor)) {
+                    expect(i.vendedor_foto_url).toBe(esperada);
+                }
+            }
+        } finally {
+            await db.query('DELETE FROM usuarios_fotos WHERE usuario_id = $1 AND empresa_id = $2', [A.u.vendedor, A.empresaId]);
+            if (baseAnterior === undefined) delete process.env.R2_PUBLIC_BASE_URL;
+            else process.env.R2_PUBLIC_BASE_URL = baseAnterior;
+        }
+    });
+
     test('vendedor sem permissão de equipe: 403; repasses só para quem vende ou administra', async () => {
         expect((await request(app).get('/comissoes/equipe').set(auth(A, 'vendedor'))).status).toBe(403);
         expect((await request(app).post('/comissoes/repasses/1/confirmar').set(auth(A, 'vendedor')).send({})).status).toBe(403);
