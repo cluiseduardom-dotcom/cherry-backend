@@ -10,6 +10,11 @@ const { gerarSenhaTemporaria } = require('../utils/senhaTemporaria');
 
 const HASH_DESCARTAVEL = bcrypt.hashSync('hash-descartavel-sem-usuario', 10);
 const { CAMPOS_DADOS } = require('../validations/usuariosValidation');
+const storage = require('./storage/imagensStorage');
+
+function urlDaFoto(chave) {
+    return chave ? storage.urlPublica(chave) : null;
+}
 
 // Gestão de usuários delegada a quem tem `gerir_usuarios` (diretor a supervisor por padrão;
 // o Admin da empresa ajusta pelos cargos). empresa_id e ator vêm sempre do JWT.
@@ -89,6 +94,7 @@ async function listar(ator) {
             ativo: usuario.ativo,
             criado_em: usuario.criado_em,
             telefone: usuario.telefone ?? null,
+            foto_url: urlDaFoto(usuario.foto_chave),
             pode_gerenciar: pode,
             motivo_bloqueio_gestao: pode ? null : motivo
         };
@@ -162,6 +168,7 @@ function apresentarDetalhe(usuario) {
         cargo: usuario.papel,
         ativo: usuario.ativo,
         criado_em: usuario.criado_em,
+        foto_url: urlDaFoto(usuario.foto_chave),
         dados: Object.fromEntries(CAMPOS_DADOS.map((campo) => [campo, usuario[campo] ?? null]))
     };
 }
@@ -207,7 +214,11 @@ async function listarEventos({ page, pageSize }, empresaId) {
     });
 
     return {
-        items,
+        items: items.map(({ alvo_foto_chave, executado_por_foto_chave, ...item }) => ({
+            ...item,
+            alvo_foto_url: urlDaFoto(alvo_foto_chave),
+            executado_por_foto_url: urlDaFoto(executado_por_foto_chave)
+        })),
         page,
         pageSize,
         total,
@@ -242,6 +253,7 @@ async function redefinirSenha(alvoId, senhaConfirmacao, ator) {
 module.exports = {
     redefinirSenha,
     avaliarAlvo,
+    garantirPodeGerenciar,
     permissoesDoUsuario,
     listar,
     listarCargosAtribuiveis,
