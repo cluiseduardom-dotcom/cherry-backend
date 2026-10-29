@@ -20,7 +20,7 @@ Sem `R2_*` configuradas o envio responde **412** e as telas seguem com as inicia
 ## Onde `foto_url` aparece (null sem foto ou sem `R2_PUBLIC_BASE_URL`)
 
 `POST /auth/login` (`usuario.foto_url`), `GET /auth/me`, `GET /usuarios` (cada item), `GET /usuarios/:id`,
-`GET /usuarios/eventos` (`alvo_foto_url` e `executado_por_foto_url`).
+`GET /usuarios/eventos` (`alvo_foto_url` e `executado_por_foto_url`). Também em `GET /comissoes/equipe` (`foto_url`) e em `/comissoes/a-pagar`, `/comissoes/pagamentos` e `/comissoes/repasses` (`vendedor_foto_url`); a chave do bucket não sai da API.
 
 ## Auditoria
 

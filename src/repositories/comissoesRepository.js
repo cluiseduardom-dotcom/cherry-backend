@@ -410,7 +410,7 @@ async function resumoEquipe({ empresa_id, data_inicio, data_fim }) {
     const idxPapeis = valores.length;
 
     const { rows } = await db.query(
-        `SELECT u.id AS usuario_id, u.nome, u.papel AS cargo, u.ativo,
+        `SELECT u.id AS usuario_id, u.nome, uf.chave AS foto_chave, u.papel AS cargo, u.ativo,
                 COALESCE(
                     (SELECT cp.percentual FROM comissao_percentuais cp
                       WHERE cp.empresa_id = u.empresa_id AND cp.usuario_id = u.id),
@@ -430,6 +430,7 @@ async function resumoEquipe({ empresa_id, data_inicio, data_fim }) {
                 COALESCE((SELECT SUM(r.valor) FROM comissao_repasses r
                            WHERE r.empresa_id = u.empresa_id AND r.vendedor_id = u.id AND r.status = 'a_repassar'), 0) AS dinheiro_a_repassar
          FROM usuarios u
+         LEFT JOIN usuarios_fotos uf ON uf.usuario_id = u.id AND uf.empresa_id = u.empresa_id
          LEFT JOIN comissoes_venda c
                 ON c.usuario_id = u.id AND c.empresa_id = u.empresa_id
                AND EXISTS (
@@ -438,7 +439,7 @@ async function resumoEquipe({ empresa_id, data_inicio, data_fim }) {
                )
          WHERE u.empresa_id = $1
            AND NOT (u.papel = ANY($${idxPapeis}))
-         GROUP BY u.id, u.nome, u.papel, u.ativo, u.empresa_id
+         GROUP BY u.id, u.nome, uf.chave, u.papel, u.ativo, u.empresa_id
          HAVING u.ativo = true OR COUNT(c.id) > 0
          ORDER BY total_comissao DESC, u.nome ASC`,
         valores
@@ -474,11 +475,12 @@ async function listarRepasses({ empresa_id, vendedor_id, status, limit, offset }
     const valoresListagem = [...valores, limit, offset];
 
     const { rows } = await db.query(
-        `SELECT r.id, r.venda_id, r.pagamento_id, r.vendedor_id, vend.nome AS vendedor_nome,
+        `SELECT r.id, r.venda_id, r.pagamento_id, r.vendedor_id, vend.nome AS vendedor_nome, vf.chave AS vendedor_foto_chave,
                 r.valor, r.status, r.declarado_em, r.confirmado_em,
                 r.confirmado_por, conf.nome AS confirmado_por_nome, r.observacao
          FROM comissao_repasses r
          JOIN usuarios vend ON vend.id = r.vendedor_id AND vend.empresa_id = r.empresa_id
+         LEFT JOIN usuarios_fotos vf ON vf.usuario_id = vend.id AND vf.empresa_id = vend.empresa_id
          LEFT JOIN usuarios conf ON conf.id = r.confirmado_por AND conf.empresa_id = r.empresa_id
          ${where}
          ORDER BY r.id DESC

@@ -2,6 +2,14 @@ const comissoesRepository = require('../repositories/comissoesRepository');
 const pagamentosRepository = require('../repositories/comissaoPagamentosRepository');
 const { temCapacidade } = require('./permissoesService');
 const { CAPACIDADES } = require('../constants/cargos');
+const storage = require('./storage/imagensStorage');
+
+// A chave do objeto no bucket nunca sai da API: o cliente recebe só a URL pública da foto.
+function comFotoUrl(item, campoChave, campoUrl) {
+    const { [campoChave]: chave, ...resto } = item;
+
+    return { ...resto, [campoUrl]: chave ? storage.urlPublica(chave) : null };
+}
 
 // empresa_id e usuario_id vêm sempre do JWT (controller), nunca da requisição.
 
@@ -26,7 +34,9 @@ async function minhas({ page, pageSize, data_inicio, data_fim }, usuario) {
 }
 
 async function equipe({ data_inicio, data_fim }, empresaId) {
-    return comissoesRepository.resumoEquipe({ empresa_id: empresaId, data_inicio, data_fim });
+    const resumo = await comissoesRepository.resumoEquipe({ empresa_id: empresaId, data_inicio, data_fim });
+
+    return { ...resumo, items: resumo.items.map(i => comFotoUrl(i, 'foto_chave', 'foto_url')) };
 }
 
 async function listarPercentuais(empresaId) {
@@ -57,7 +67,10 @@ async function repasses({ page, pageSize, status }, usuario) {
         offset: (page - 1) * pageSize
     });
 
-    return { items, totais, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+    return {
+        items: items.map(i => comFotoUrl(i, 'vendedor_foto_chave', 'vendedor_foto_url')),
+        totais, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize))
+    };
 }
 
 async function confirmarRepasse(id, { observacao }, usuario) {
@@ -84,7 +97,7 @@ async function aPagar(empresaId) {
 
     return {
         modo_pagamento,
-        items,
+        items: items.map(i => comFotoUrl(i, 'vendedor_foto_chave', 'vendedor_foto_url')),
         totais: { a_pagar: somar('a_pagar'), aguardando_fechamento: somar('aguardando_fechamento') }
     };
 }
@@ -124,7 +137,10 @@ async function pagamentos({ page, pageSize, vendedor_id }, usuario) {
         offset: (page - 1) * pageSize
     });
 
-    return { items, totais, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+    return {
+        items: items.map(i => comFotoUrl(i, 'vendedor_foto_chave', 'vendedor_foto_url')),
+        totais, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize))
+    };
 }
 
 module.exports = {
