@@ -4,7 +4,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const AppError = require('./errors/AppError');
 const rejeitarNumerosNaoFinitos = require('./middlewares/rejeitarNumerosNaoFinitos');
-const { medirRequisicoes } = require('./observabilidade/latencia');
 
 const app = express();
 
@@ -78,7 +77,6 @@ function configurarCors() {
     };
 }
 
-app.use(medirRequisicoes());
 app.use(helmet());
 app.use(cors(configurarCors()));
 app.use(express.json());
