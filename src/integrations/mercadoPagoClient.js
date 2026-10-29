@@ -6,6 +6,18 @@ const AppError = require('../errors/AppError');
 
 const TIMEOUT_MS = 15000;
 
+// Resumo do erro do provedor para o log: error, message e causas (código + descrição). Só textos
+// curtos do próprio Mercado Pago; nunca o corpo da requisição (tem token/segredo).
+function descreverErroProvedor(dados) {
+    const texto = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v).slice(0, 200) : null);
+    const causas = Array.isArray(dados?.cause)
+        ? dados.cause.slice(0, 5).map((c) => [texto(c?.code), texto(c?.description)].filter(Boolean).join(': ')).filter(Boolean)
+        : [];
+    const partes = [texto(dados?.error), texto(dados?.message), causas.length ? `causas: ${causas.join('; ')}` : null].filter(Boolean);
+
+    return partes.length ? partes.join(' | ') : 'sem detalhe';
+}
+
 async function chamar(config, { metodo, caminho, base, corpo, token, idempotencia }) {
     const headers = { accept: 'application/json' };
 
@@ -37,7 +49,7 @@ async function chamar(config, { metodo, caminho, base, corpo, token, idempotenci
 
     if (!resposta.ok) {
         // Só status e código/mensagem do provedor; nunca o corpo da requisição (tem token/segredo).
-        console.error(`Mercado Pago: ${metodo} ${caminho} respondeu ${resposta.status} (${dados?.error || dados?.message || 'sem detalhe'})`);
+        console.error(`Mercado Pago: ${metodo} ${caminho} respondeu ${resposta.status} (${descreverErroProvedor(dados)})`);
         throw new AppError('O Mercado Pago recusou a operação.', 424);
     }
 
