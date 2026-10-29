@@ -1,6 +1,8 @@
 const bcrypt = require('bcrypt');
 const tokenService = require('./tokenService');
 const usuarioRepository = require('../repositories/usuarioRepository');
+const usuariosFotosRepository = require('../repositories/usuariosFotosRepository');
+const storage = require('./storage/imagensStorage');
 const AppError = require('../errors/AppError');
 const cargosService = require('./cargosService');
 const { resolverTemaVisual } = require('../constants/temasVisuais');
@@ -28,6 +30,7 @@ async function login(email, senha) {
     }
 
     const token = tokenService.emitirToken(usuario);
+    const chaveFoto = await usuariosFotosRepository.buscarChave(usuario.id, usuario.empresa_id);
 
     return {
         token,
@@ -39,6 +42,7 @@ async function login(email, senha) {
             empresa_id: usuario.empresa_id,
             senha_temporaria: usuario.senha_temporaria === true,
             plataforma_admin: usuario.plataforma_admin === true,
+            foto_url: chaveFoto ? storage.urlPublica(chaveFoto) : null,
             // Identidade visual da empresa do próprio usuário (lida do banco, nunca da requisição).
             empresa: { id: usuario.empresa_id, tema: resolverTemaVisual(usuario.empresa_tema) }
         }

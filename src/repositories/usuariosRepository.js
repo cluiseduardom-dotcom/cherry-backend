@@ -28,13 +28,16 @@ const COLUNAS_DADOS = `
     to_char(d.data_admissao, 'YYYY-MM-DD') AS data_admissao, d.observacoes`;
 const JOIN_DADOS = `
     LEFT JOIN usuarios_dados d ON d.usuario_id = u.id AND d.empresa_id = u.empresa_id`;
+const JOIN_FOTO = `
+    LEFT JOIN usuarios_fotos f ON f.usuario_id = u.id AND f.empresa_id = u.empresa_id`;
 
 async function listarPorEmpresa(empresa_id) {
     const { rows } = await db.query(
-        `SELECT ${COLUNAS_COM_CARGO}, d.telefone
+        `SELECT ${COLUNAS_COM_CARGO}, d.telefone, f.chave AS foto_chave
          FROM usuarios u
          ${JOIN_CARGO}
          ${JOIN_DADOS}
+         ${JOIN_FOTO}
          WHERE u.empresa_id = $1
          ORDER BY u.nome ASC, u.id ASC`,
         [empresa_id]
@@ -148,10 +151,13 @@ async function alterarBloqueio({ empresa_id, usuario_id, bloqueado, motivo, exec
 async function listarEventos({ empresa_id, limit, offset }) {
     const { rows } = await db.query(
         `SELECT e.id, e.acao, e.alvo_usuario_id, alvo.nome AS alvo_nome, e.cargo_alvo,
-                e.executado_por, autor.nome AS executado_por_nome, e.motivo, e.campos, e.criado_em
+                e.executado_por, autor.nome AS executado_por_nome, e.motivo, e.campos, e.criado_em,
+                fa.chave AS alvo_foto_chave, fe.chave AS executado_por_foto_chave
          FROM usuarios_eventos e
          JOIN usuarios alvo ON alvo.id = e.alvo_usuario_id AND alvo.empresa_id = e.empresa_id
          JOIN usuarios autor ON autor.id = e.executado_por AND autor.empresa_id = e.empresa_id
+         LEFT JOIN usuarios_fotos fa ON fa.usuario_id = alvo.id AND fa.empresa_id = alvo.empresa_id
+         LEFT JOIN usuarios_fotos fe ON fe.usuario_id = autor.id AND fe.empresa_id = autor.empresa_id
          WHERE e.empresa_id = $1
          ORDER BY e.criado_em DESC, e.id DESC
          LIMIT $2 OFFSET $3`,
@@ -169,10 +175,11 @@ async function listarEventos({ empresa_id, limit, offset }) {
 // Detalhe com os dados cadastrais (inclui CPF: só chamar depois de autorizar o ator).
 async function obterDetalhe(empresa_id, usuario_id, client = db) {
     const { rows } = await client.query(
-        `SELECT ${COLUNAS_COM_CARGO}, ${COLUNAS_DADOS}
+        `SELECT ${COLUNAS_COM_CARGO}, ${COLUNAS_DADOS}, f.chave AS foto_chave
          FROM usuarios u
          ${JOIN_CARGO}
          ${JOIN_DADOS}
+         ${JOIN_FOTO}
          WHERE u.id = $1 AND u.empresa_id = $2`,
         [usuario_id, empresa_id]
     );

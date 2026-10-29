@@ -1,8 +1,10 @@
 jest.mock('../../src/services/cargosService');
+jest.mock('../../src/repositories/usuariosFotosRepository');
 
 const request = require('supertest');
 const cargosService = require('../../src/services/cargosService');
 const sessaoRepository = require('../../src/repositories/sessaoRepository');
+const usuariosFotosRepository = require('../../src/repositories/usuariosFotosRepository');
 const AppError = require('../../src/errors/AppError');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
@@ -15,6 +17,7 @@ const comoGerente = (capacidades) => estado({
 
 beforeEach(() => {
     jest.clearAllMocks();
+    usuariosFotosRepository.buscarChave.mockResolvedValue(null);
 });
 
 describe('/cargos — autorização', () => {
@@ -149,7 +152,7 @@ describe('GET /auth/me', () => {
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
             success: true,
-            data: { id: 5, empresa_id: 7, perfil: 'vendedor', cargo: 'gerente', nivel: 70, capacidades: ['ver_custos', 'cancelar_venda'], senha_temporaria: false, plataforma_admin: false }
+            data: { id: 5, empresa_id: 7, perfil: 'vendedor', cargo: 'gerente', nivel: 70, capacidades: ['ver_custos', 'cancelar_venda'], senha_temporaria: false, plataforma_admin: false, foto_url: null }
         });
     });
 
@@ -158,6 +161,6 @@ describe('GET /auth/me', () => {
 
         const res = await request(app).get('/auth/me').set('Authorization', `Bearer ${token()}`);
 
-        expect(Object.keys(res.body.data).sort()).toEqual(['capacidades', 'cargo', 'empresa_id', 'id', 'nivel', 'perfil', 'plataforma_admin', 'senha_temporaria']);
+        expect(Object.keys(res.body.data).sort()).toEqual(['capacidades', 'cargo', 'empresa_id', 'foto_url', 'id', 'nivel', 'perfil', 'plataforma_admin', 'senha_temporaria']);
     });
 });

@@ -1,4 +1,6 @@
 const authService = require('../services/authService');
+const usuarioFotosService = require('../services/usuarioFotosService');
+const usuariosFotosRepository = require('../repositories/usuariosFotosRepository');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { loginSchema, registerSchema, alterarSenhaSchema } = require('../validations/authValidation');
@@ -34,8 +36,9 @@ async function me(req, res, next) {
     try {
 
         const { id, empresa_id, role, cargo, nivel, capacidades, senha_temporaria, plataforma_admin } = req.usuario;
+        const foto_url = usuarioFotosService.urlDaChave(await usuariosFotosRepository.buscarChave(id, empresa_id));
 
-        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades, senha_temporaria: senha_temporaria === true, plataforma_admin: plataforma_admin === true });
+        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades, senha_temporaria: senha_temporaria === true, plataforma_admin: plataforma_admin === true, foto_url });
 
     } catch (error) {
 

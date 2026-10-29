@@ -1,4 +1,5 @@
 jest.mock('../../src/repositories/usuarioRepository');
+jest.mock('../../src/repositories/usuariosFotosRepository');
 jest.mock('../../src/services/cargosService');
 jest.mock('bcrypt');
 jest.mock('jsonwebtoken');
@@ -7,11 +8,13 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const usuarioRepository = require('../../src/repositories/usuarioRepository');
 const cargosService = require('../../src/services/cargosService');
+const usuariosFotosRepository = require('../../src/repositories/usuariosFotosRepository');
 const authService = require('../../src/services/authService');
 
 beforeEach(() => {
   jest.clearAllMocks();
   cargosService.garantirCargoAtivo.mockResolvedValue();
+  usuariosFotosRepository.buscarChave.mockResolvedValue(null);
 });
 
 describe('authService.login', () => {
@@ -54,7 +57,7 @@ describe('authService.login', () => {
     expect(result).toEqual({
       token: 'signed-token',
       usuario: {
-        id: 1, nome: 'Ana', email: 'a@x.com', papel: 'admin', empresa_id: undefined, senha_temporaria: false, plataforma_admin: false,
+        id: 1, nome: 'Ana', email: 'a@x.com', papel: 'admin', empresa_id: undefined, senha_temporaria: false, plataforma_admin: false, foto_url: null,
         empresa: { id: undefined, tema: 'vertumno' }
       }
     });
