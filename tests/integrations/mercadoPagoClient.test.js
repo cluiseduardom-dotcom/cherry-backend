@@ -121,6 +121,20 @@ describe('erros', () => {
         expect(JSON.stringify(console.error.mock.calls)).not.toContain('TOKEN-SECRETO');
     });
 
+    test('o log registra o motivo do provedor (error, message e causas) sem vazar token', async () => {
+        global.fetch.mockResolvedValue(resposta({
+            error: 'bad_request',
+            message: 'Invalid users involved',
+            cause: [{ code: 2034, description: 'Invalid users involved', data: 'TOKEN-SECRETO' }]
+        }, 400));
+        const erro = await client.buscarPagamento(config, { accessToken: 'TOKEN-SECRETO', idExterno: '1' }).catch((e) => e);
+        expect(erro.statusCode).toBe(424);
+        expect(erro.message).toBe('O Mercado Pago recusou a operação.');
+        const log = JSON.stringify(console.error.mock.calls);
+        expect(log).toContain('bad_request | Invalid users involved | causas: 2034: Invalid users involved');
+        expect(log).not.toContain('TOKEN-SECRETO');
+    });
+
     test('falha de rede vira 424 sem detalhe interno', async () => {
         global.fetch.mockRejectedValue(Object.assign(new Error('ECONNRESET a 10.0.0.1'), { name: 'FetchError' }));
         const erro = await client.buscarPagamento(config, { accessToken: 'T', idExterno: '1' }).catch((e) => e);
