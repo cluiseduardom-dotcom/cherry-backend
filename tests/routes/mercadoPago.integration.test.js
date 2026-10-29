@@ -226,6 +226,42 @@ describe('conexão da loja (OAuth)', () => {
     });
 });
 
+describe('GET /pagamentos-gateway/disponibilidade', () => {
+    test('vendedor e admin veem só { pix, motivo }; estoquista 403; sem token 401', async () => {
+        await conectarLoja(A);
+
+        const vendedor = await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'vendedor');
+        expect(vendedor.status).toBe(200);
+        expect(vendedor.body.data).toEqual({ pix: true, motivo: null });
+        expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'admin')).body.data).toEqual({ pix: true, motivo: null });
+
+        expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'estoquista')).status).toBe(403);
+        expect((await request(app).get('/pagamentos-gateway/disponibilidade')).status).toBe(401);
+    });
+
+    test('loja sem conexão ativa: pix=false, loja_nao_conectada; a de outra empresa não interfere', async () => {
+        await conectarLoja(A);
+        await conectarLoja(B);
+        await db.query('UPDATE empresa_mercadopago SET ativo = false, access_token_cifrado = NULL, refresh_token_cifrado = NULL WHERE empresa_id = $1', [B.empresaId]);
+
+        const b = await auth(request(app).get('/pagamentos-gateway/disponibilidade'), B, 'vendedor');
+        expect(b.body.data).toEqual({ pix: false, motivo: 'loja_nao_conectada' });
+        expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'vendedor')).body.data.pix).toBe(true);
+    });
+
+    test('integração desligada no ambiente: pix=false, nao_configurado', async () => {
+        const guardado = process.env.MP_APP_ID;
+        delete process.env.MP_APP_ID;
+        try {
+            const res = await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'vendedor');
+            expect(res.status).toBe(200);
+            expect(res.body.data).toEqual({ pix: false, motivo: 'nao_configurado' });
+        } finally {
+            process.env.MP_APP_ID = guardado;
+        }
+    });
+});
+
 describe('POST /pagamentos-gateway/pix', () => {
     beforeAll(async () => { await conectarLoja(A); await conectarLoja(B); });
 

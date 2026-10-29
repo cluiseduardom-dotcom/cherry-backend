@@ -35,6 +35,23 @@ async function obterStatus(empresa_id) {
     };
 }
 
+// Para o PDV (admin e vendedor) saber ANTES de cobrar se o Pix automático está disponível. Só um
+// booleano e o motivo: nenhum dado da conexão (conta, datas, tokens) sai daqui. Não consulta o
+// Mercado Pago; um token vencido ou recusado ainda aparece como 409 na hora de cobrar.
+async function obterDisponibilidade(empresa_id) {
+    if (obterConfigMercadoPago() === null) {
+        return { pix: false, motivo: 'nao_configurado' };
+    }
+
+    const conexao = await mercadoPagoRepository.buscarConexao(empresa_id);
+
+    if (!conexao?.ativo || !conexao.access_token_cifrado) {
+        return { pix: false, motivo: 'loja_nao_conectada' };
+    }
+
+    return { pix: true, motivo: null };
+}
+
 async function iniciarConexao(empresa_id, usuario_id) {
     const config = exigirConfig();
     const state = crypto.randomBytes(32).toString('hex');
@@ -127,4 +144,4 @@ async function obterAccessToken(empresa_id) {
     });
 }
 
-module.exports = { obterStatus, iniciarConexao, concluirConexao, desconectar, obterAccessToken, exigirConfig };
+module.exports = { obterStatus, obterDisponibilidade, iniciarConexao, concluirConexao, desconectar, obterAccessToken, exigirConfig };
