@@ -161,4 +161,25 @@ async function buscarPagamento(config, { accessToken, idExterno }) {
     });
 }
 
-module.exports = { montarUrlAutorizacao, trocarCodigo, renovarToken, criarPagamentoPix, buscarPagamento };
+// Devolução TOTAL do Pix: POST /v1/payments/{id}/refunds com o token do VENDEDOR (corpo vazio = valor
+// integral). A chave de idempotência torna a repetição segura se a resposta se perder. NÃO validado contra
+// o Mercado Pago real (o sandbox não aprova Pix): prazo, comissão devolvida e saldo exigido na conta do
+// vendedor ficam por confirmar no primeiro uso com dinheiro real (ver docs/MERCADOPAGO_PIX.md).
+async function devolverPagamento(config, { accessToken, idExterno, idempotencia }) {
+    const dados = await chamar(config, {
+        metodo: 'POST',
+        base: config.apiUrl,
+        caminho: `/v1/payments/${encodeURIComponent(idExterno)}/refunds`,
+        corpo: {},
+        token: accessToken,
+        idempotencia
+    });
+
+    if (!dados || dados.id === undefined) {
+        throw new AppError('Resposta inesperada do Mercado Pago ao devolver o Pix.', 424);
+    }
+
+    return { idExterno: String(dados.id), status: dados.status ?? null };
+}
+
+module.exports = { montarUrlAutorizacao, trocarCodigo, renovarToken, criarPagamentoPix, buscarPagamento, devolverPagamento };

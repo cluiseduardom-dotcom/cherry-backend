@@ -3,6 +3,7 @@ const AppError = require('../errors/AppError');
 const mercadoPagoClient = require('../integrations/mercadoPagoClient');
 const mercadoPagoService = require('./mercadoPagoService');
 const cobrancasRepository = require('../repositories/cobrancasPagamentoRepository');
+const devolucoesRepository = require('../repositories/cobrancaDevolucoesRepository');
 const taxasPlataformaRepository = require('../repositories/taxasPlataformaRepository');
 const db = require('../config/db');
 const { reaisParaCentavos, calcularTaxaPlataformaCentavos, centavosParaReais } = require('../utils/taxaPlataforma');
@@ -161,6 +162,10 @@ async function sincronizar(cobranca) {
         id: cobranca.id, empresa_id: cobranca.empresa_id, de: cobranca.status, para: novo
     });
 
+    if (atualizada && novo === 'estornado') {
+        await devolucoesRepository.concluirPorCobranca(cobranca.id, cobranca.empresa_id);
+    }
+
     // Se outra notificação ganhou a corrida, a linha já está no estado novo.
     return atualizada ?? await cobrancasRepository.buscarPorCodigo(cobranca.codigo, cobranca.empresa_id);
 }
@@ -199,4 +204,59 @@ async function processarNotificacao(dataId) {
     return { processada: true };
 }
 
-module.exports = { criarPix, consultar, processarNotificacao, mapearStatusProvedor, formatarExpiracao, TRANSICOES };
+// Devolve (estorna) o Pix pago ao pagador. Só quem tem gerir_financeiro chega aqui (rota); empresa_id e
+// quem pede vêm do JWT. Só vale para Pix pago sem venda ou de venda cancelada.
+// Ordem: 1) reconsulta o provedor (se já foi devolvido no painel, só reflete); 2) reserva o pedido sob a
+// trava da cobrança (conferindo as regras); 3) chama o provedor com chave de idempotência própria;
+// 4) registra o resultado. Falha do provedor = pedido 'falhou' (pode pedir de novo); se a resposta se
+// perder, a consulta/webhook seguinte conclui o pedido. Devolver duas vezes é impedido por índice único
+// e, no provedor, porque o valor integral só pode ser devolvido uma vez.
+async function devolver({ empresa_id, usuario_id }, codigo, { motivo }) {
+    const config = mercadoPagoService.exigirConfig();
+    const existente = await cobrancasRepository.buscarPorCodigo(codigo, empresa_id);
+
+    if (!existente) {
+        throw new AppError('Cobrança Pix não encontrada', 404);
+    }
+
+    await sincronizar(existente);
+
+    const { cobranca, devolucao } = await devolucoesRepository.reservar({
+        empresa_id, codigo, motivo: motivo.trim(), solicitado_por: usuario_id
+    });
+
+    let resultado;
+
+    try {
+        const accessToken = await mercadoPagoService.obterAccessToken(empresa_id);
+
+        resultado = await mercadoPagoClient.devolverPagamento(config, {
+            accessToken,
+            idExterno: cobranca.id_externo,
+            idempotencia: `devolucao-${devolucao.id}`
+        });
+    } catch (error) {
+        await devolucoesRepository.marcarFalhou({ id: devolucao.id, empresa_id, erro: error.message });
+        throw error;
+    }
+
+    if (resultado.status !== 'approved') {
+        // Em processamento no provedor: continua 'solicitada' e a consulta/webhook seguinte conclui.
+        return { codigo, valor: cobranca.valor, status: 'solicitada' };
+    }
+
+    await devolucoesRepository.marcarConcluida({ id: devolucao.id, empresa_id, idExterno: resultado.idExterno });
+    await cobrancasRepository.atualizarStatus({ id: cobranca.id, empresa_id, de: 'pago', para: 'estornado' });
+
+    return { codigo, valor: cobranca.valor, status: 'concluida' };
+}
+
+async function listarADevolver(empresa_id, paginacao) {
+    return devolucoesRepository.listarADevolver({ empresa_id, ...paginacao });
+}
+
+async function listarDevolucoes(empresa_id, paginacao) {
+    return devolucoesRepository.listarDevolucoes({ empresa_id, ...paginacao });
+}
+
+module.exports = { criarPix, consultar, processarNotificacao, devolver, listarADevolver, listarDevolucoes, mapearStatusProvedor, formatarExpiracao, TRANSICOES };

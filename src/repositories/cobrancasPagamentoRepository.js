@@ -98,6 +98,18 @@ async function consumirParaVenda({ codigo, empresa_id, venda_id, valor }, client
             throw new AppError('O valor do pagamento não confere com a cobrança Pix', 400);
         }
 
+        // Pix que está sendo devolvido (ou já devolvido) não entra em venda. A devolução é gravada sob a
+        // mesma trava desta linha, então não há corrida entre as duas operações.
+        const { rows: devolucoes } = await tx.query(
+            `SELECT 1 FROM cobranca_devolucoes
+             WHERE cobranca_id = $1 AND empresa_id = $2 AND status IN ('solicitada', 'concluida')`,
+            [cobranca.id, empresa_id]
+        );
+
+        if (devolucoes.length > 0) {
+            throw new AppError('Este Pix está sendo devolvido e não pode entrar em uma venda', 409);
+        }
+
         const { rows } = await tx.query(
             `UPDATE cobrancas_pagamento SET venda_id = $1, usada_em = NOW(), atualizado_em = NOW()
              WHERE id = $2 AND empresa_id = $3

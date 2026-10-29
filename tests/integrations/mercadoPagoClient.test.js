@@ -148,3 +148,40 @@ describe('erros', () => {
         expect(global.fetch.mock.calls[0][0]).toBe('https://api.mp.test/v1/payments/1%2F..%2Fx');
     });
 });
+
+describe('devolverPagamento', () => {
+    test('POST /v1/payments/{id}/refunds com token do vendedor, corpo vazio (devolução total) e idempotência', async () => {
+        global.fetch.mockResolvedValue(resposta({ id: 555, payment_id: 123, amount: 90, status: 'approved' }, 201));
+
+        const devolucao = await client.devolverPagamento(config, { accessToken: 'AT-LOJA', idExterno: '123', idempotencia: 'devolucao-7' });
+
+        expect(devolucao).toEqual({ idExterno: '555', status: 'approved' });
+
+        const [url, init] = global.fetch.mock.calls[0];
+        expect(url).toBe('https://api.mp.test/v1/payments/123/refunds');
+        expect(init.method).toBe('POST');
+        expect(init.headers.authorization).toBe('Bearer AT-LOJA');
+        expect(init.headers['X-Idempotency-Key']).toBe('devolucao-7');
+        expect(JSON.parse(init.body)).toEqual({});
+    });
+
+    test('escapa o id na URL', async () => {
+        global.fetch.mockResolvedValue(resposta({ id: 1, status: 'approved' }, 201));
+        await client.devolverPagamento(config, { accessToken: 'AT', idExterno: '1/../x', idempotencia: 'k' });
+
+        expect(global.fetch.mock.calls[0][0]).toBe('https://api.mp.test/v1/payments/1%2F..%2Fx/refunds');
+    });
+
+    test('resposta sem id é recusada; recusa do provedor vira 424 genérico sem vazar token', async () => {
+        global.fetch.mockResolvedValueOnce(resposta({ status: 'approved' }, 201));
+        await expect(client.devolverPagamento(config, { accessToken: 'AT-SECRETO', idExterno: '1', idempotencia: 'k' }))
+            .rejects.toMatchObject({ statusCode: 424 });
+
+        global.fetch.mockResolvedValueOnce(resposta({ message: 'refund not allowed', status: 400 }, 400));
+        const erro = await client.devolverPagamento(config, { accessToken: 'AT-SECRETO', idExterno: '1', idempotencia: 'k' }).catch((e) => e);
+
+        expect(erro.statusCode).toBe(424);
+        expect(erro.message).toBe('O Mercado Pago recusou a operação.');
+        expect(JSON.stringify(console.error.mock.calls)).not.toContain('AT-SECRETO');
+    });
+});
