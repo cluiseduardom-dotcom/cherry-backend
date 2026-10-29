@@ -15,6 +15,15 @@ async function status(req, res, next) {
     }
 }
 
+async function disponibilidade(req, res, next) {
+    try {
+        res.set('Cache-Control', 'no-store');
+        return response.success(res, await mercadoPagoService.obterDisponibilidade(req.usuario.empresa_id));
+    } catch (error) {
+        next(error);
+    }
+}
+
 async function conectar(req, res, next) {
     try {
         res.set('Cache-Control', 'no-store');
@@ -130,4 +139,4 @@ async function webhook(req, res, next) {
     }
 }
 
-module.exports = { status, conectar, desconectar, callback, criarPix, consultarCobranca, webhook };
+module.exports = { status, disponibilidade, conectar, desconectar, callback, criarPix, consultarCobranca, webhook };

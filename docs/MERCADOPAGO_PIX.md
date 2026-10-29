@@ -26,6 +26,7 @@ Perder `MP_TOKEN_ENC_KEY` invalida os tokens guardados (as lojas precisam recone
 | `POST /integracoes/mercadopago/conectar` | admin | devolve `{url}` de autorização; grava `state` de uso único (10 min) |
 | `GET /integracoes/mercadopago/callback` | público (por `state`) | troca o código, guarda tokens cifrados, redireciona a `MP_FRONTEND_URL/configuracoes/empresa?mercadopago=conectado\|erro` |
 | `DELETE /integracoes/mercadopago` | admin | desconecta e apaga os tokens |
+| `GET /pagamentos-gateway/disponibilidade` | admin, vendedor | `{ pix, motivo }`: `pix=true` se a integração está configurada e a loja conectada; senão `motivo` = `nao_configurado` ou `loja_nao_conectada`. Não consulta o provedor (um token recusado ainda vira 409 ao cobrar) |
 | `POST /pagamentos-gateway/pix` `{valor, cliente_email?}` | admin, vendedor | cria cobrança Pix (QR válido por 30 min) |
 | `GET /pagamentos-gateway/:codigo` | admin, vendedor | estado da cobrança (reconsulta o provedor, no máximo a cada 5 s) |
 | `POST /webhooks/mercadopago` | público (assinatura) | reconsulta o pagamento e aplica a transição |
