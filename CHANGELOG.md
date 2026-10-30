@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Documentação da taxa da plataforma** (`docs/TAXA_PLATAFORMA.md`): ordem de resolução, como alterar por SQL e histórico. Produção passou de 0,15%/0,10% para 0,50%/0,40% em 30/10/2026 (dado, sem migration; CI e ambientes novos continuam semeados com 0,15%/0,10%). `CLAUDE.md` deixou de citar os percentuais.
 - **E-mail do pagador do Pix**: novo `MP_EMAIL_PAGADOR_PADRAO` (opcional). Ordem: `cliente_email` > `MP_EMAIL_PAGADOR_PADRAO` > e-mail de contato da empresa. Sem a variável, nada muda. Sem migration.
 - **Devolução de Pix sem saldo na conta da loja**: a causa `120065` do Mercado Pago agora vira a mensagem "A conta Mercado Pago da loja não tem saldo disponível para devolver este Pix…" em vez de "recusou a operação". Sem migration nem mudança de contrato (continua 424).
 
