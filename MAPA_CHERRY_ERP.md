@@ -265,9 +265,9 @@ Nenhum código foi alterado nesta tarefa (auditoria/documentação apenas) — o
 
 ---
 
-## 11. Roteiro de profissionalização (GiroOne) — status
+## 11. Roteiro de profissionalização (GiroNex) — status
 
-Decisão tomada: o Cherry ERP vai virar produto vendável a outras empresas (GiroOne), não só uso interno. Isso motivou a priorização abaixo antes de continuar com módulos de negócio (Relatórios, Produção/Fornecedores).
+Decisão tomada: o Cherry ERP vai virar produto vendável a outras empresas (GiroNex), não só uso interno. Isso motivou a priorização abaixo antes de continuar com módulos de negócio (Relatórios, Produção/Fornecedores).
 
 | # | Item | Status |
 |---|---|---|

@@ -40,7 +40,7 @@ Use a trusted server-to-server/operator workflow, not a public self-registration
 - Add a dry-run/confirmation step and clear protection against production being selected accidentally.
 
 ### Phase C — stronger admin model
-- Design a real GiroOne superadmin identity with separate authorization from tenant-level `admin`.
+- Design a real GiroNex superadmin identity with separate authorization from tenant-level `admin`.
 - Store auditable provisioning events and actor identity.
 - Prefer expiring invitation links / forced password setup over sending or storing an initial password.
 - Require explicit review before making this available through a web interface.
