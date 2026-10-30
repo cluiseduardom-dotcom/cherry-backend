@@ -5,6 +5,8 @@ const AppError = require('../errors/AppError');
 // consultada está marcado como [CONFIRMAR NO SANDBOX]. Nenhum token entra em log ou mensagem de erro.
 
 const TIMEOUT_MS = 15000;
+const CODIGO_SALDO_INSUFICIENTE = '120065';
+const MENSAGEM_SALDO_INSUFICIENTE = 'A conta Mercado Pago da loja não tem saldo disponível para devolver este Pix. Confira o saldo no Mercado Pago e tente de novo mais tarde.';
 
 // Resumo do erro do provedor para o log: error, message e causas (código + descrição). Só textos
 // curtos do próprio Mercado Pago; nunca o corpo da requisição (tem token/segredo).
@@ -16,6 +18,13 @@ function descreverErroProvedor(dados) {
     const partes = [texto(dados?.error), texto(dados?.message), causas.length ? `causas: ${causas.join('; ')}` : null].filter(Boolean);
 
     return partes.length ? partes.join(' | ') : 'sem detalhe';
+}
+
+// Códigos de causa do provedor (ex.: 120065), só para o chamador traduzir erros conhecidos em mensagem útil.
+function codigosDeCausa(dados) {
+    return Array.isArray(dados?.cause)
+        ? dados.cause.slice(0, 5).map((c) => String(c?.code ?? '')).filter(Boolean)
+        : [];
 }
 
 async function chamar(config, { metodo, caminho, base, corpo, token, idempotencia }) {
@@ -50,7 +59,9 @@ async function chamar(config, { metodo, caminho, base, corpo, token, idempotenci
     if (!resposta.ok) {
         // Só status e código/mensagem do provedor; nunca o corpo da requisição (tem token/segredo).
         console.error(`Mercado Pago: ${metodo} ${caminho} respondeu ${resposta.status} (${descreverErroProvedor(dados)})`);
-        throw new AppError('O Mercado Pago recusou a operação.', 424);
+        const erro = new AppError('O Mercado Pago recusou a operação.', 424);
+        erro.codigosProvedor = codigosDeCausa(dados);
+        throw erro;
     }
 
     return dados;
@@ -166,14 +177,26 @@ async function buscarPagamento(config, { accessToken, idExterno }) {
 // o Mercado Pago real (o sandbox não aprova Pix): prazo, comissão devolvida e saldo exigido na conta do
 // vendedor ficam por confirmar no primeiro uso com dinheiro real (ver docs/MERCADOPAGO_PIX.md).
 async function devolverPagamento(config, { accessToken, idExterno, idempotencia }) {
-    const dados = await chamar(config, {
-        metodo: 'POST',
-        base: config.apiUrl,
-        caminho: `/v1/payments/${encodeURIComponent(idExterno)}/refunds`,
-        corpo: {},
-        token: accessToken,
-        idempotencia
-    });
+    let dados;
+
+    try {
+        dados = await chamar(config, {
+            metodo: 'POST',
+            base: config.apiUrl,
+            caminho: `/v1/payments/${encodeURIComponent(idExterno)}/refunds`,
+            corpo: {},
+            token: accessToken,
+            idempotencia
+        });
+    } catch (error) {
+        // 120065 = a conta do vendedor não tem saldo disponível para a devolução (visto em produção; o
+        // app do Mercado Pago recusa igual). Mensagem curta: vai também para cobranca_devolucoes.erro (200).
+        if (error.codigosProvedor?.includes(CODIGO_SALDO_INSUFICIENTE)) {
+            throw new AppError(MENSAGEM_SALDO_INSUFICIENTE, 424);
+        }
+
+        throw error;
+    }
 
     if (!dados || dados.id === undefined) {
         throw new AppError('Resposta inesperada do Mercado Pago ao devolver o Pix.', 424);

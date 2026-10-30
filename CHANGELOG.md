@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Devolução de Pix sem saldo na conta da loja**: a causa `120065` do Mercado Pago agora vira a mensagem "A conta Mercado Pago da loja não tem saldo disponível para devolver este Pix…" em vez de "recusou a operação". Sem migration nem mudança de contrato (continua 424).
+
 ### Removed
 
 - **Medição de latência opt-in** (`LATENCIA_LOG`, `LATENCIA_DB_PING_SEGUNDOS`): código, testes e `docs/OBSERVABILIDADE_LATENCIA.md` removidos; a medição já cumpriu o objetivo (decidir sobre a região do banco). Sem migration. Se as variáveis ainda existirem no Render, podem ser apagadas (são ignoradas).
