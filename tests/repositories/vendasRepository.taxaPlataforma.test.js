@@ -21,7 +21,7 @@ const { executarComLock } = require('../../src/repositories/shared/transacoes');
 const AppError = require('../../src/errors/AppError');
 const vendasRepository = require('../../src/repositories/vendasRepository');
 
-// Taxa interna da plataforma (VERTUMNO/GiroOne): gerada UMA vez por venda, na
+// Taxa interna da plataforma (VERTUMNO/GiroNex): gerada UMA vez por venda, na
 // mesma transação, sobre vendas.total já final. O cálculo/SQL em si é coberto em
 // tests/repositories/taxasPlataformaRepository.test.js e tests/utils/taxaPlataforma.test.js;
 // aqui só o wiring dentro da transação da venda (criar/cancelar).

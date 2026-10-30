@@ -1,6 +1,6 @@
 const AppError = require('../errors/AppError');
 
-// Cálculo da taxa interna da plataforma (VERTUMNO/GiroOne) sobre o total da venda.
+// Cálculo da taxa interna da plataforma (VERTUMNO/GiroNex) sobre o total da venda.
 // Função pura: sem banco, sem Date.
 //
 // Tudo em inteiros: o total vem em centavos e o percentual é guardado com 4

@@ -1,5 +1,5 @@
 // Integração de verdade (Postgres real da CI/dev, sem mock de db/sessão): taxa interna
-// da plataforma (VERTUMNO/GiroOne) com modelo comercial configurável — plano sem
+// da plataforma (VERTUMNO/GiroNex) com modelo comercial configurável — plano sem
 // mensalidade (0,15%), plano com mensalidade (0,10%) e condição individual negociada
 // por empresa (inclusive 0%), com prioridade, vigência, congelamento e auditoria.
 //
@@ -32,7 +32,7 @@ const registro = criarRegistroDeEmpresas(db);
 
 const SUFIXO = crypto.randomBytes(4).toString('hex');
 const SENHA = crypto.randomBytes(12).toString('hex');
-const RESPONSAVEL = 'teste.giroone@teste.invalid';
+const RESPONSAVEL = 'teste.gironex@teste.invalid';
 const JUSTIFICATIVA = 'Condição comercial negociada (teste automatizado)';
 
 const empresas = {}; // { SEM, COM, EXC, ZERO } -> { id, canalId, produto, token }
@@ -658,7 +658,7 @@ describe('a taxa e a condição comercial não aparecem nas respostas de vendas'
 
         for (const res of respostas) {
             expect(res.status).toBeLessThan(300);
-            expect(JSON.stringify(res.body)).not.toMatch(/taxa|vertumno|giroone|plataforma|mensalidade|condicao|politica/i);
+            expect(JSON.stringify(res.body)).not.toMatch(/taxa|vertumno|giroone|gironex|plataforma|mensalidade|condicao|politica/i);
         }
     });
 });

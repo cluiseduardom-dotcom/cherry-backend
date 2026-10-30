@@ -1,4 +1,4 @@
-# Taxa interna da plataforma (GiroOne / VERTUMNO)
+# Taxa interna da plataforma (GiroNex / VERTUMNO)
 
 Percentual cobrado **só sobre a parte da venda paga em Pix** (qualquer Pix: pelo gateway do Mercado Pago ou lançado manualmente) e, nos Pix do Mercado Pago, retido na hora como `application_fee`.
 Dinheiro, débito, crédito e crediário **não pagam taxa**: a venda grava a linha em `taxas_venda` com `base_calculo` e `valor` zero, para manter a trilha e a regra congelada. Numa venda mista, a base é a soma dos pagamentos Pix.
@@ -21,7 +21,7 @@ Mudar uma taxa **não altera vendas já feitas**.
 | `padrao` | sim | 0,40% |
 | `pro` | sim | 0,30% |
 
-`sem_mensalidade` e `com_mensalidade` continuam existindo (legado). `sem_mensalidade` segue como plano de empresa sem plano cadastrado. A taxa de cartão (débito/crédito) por plano foi **descartada**: não vale o esforço. Atribuir um plano a uma empresa é ato da GiroOne (`empresa_planos`, SQL com autorização do PO).
+`sem_mensalidade` e `com_mensalidade` continuam existindo (legado). `sem_mensalidade` segue como plano de empresa sem plano cadastrado. A taxa de cartão (débito/crédito) por plano foi **descartada**: não vale o esforço. Atribuir um plano a uma empresa é ato da GiroNex (`empresa_planos`, SQL com autorização do PO).
 
 Atribuir plano (histórico protegido: encerrar o vigente e criar outro):
 
@@ -65,7 +65,7 @@ Rotas em `/plataforma`, **só `plataforma_admin` com papel admin** (marca lida d
 
 Regras: a vigência nunca começa no passado (vendas já feitas não são recalculadas); início no mesmo dia de um registro existente é **correção** (o registro é desativado, nunca apagado); plano agendado no futuro bloqueia nova mudança antes dele (409); o plano precisa ter política vigente na data (senão as vendas da empresa falhariam). Migration `078` guarda quem encerrou, quando e por quê. Alterar o **percentual do catálogo** ainda é SQL (seção abaixo).
 
-## Como alterar (só GiroOne; nenhuma rota de tenant escreve estas tabelas)
+## Como alterar (só GiroNex; nenhuma rota de tenant escreve estas tabelas)
 Não há tela nem API de administração ainda (planejada para depois, restrita a `plataforma_admin`). Hoje é SQL, **com autorização explícita do Product Owner**, em uma transação. Nunca editar o percentual da linha existente: encerrar e criar outra.
 
 Política de um plano (vale para todas as empresas do plano):

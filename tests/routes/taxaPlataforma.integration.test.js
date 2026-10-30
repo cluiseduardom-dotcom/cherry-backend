@@ -1,6 +1,6 @@
 // Integração de verdade (Postgres real da CI/dev, sem mock de db/sessão): prova,
 // fim a fim (rota -> controller -> service -> repository -> Postgres), a taxa
-// interna da plataforma (VERTUMNO/GiroOne) — uma por venda, na mesma transação,
+// interna da plataforma (VERTUMNO/GiroNex) — uma por venda, na mesma transação,
 // isolada por empresa, invisível na API de vendas e protegida por RBAC.
 //
 // Cria DUAS empresas temporárias próprias (com admin/vendedor/estoquista, canal,
@@ -382,7 +382,7 @@ describe('a taxa interna não aparece na API de vendas (PDV, operador, cliente)'
 
         for (const res of respostas) {
             expect(res.status).toBeLessThan(300);
-            expect(JSON.stringify(res.body)).not.toMatch(/taxa|vertumno|giroone|plataforma/i);
+            expect(JSON.stringify(res.body)).not.toMatch(/taxa|vertumno|giroone|gironex|plataforma/i);
         }
     });
 });
