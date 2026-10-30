@@ -28,6 +28,15 @@ describe('obterConfigMercadoPago', () => {
         expect(obterConfigMercadoPago({ ...e, [nome]: '   ' })).toBeNull();
     });
 
+    test('MP_EMAIL_PAGADOR_PADRAO é opcional: válido entra aparado; ausente ou inválido vira null sem desligar a integração', () => {
+        expect(obterConfigMercadoPago(env()).emailPagadorPadrao).toBeNull();
+        expect(obterConfigMercadoPago({ ...env(), MP_EMAIL_PAGADOR_PADRAO: '  pagamentos@plataforma.test ' }).emailPagadorPadrao).toBe('pagamentos@plataforma.test');
+
+        const invalido = obterConfigMercadoPago({ ...env(), MP_EMAIL_PAGADOR_PADRAO: 'nao-e-email' });
+        expect(invalido).not.toBeNull();
+        expect(invalido.emailPagadorPadrao).toBeNull();
+    });
+
     test('chave de cifra que não tem 32 bytes desliga a integração', () => {
         expect(obterConfigMercadoPago({ ...env(), MP_TOKEN_ENC_KEY: crypto.randomBytes(16).toString('base64') })).toBeNull();
     });

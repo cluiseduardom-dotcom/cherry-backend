@@ -14,8 +14,11 @@ Sem as variáveis `MP_*` a integração fica **desligada**: nada muda para as lo
 | `MP_WEBHOOK_URL` | `https://<api>/webhooks/mercadopago` | não |
 | `MP_TOKEN_ENC_KEY` | 32 bytes em base64; cifra os tokens das lojas (AES-256-GCM) | **sim** |
 | `MP_FRONTEND_URL` | Origem do frontend para onde o retorno do OAuth redireciona | não |
+| `MP_EMAIL_PAGADOR_PADRAO` | Opcional. E-mail neutro da plataforma enviado como `payer.email` do Pix. Inválido ou ausente = ignorado | não |
 | `MP_SANDBOX` | `true` envia `test_token` no OAuth | não |
 | `MP_API_URL` / `MP_AUTH_URL` | Opcionais (padrão `api.mercadopago.com` / `auth.mercadopago.com`) | não |
+
+**E-mail do pagador (`payer.email`)** — o Mercado Pago exige um e-mail na cobrança. Ordem: `cliente_email` informado > `MP_EMAIL_PAGADOR_PADRAO` > e-mail de contato da empresa (comportamento antigo, mantido como último recurso). Recomendado definir `MP_EMAIL_PAGADOR_PADRAO` com um e-mail da plataforma que **não** seja o de nenhuma conta Mercado Pago de loja: o do contato da empresa pode coincidir com o da conta que recebe (hipótese de recusa; não confirmada). O PDV hoje não envia `cliente_email`, então nenhum dado do cliente vai ao Mercado Pago.
 
 Perder `MP_TOKEN_ENC_KEY` invalida os tokens guardados (as lojas precisam reconectar). Trocá-la tem o mesmo efeito.
 

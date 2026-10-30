@@ -318,6 +318,22 @@ describe('POST /pagamentos-gateway/pix', () => {
         expect(JSON.stringify(res.body)).not.toMatch(/AT-|RT-|1\.50|taxa/);
     });
 
+    test('MP_EMAIL_PAGADOR_PADRAO tem precedência sobre o e-mail de contato da empresa, e o do cliente sobre os dois', async () => {
+        client.criarPagamentoPix.mockResolvedValue(respostaPix(proximoId()));
+        process.env.MP_EMAIL_PAGADOR_PADRAO = 'pagamentos@plataforma.invalid';
+
+        try {
+            await auth(request(app).post('/pagamentos-gateway/pix'), A, 'vendedor').send({ valor: 10 });
+            expect(client.criarPagamentoPix.mock.calls[0][1].emailPagador).toBe('pagamentos@plataforma.invalid');
+
+            client.criarPagamentoPix.mockClear();
+            await auth(request(app).post('/pagamentos-gateway/pix'), A, 'vendedor').send({ valor: 10, cliente_email: 'cliente@x.com' });
+            expect(client.criarPagamentoPix.mock.calls[0][1].emailPagador).toBe('cliente@x.com');
+        } finally {
+            delete process.env.MP_EMAIL_PAGADOR_PADRAO;
+        }
+    });
+
     test('e-mail do cliente informado tem precedência sobre o e-mail da empresa; sem nenhum e-mail, 400 (não 409: o PDV só cai no Pix manual com 409)', async () => {
         client.criarPagamentoPix.mockResolvedValue(respostaPix(proximoId()));
         await auth(request(app).post('/pagamentos-gateway/pix'), A, 'vendedor').send({ valor: 10, cliente_email: 'cliente@x.com' });
