@@ -67,7 +67,10 @@ async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }) {
     const config = mercadoPagoService.exigirConfig();
     const valorCentavos = reaisParaCentavos(valor);
 
-    const emailPagador = cliente_email ?? await cobrancasRepository.buscarEmailContatoEmpresa(empresa_id);
+    // payer.email do Pix: e-mail do cliente (se informado) > e-mail neutro da plataforma (MP_EMAIL_PAGADOR_PADRAO)
+    // > e-mail de contato da empresa (comportamento anterior). O neutro evita usar o e-mail da loja como
+    // pagador, que pode coincidir com o da conta Mercado Pago que recebe.
+    const emailPagador = cliente_email ?? config.emailPagadorPadrao ?? await cobrancasRepository.buscarEmailContatoEmpresa(empresa_id);
 
     if (!emailPagador) {
         // 400 (e não 409): o PDV só cai no Pix manual com 409 (integração desligada / loja sem Mercado Pago).

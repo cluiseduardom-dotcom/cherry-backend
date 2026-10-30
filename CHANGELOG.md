@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **E-mail do pagador do Pix**: novo `MP_EMAIL_PAGADOR_PADRAO` (opcional). Ordem: `cliente_email` > `MP_EMAIL_PAGADOR_PADRAO` > e-mail de contato da empresa. Sem a variável, nada muda. Sem migration.
 - **Devolução de Pix sem saldo na conta da loja**: a causa `120065` do Mercado Pago agora vira a mensagem "A conta Mercado Pago da loja não tem saldo disponível para devolver este Pix…" em vez de "recusou a operação". Sem migration nem mudança de contrato (continua 424).
 
 ### Removed
