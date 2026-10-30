@@ -184,4 +184,28 @@ describe('devolverPagamento', () => {
         expect(erro.message).toBe('O Mercado Pago recusou a operação.');
         expect(JSON.stringify(console.error.mock.calls)).not.toContain('AT-SECRETO');
     });
+
+    test('120065 (sem saldo disponível na conta da loja) vira mensagem clara, com 424 e até 200 caracteres', async () => {
+        global.fetch.mockResolvedValueOnce(resposta({
+            error: 'bad_request',
+            message: "Collector hasn't enough available money",
+            status: 400,
+            cause: [{ code: 120065, description: "Collector hasn't enough available money" }]
+        }, 400));
+
+        const erro = await client.devolverPagamento(config, { accessToken: 'AT-SECRETO', idExterno: '1', idempotencia: 'k' }).catch((e) => e);
+
+        expect(erro.statusCode).toBe(424);
+        expect(erro.message).toContain('não tem saldo disponível');
+        expect(erro.message.length).toBeLessThanOrEqual(200);
+        expect(JSON.stringify(console.error.mock.calls)).not.toContain('AT-SECRETO');
+    });
+
+    test('outro código de causa mantém a mensagem genérica', async () => {
+        global.fetch.mockResolvedValueOnce(resposta({ message: 'x', cause: [{ code: 999, description: 'outra' }] }, 400));
+
+        const erro = await client.devolverPagamento(config, { accessToken: 'AT', idExterno: '1', idempotencia: 'k' }).catch((e) => e);
+
+        expect(erro.message).toBe('O Mercado Pago recusou a operação.');
+    });
 });

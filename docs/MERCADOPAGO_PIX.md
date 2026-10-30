@@ -93,3 +93,9 @@ Fluxo (`cobrancasPagamentoService.devolver`):
 4. Se a comissão da Vertumno (`application_fee`) é devolvida junto e em que proporção (a documentação consultada não diz; se não for, a taxa retida precisa ser tratada à parte).
 5. Que o webhook `payment.updated` chega com `refunded` (a cobrança passa a `estornado` por ele quando a resposta da devolução se perder).
 Cancelar a venda **não** devolve o Pix sozinho: a devolução é um pedido explícito do financeiro.
+
+**Observado no primeiro teste com dinheiro real (Pix de R$ 20,00, loja conectada com conta própria):**
+- O endpoint e o corpo vazio foram aceitos como chamada válida: o Mercado Pago respondeu `400` com a causa `120065` ("Collector hasn't enough available money"), não `404`/`422`.
+- A recusa por falta de saldo disponível também ocorre no app do Mercado Pago da lojista, mesmo com saldo visível maior que o valor. O motivo exato (saldo "a liberar", rendimento, regra de marketplace) **não foi esclarecido**; o teste de devolução concluída continua pendente.
+- A comissão `application_fee` (R$ 0,03) chegou na conta dona do app e ficou em "Dinheiro a liberar".
+- Tratamento: `120065` vira "A conta Mercado Pago da loja não tem saldo disponível para devolver este Pix…" (424, ≤ 200 caracteres). Até o fluxo estar validado, devolução de cliente pode ser feita fora do sistema; a cobrança segue `pago` no Vertumno.
