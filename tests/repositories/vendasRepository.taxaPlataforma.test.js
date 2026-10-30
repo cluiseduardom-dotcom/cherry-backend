@@ -74,7 +74,7 @@ beforeEach(() => {
 });
 
 describe('criar — taxa interna da plataforma', () => {
-  test('apura a taxa UMA vez, no client da transação da venda, sobre o total final (itens - desconto + juros)', async () => {
+  test('apura a taxa UMA vez, no client da transação da venda; venda sem Pix (dinheiro) tem base 0', async () => {
     const fakeClient = prepararVenda({ preco: '100.00' });
 
     await vendasRepository.criar({
@@ -84,15 +84,15 @@ describe('criar — taxa interna da plataforma', () => {
     });
 
     expect(taxasPlataformaRepository.apurar).toHaveBeenCalledTimes(1);
-    // 100,00 - 10,00 + 5,00 = 95,00, já incorporado ao total: nada é somado de novo
+    // sem pagamentos[] o padrão é dinheiro: a taxa incide só sobre o Pix, então a base é 0
     expect(taxasPlataformaRepository.apurar).toHaveBeenCalledWith(
-      { venda_id: 1, empresa_id: 9, total: 95 },
+      { venda_id: 1, empresa_id: 9, base: 0 },
       fakeClient
     );
     expect(sqls(fakeClient)).toContain('COMMIT');
   });
 
-  test('pagamentos mistos (PIX + Crédito 3x) geram UMA taxa por venda, não uma por pagamento', async () => {
+  test('pagamentos mistos (PIX + Crédito 3x) geram UMA taxa por venda, com base só na parte Pix', async () => {
     const fakeClient = prepararVenda({ preco: '10.00' });
     pagamentosVendaRepository.criar.mockImplementation(async ({ forma_pagamento }) => ({ id: forma_pagamento === 'pix' ? 11 : 12 }));
     parcelasPagamentoRepository.criar.mockResolvedValue({ id: 1 });
@@ -110,7 +110,48 @@ describe('criar — taxa interna da plataforma', () => {
     expect(pagamentosVendaRepository.criar).toHaveBeenCalledTimes(2);
     expect(taxasPlataformaRepository.apurar).toHaveBeenCalledTimes(1);
     expect(taxasPlataformaRepository.apurar).toHaveBeenCalledWith(
-      { venda_id: 1, empresa_id: 9, total: 100 },
+      { venda_id: 1, empresa_id: 9, base: 30 },
+      fakeClient
+    );
+  });
+
+  test('Pix integral: a base é o total final (itens - desconto + juros)', async () => {
+    const fakeClient = prepararVenda({ preco: '100.00' });
+    pagamentosVendaRepository.criar.mockResolvedValue({ id: 11 });
+    parcelasPagamentoRepository.criar.mockResolvedValue({ id: 1 });
+    parcelasPagamentoRepository.listarPorPagamento.mockResolvedValue([]);
+
+    await vendasRepository.criar({
+      canal_id: 1, usuario_id: 2, empresa_id: 9,
+      itens: [{ produto_id: 1, quantidade: 1 }],
+      desconto: 10, juros: 5,
+      pagamentos: [{ forma_pagamento: 'pix', valor: 95, numero_parcelas: 1 }]
+    });
+
+    expect(taxasPlataformaRepository.apurar).toHaveBeenCalledWith(
+      { venda_id: 1, empresa_id: 9, base: 95 },
+      fakeClient
+    );
+  });
+
+  test('dois pagamentos Pix somam na base, sem erro de ponto flutuante', async () => {
+    const fakeClient = prepararVenda({ preco: '10.00' });
+    pagamentosVendaRepository.criar.mockResolvedValue({ id: 11 });
+    parcelasPagamentoRepository.criar.mockResolvedValue({ id: 1 });
+    parcelasPagamentoRepository.listarPorPagamento.mockResolvedValue([]);
+
+    await vendasRepository.criar({
+      canal_id: 1, usuario_id: 2, empresa_id: 9,
+      itens: [{ produto_id: 1, quantidade: 3 }], // total 30,00
+      pagamentos: [
+        { forma_pagamento: 'pix', valor: 0.1, numero_parcelas: 1 },
+        { forma_pagamento: 'pix', valor: 0.2, numero_parcelas: 1 },
+        { forma_pagamento: 'dinheiro', valor: 29.7, numero_parcelas: 1 }
+      ]
+    });
+
+    expect(taxasPlataformaRepository.apurar).toHaveBeenCalledWith(
+      { venda_id: 1, empresa_id: 9, base: 0.3 },
       fakeClient
     );
   });

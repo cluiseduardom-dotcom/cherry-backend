@@ -129,14 +129,17 @@ async function resolverRegra(empresa_id, client) {
 // Qualquer falha — inclusive ausência de política vigente — lança erro: o
 // ROLLBACK de vendasRepository.criar desfaz venda, itens, estoque e pagamentos.
 // O erro é 500 (a resposta ao cliente é genérica; o detalhe vai só para o log).
-async function apurar({ venda_id, empresa_id, total }, client) {
+// `base` é a parte da venda paga em Pix (a taxa incide só sobre o Pix); 0 quando
+// a venda não tem Pix: a linha é gravada com base e valor 0 para manter a trilha
+// e a regra congelada.
+async function apurar({ venda_id, empresa_id, base }, client) {
     if (!client) {
         throw new Error('taxasPlataformaRepository.apurar exige o client da transação da venda');
     }
 
     const regra = await resolverRegra(empresa_id, client);
 
-    const baseCentavos = reaisParaCentavos(total);
+    const baseCentavos = reaisParaCentavos(base);
     const valorCentavos = calcularTaxaPlataformaCentavos(baseCentavos, regra.percentual);
 
     const { rows } = await client.query(

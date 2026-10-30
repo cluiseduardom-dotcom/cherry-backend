@@ -77,10 +77,25 @@ async function montarEmpresa(rotulo, precoCaro) {
     empresas[rotulo] = { id, canalId, produtos: { caro, barato }, tokens };
 }
 
+// A taxa incide só sobre o Pix. Quando o teste não informa pagamentos[], a venda é paga toda em Pix
+// (total = itens - desconto + juros), para os testes de cálculo continuarem exercitando a taxa.
+const precos = { A: { caro: 120, barato: 1 }, B: { caro: 50, barato: 1 } };
+
+function totalDoCorpo(rotulo, corpo) {
+    const bruto = corpo.itens.reduce((soma, item) => {
+        const preco = item.produto_id === empresas[rotulo].produtos.caro ? precos[rotulo].caro : precos[rotulo].barato;
+        return soma + item.quantidade * preco;
+    }, 0);
+    return Number((bruto - (corpo.desconto ?? 0) + (corpo.juros ?? 0)).toFixed(2));
+}
+
 const venda = (rotulo, corpo, cabecalhos = {}) => {
     const req = request(app).post('/vendas').set('Authorization', `Bearer ${empresas[rotulo].tokens.admin}`);
     Object.entries(cabecalhos).forEach(([k, v]) => req.set(k, v));
-    return req.send(corpo);
+    const comPagamento = corpo.pagamentos || !corpo.itens
+        ? corpo
+        : { ...corpo, pagamentos: [{ forma_pagamento: 'pix', valor: totalDoCorpo(rotulo, corpo) }] };
+    return req.send(comPagamento);
 };
 
 async function taxasDaVenda(vendaId) {
@@ -196,7 +211,7 @@ describe('política global da plataforma (migrations 046/048)', () => {
 
             expect(await taxasPlataformaRepository.buscarPoliticaVigente(await planoId(client, 'sem_mensalidade'), client)).toBeNull();
             await expect(
-                taxasPlataformaRepository.apurar({ venda_id: 1, empresa_id: 1, total: 100 }, client)
+                taxasPlataformaRepository.apurar({ venda_id: 1, empresa_id: 1, base: 100 }, client)
             ).rejects.toMatchObject({ statusCode: 500 });
 
             await client.query('ROLLBACK');
@@ -227,10 +242,10 @@ describe('política global da plataforma (migrations 046/048)', () => {
     });
 });
 
-describe('venda com pagamentos mistos: UMA taxa de 0,15% sobre vendas.total', () => {
+describe('venda com pagamentos mistos: UMA taxa de 0,15% sobre a parte paga em Pix', () => {
     let vendaMistaId;
 
-    test('R$ 120,00 com PIX 30 + Crédito 3x 90: 201 e exatamente uma linha em taxas_venda (R$ 0,18)', async () => {
+    test('R$ 120,00 com PIX 30 + Crédito 3x 90: 201 e exatamente uma linha em taxas_venda, com base só no Pix (R$ 30,00 gera R$ 0,05)', async () => {
         const res = await venda('A', {
             itens: [{ produto_id: empresas.A.produtos.caro, quantidade: 1 }],
             pagamentos: [
@@ -252,8 +267,8 @@ describe('venda com pagamentos mistos: UMA taxa de 0,15% sobre vendas.total', ()
             empresa_id: empresas.A.id,
             tipo: 'percentual',
             percentual: '0.1500',
-            base_calculo: '120.00',
-            valor: '0.18',
+            base_calculo: '30.00', // só a parte Pix; o crédito não paga taxa
+            valor: '0.05', // 3000 * 0,0015 = 4,5 -> 5 centavos
             status: 'apurada',
             origem: 'padrao_sem_plano', // empresa sem plano cadastrado -> padrão sem mensalidade
             condicao_id: null,
@@ -330,7 +345,7 @@ describe('venda com pagamentos mistos: UMA taxa de 0,15% sobre vendas.total', ()
             await client.query('UPDATE politicas_taxa_plataforma SET percentual = 5.0000');
 
             const { rows } = await client.query('SELECT percentual::text, base_calculo::text, valor::text FROM taxas_venda WHERE venda_id = $1', [vendaMistaId]);
-            expect(rows[0]).toEqual({ percentual: '0.1500', base_calculo: '120.00', valor: '0.18' });
+            expect(rows[0]).toEqual({ percentual: '0.1500', base_calculo: '30.00', valor: '0.05' });
 
             await client.query('ROLLBACK');
         } finally {

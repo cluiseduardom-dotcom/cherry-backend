@@ -107,7 +107,12 @@ async function criarPlanoEmpresa(empresaId, codigo, { inicio, fim = null }, clie
 const vender = (rotulo, corpo = {}, cabecalhos = {}) => {
     const req = request(app).post('/vendas').set('Authorization', `Bearer ${empresas[rotulo].token}`);
     Object.entries(cabecalhos).forEach(([k, v]) => req.set(k, v));
-    return req.send({ itens: [{ produto_id: empresas[rotulo].produto, quantidade: 1 }], ...corpo });
+    // A taxa incide só sobre o Pix: por padrão a venda de teste (R$ 1.000,00) é paga toda em Pix.
+    return req.send({
+        itens: [{ produto_id: empresas[rotulo].produto, quantidade: 1 }],
+        pagamentos: [{ forma_pagamento: 'pix', valor: 1000 }],
+        ...corpo
+    });
 };
 
 async function venderOk(rotulo, corpo, cabecalhos) {
@@ -217,9 +222,46 @@ describe('catálogo de planos e políticas por plano (migration 048)', () => {
             await executarArquivoSql(client, path.join(__dirname, '../../src/database/migrations/048_planos_comerciais_taxa_plataforma.sql'));
 
             const planos = await client.query(`SELECT count(*)::int AS n FROM planos_comerciais WHERE codigo IN ('sem_mensalidade', 'com_mensalidade')`);
-            const politicas = await client.query('SELECT count(*)::int AS n FROM politicas_taxa_plataforma WHERE ativo');
+            const politicas = await client.query(
+                `SELECT count(*)::int AS n FROM politicas_taxa_plataforma t JOIN planos_comerciais p ON p.id = t.plano_id
+                 WHERE t.ativo AND p.codigo IN ('sem_mensalidade', 'com_mensalidade')`
+            );
             expect(planos.rows[0].n).toBe(2);
             expect(politicas.rows[0].n).toBe(2);
+            await client.query('ROLLBACK');
+        } finally {
+            client.release();
+        }
+    });
+
+    test('catálogo da migration 077: cortesia 0,50% (sem mensalidade), básico 0,50%, padrão 0,40% e Pro 0,30% (com mensalidade), vigentes desde 30/10/2026', async () => {
+        const { rows } = await db.query(
+            `SELECT p.codigo, p.tem_mensalidade, t.percentual::text, t.vigencia_inicio::text, t.vigencia_fim, t.ativo
+             FROM planos_comerciais p JOIN politicas_taxa_plataforma t ON t.plano_id = p.id
+             WHERE p.codigo IN ('cortesia', 'basico', 'padrao', 'pro') ORDER BY p.codigo`
+        );
+
+        expect(rows).toEqual([
+            { codigo: 'basico', tem_mensalidade: true, percentual: '0.5000', vigencia_inicio: '2026-10-30', vigencia_fim: null, ativo: true },
+            { codigo: 'cortesia', tem_mensalidade: false, percentual: '0.5000', vigencia_inicio: '2026-10-30', vigencia_fim: null, ativo: true },
+            { codigo: 'padrao', tem_mensalidade: true, percentual: '0.4000', vigencia_inicio: '2026-10-30', vigencia_fim: null, ativo: true },
+            { codigo: 'pro', tem_mensalidade: true, percentual: '0.3000', vigencia_inicio: '2026-10-30', vigencia_fim: null, ativo: true }
+        ]);
+    });
+
+    test('a migration 077 é idempotente: reexecutar o arquivo não falha nem duplica planos e políticas', async () => {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            await executarArquivoSql(client, path.join(__dirname, '../../src/database/migrations/077_planos_comerciais_catalogo.sql'));
+
+            const planos = await client.query(`SELECT count(*)::int AS n FROM planos_comerciais WHERE codigo IN ('cortesia', 'basico', 'padrao', 'pro')`);
+            const politicas = await client.query(
+                `SELECT count(*)::int AS n FROM politicas_taxa_plataforma t JOIN planos_comerciais p ON p.id = t.plano_id
+                 WHERE p.codigo IN ('cortesia', 'basico', 'padrao', 'pro')`
+            );
+            expect(planos.rows[0].n).toBe(4);
+            expect(politicas.rows[0].n).toBe(4);
             await client.query('ROLLBACK');
         } finally {
             client.release();
@@ -348,7 +390,8 @@ describe('condição individual negociada prevalece sobre o plano', () => {
 
         const taxas = await taxaDaVenda(vendaId);
         expect(taxas).toHaveLength(1);
-        expect(taxas[0]).toMatchObject({ valor: '0.50', origem: 'excecao_empresa' });
+        // exceção de 0,05% sobre a parte Pix (R$ 400,00), não sobre o total de R$ 1.000,00
+        expect(taxas[0]).toMatchObject({ base_calculo: '400.00', valor: '0.20', origem: 'excecao_empresa' });
     });
 
     test('idempotência: replay com a mesma chave devolve a mesma venda e não gera segunda taxa', async () => {
@@ -700,7 +743,7 @@ describe('falha de cálculo ou persistência desfaz a venda inteira (rollback re
             await criarCondicao(empresas.COM.id, { percentual: 0, inicio: await dia(0) }, client);
 
             await expect(
-                taxasPlataformaRepository.apurar({ venda_id: 1, empresa_id: empresas.COM.id, total: 100 }, client)
+                taxasPlataformaRepository.apurar({ venda_id: 1, empresa_id: empresas.COM.id, base: 100 }, client)
             ).rejects.toMatchObject({ statusCode: 500 });
             await client.query('ROLLBACK');
         } finally {
@@ -726,5 +769,29 @@ describe('falha de cálculo ou persistência desfaz a venda inteira (rollback re
 
         const ativo = await db.query(`SELECT ativo FROM planos_comerciais WHERE codigo = 'com_mensalidade'`);
         expect(ativo.rows[0].ativo).toBe(true);
+    });
+});
+
+describe('planos da migration 077 resolvem o percentual certo para a empresa', () => {
+    // Empresa temporária dentro de uma transação que sempre dá ROLLBACK: nada persiste.
+    test.each([
+        ['cortesia', '0.5000'],
+        ['basico', '0.5000'],
+        ['padrao', '0.4000'],
+        ['pro', '0.3000']
+    ])('empresa no plano %s paga %s%% (pontos percentuais) sobre o Pix', async (codigo, esperado) => {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            const emp = await client.query(`INSERT INTO empresas (nome, status) VALUES ($1, 'ativa') RETURNING id`, [`Teste Plano ${codigo} ${SUFIXO}`]);
+            await criarPlanoEmpresa(emp.rows[0].id, codigo, { inicio: '2026-10-30' }, client);
+
+            const regra = await taxasPlataformaRepository.resolverRegra(emp.rows[0].id, client);
+            expect(regra).toMatchObject({ origem: 'plano_padrao', percentual: esperado });
+
+            await client.query('ROLLBACK');
+        } finally {
+            client.release();
+        }
     });
 });

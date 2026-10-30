@@ -333,10 +333,16 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
         );
 
         // Taxa interna da plataforma: UMA por venda (aqui, fora do laço de
-        // pagamentos), sobre vendas.total já final (subtotal - desconto + juros).
+        // pagamentos), só sobre a parte paga em Pix (qualquer Pix: pelo gateway ou
+        // lançado manualmente). Dinheiro, débito, crédito e crediário não pagam taxa.
         // Na mesma transação: sem política vigente ou qualquer falha, o ROLLBACK
         // do catch desfaz a venda inteira. Nunca entra na resposta nem nos itens.
-        await taxasPlataformaRepository.apurar({ venda_id: venda.id, empresa_id, total }, client);
+        const basePix = Number(
+            pagamentosEfetivos
+                .filter((pagamento) => pagamento.forma_pagamento === 'pix')
+                .reduce((soma, pagamento) => soma + Math.round(Number(pagamento.valor) * 100), 0) / 100
+        );
+        await taxasPlataformaRepository.apurar({ venda_id: venda.id, empresa_id, base: basePix }, client);
 
         // Comissão do vendedor: congelada na mesma transação, sobre subtotal - desconto
         // (sem juros do crediário). Sem percentual configurado para o vendedor, não grava.

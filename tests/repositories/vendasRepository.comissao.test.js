@@ -98,8 +98,8 @@ describe('criar — comissão do vendedor', () => {
       desconto: 10, juros: 5
     });
 
-    // total da venda = 95,00 (taxa da plataforma), mas a comissão incide sobre 90,00
-    expect(taxasPlataformaRepository.apurar).toHaveBeenCalledWith(expect.objectContaining({ total: 95 }), expect.anything());
+    // a comissão incide sobre 90,00 (subtotal - desconto), sem os juros; a taxa da plataforma só incide sobre Pix
+    expect(taxasPlataformaRepository.apurar).toHaveBeenCalledWith(expect.objectContaining({ base: 0 }), expect.anything()); // sem Pix, a taxa da plataforma tem base 0
     expect(comissoesRepository.apurar).toHaveBeenCalledWith(expect.objectContaining({ base: 90 }), expect.anything());
   });
 

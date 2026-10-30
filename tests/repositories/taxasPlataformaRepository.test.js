@@ -122,7 +122,7 @@ describe('apurar', () => {
     test('empresa sem plano, R$ 100,00 a 0,15%: UMA linha com R$ 0,15, congelando política, plano e origem', async () => {
         const client = fakeClient();
 
-        const resultado = await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 100 }, client);
+        const resultado = await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 100 }, client);
 
         expect(resultado).toEqual({ id: 77 });
         expect(insertDe(client)).toEqual([5, 9, 1, 'percentual', '0.1500', '100.00', '0.15', 10, null, null, 'padrao_sem_plano']);
@@ -135,7 +135,7 @@ describe('apurar', () => {
             politica: { id: 2, tipo: 'percentual', percentual: '0.1000' }
         });
 
-        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 100 }, client);
+        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 100 }, client);
 
         expect(insertDe(client)).toEqual([5, 9, 2, 'percentual', '0.1000', '100.00', '0.10', 11, 55, null, 'plano_padrao']);
         // a política é buscada para o plano da empresa
@@ -150,7 +150,7 @@ describe('apurar', () => {
             condicao: { id: 8, tipo: 'percentual', percentual: '0.0500' }
         });
 
-        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 1000 }, client);
+        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 1000 }, client);
 
         const insert = insertDe(client);
         expect(insert[CAMPOS.origem]).toBe('excecao_empresa');
@@ -164,7 +164,7 @@ describe('apurar', () => {
     test('exceção com 0%: grava a taxa com valor R$ 0,00 (a venda continua gerando 1 linha)', async () => {
         const client = fakeClient({ condicao: { id: 8, tipo: 'percentual', percentual: '0.0000' } });
 
-        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 12345.67 }, client);
+        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 12345.67 }, client);
 
         const insert = insertDe(client);
         expect(insert[CAMPOS.valor]).toBe('0.00');
@@ -175,16 +175,16 @@ describe('apurar', () => {
     test('R$ 1,00: taxa R$ 0,00 (R$ 0,0015 arredondado), sem mínimo artificial', async () => {
         const client = fakeClient();
 
-        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 1 }, client);
+        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 1 }, client);
 
         expect(insertDe(client).slice(0, 7)).toEqual([5, 9, 1, 'percentual', '0.1500', '1.00', '0.00']);
     });
 
-    test('usa o total FINAL da venda recebido (já com desconto e acréscimo) sem somar nada de novo', async () => {
+    test('usa a base recebida (parte Pix da venda) sem somar nada de novo', async () => {
         const client = fakeClient();
 
         // subtotal 100 - desconto 10 + juros 5 = 95 (calculado por vendasRepository)
-        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 95 }, client);
+        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 95 }, client);
 
         expect(insertDe(client)[CAMPOS.base]).toBe('95.00');
         expect(insertDe(client)[CAMPOS.valor]).toBe('0.14'); // 9500 * 0,0015 = 14,25 -> 14 centavos
@@ -194,7 +194,7 @@ describe('apurar', () => {
         const client = fakeClient({ politica: null });
 
         await expect(
-            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 100 }, client)
+            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 100 }, client)
         ).rejects.toMatchObject({ statusCode: 500 });
 
         expect(insertDe(client)).toBeNull();
@@ -204,7 +204,7 @@ describe('apurar', () => {
         const client = fakeClient({ politica: null, condicao: { id: 8, tipo: 'percentual', percentual: '0.0000' } });
 
         await expect(
-            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 100 }, client)
+            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 100 }, client)
         ).rejects.toMatchObject({ statusCode: 500 });
 
         expect(insertDe(client)).toBeNull();
@@ -214,17 +214,17 @@ describe('apurar', () => {
         const client = fakeClient({ condicao: { id: 8, tipo: 'percentual', percentual: '101' } });
 
         await expect(
-            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 100 }, client)
+            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 100 }, client)
         ).rejects.toMatchObject({ statusCode: 500 });
 
         expect(insertDe(client)).toBeNull();
     });
 
-    test('total inválido: lança erro 500 e não grava nada', async () => {
+    test('base inválida: lança erro 500 e não grava nada', async () => {
         const client = fakeClient();
 
         await expect(
-            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: NaN }, client)
+            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: NaN }, client)
         ).rejects.toMatchObject({ statusCode: 500 });
 
         expect(insertDe(client)).toBeNull();
@@ -239,13 +239,13 @@ describe('apurar', () => {
         });
 
         await expect(
-            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 100 }, client)
+            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 100 }, client)
         ).rejects.toThrow('falha de gravação');
     });
 
     test('exige o client da transação da venda (nunca abre conexão própria)', async () => {
         await expect(
-            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 100 })
+            taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 100 })
         ).rejects.toThrow('exige o client da transação');
 
         expect(db.query).not.toHaveBeenCalled();
@@ -254,7 +254,7 @@ describe('apurar', () => {
     test('toda consulta de regra usa o client da transação e a empresa recebida (nunca db.query direto)', async () => {
         const client = fakeClient();
 
-        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, total: 100 }, client);
+        await taxasPlataformaRepository.apurar({ venda_id: 5, empresa_id: 9, base: 100 }, client);
 
         expect(db.query).not.toHaveBeenCalled();
         const consultasDeEmpresa = client.query.mock.calls.filter(([sql]) =>
