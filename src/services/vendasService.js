@@ -2,6 +2,14 @@ const vendasRepository = require('../repositories/vendasRepository');
 const precosRepository = require('../repositories/precosRepository');
 const AppError = require('../errors/AppError');
 const { podeVerVendasDeTodos } = require('./permissoesService');
+const storage = require('./storage/imagensStorage');
+
+// A chave do objeto no bucket nunca sai da API: o cliente recebe só a URL pública da foto do vendedor.
+function comFotoDoVendedor(venda) {
+    const { vendedor_foto_chave: chave, ...resto } = venda;
+
+    return { ...resto, vendedor_foto_url: chave ? storage.urlPublica(chave) : null };
+}
 
 // Quem só enxerga as próprias vendas: perfil Vendedor (inclui os cargos novos) sem a
 // capacidade `ver_vendas_de_todos`.
@@ -67,7 +75,7 @@ async function listar({ page, pageSize, status, canal, data_de, data_ate }, usua
     });
 
     return {
-        items,
+        items: items.map(comFotoDoVendedor),
         page,
         pageSize,
         total,
@@ -88,7 +96,7 @@ async function buscarPorId(id, usuario) {
         throw new AppError('Venda não encontrada', 404);
     }
 
-    return venda;
+    return comFotoDoVendedor(venda);
 }
 
 module.exports = {
