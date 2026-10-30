@@ -51,6 +51,20 @@ ORDER BY t.id;
 
 As migrations (`046`, `048`) continuam semeando 0,15% e 0,10%. Ambientes criados do zero (CI, staging novo) nascem com esses valores e **não** refletem produção; os testes de integração dependem disso. A mudança de produção foi dado, não migration, de propósito.
 
+## Administração de planos e condições (API do operador)
+Rotas em `/plataforma`, **só `plataforma_admin` com papel admin** (marca lida do banco). A empresa-alvo vem da rota: é a exceção deliberada ao `empresa_id` do JWT. O responsável gravado é sempre o usuário logado (`email (#id)`), nunca o corpo.
+
+| Rota | O que faz |
+|---|---|
+| `GET /plataforma/planos` | catálogo com o percentual vigente de cada plano |
+| `GET /plataforma/empresas/comercial` | por empresa: plano e condição vigentes e a **regra efetiva** (mesmo resolvedor da venda) |
+| `GET /plataforma/empresas/:id/comercial/historico` | todos os planos e condições da empresa, com quem criou e quem encerrou |
+| `POST /plataforma/empresas/:id/plano` | `{ plano, vigencia_inicio?, justificativa }`: encerra o plano vigente no dia anterior e cria o novo |
+| `POST /plataforma/empresas/:id/condicao` | `{ percentual, vigencia_inicio?, vigencia_fim?, justificativa }`: exceção individual (0 a 100, até 4 casas); substitui a vigente |
+| `POST /plataforma/empresas/:id/condicao/encerrar` | `{ a_partir_de?, justificativa }`: encerra a condição; se ainda não começou a valer, cancela |
+
+Regras: a vigência nunca começa no passado (vendas já feitas não são recalculadas); início no mesmo dia de um registro existente é **correção** (o registro é desativado, nunca apagado); plano agendado no futuro bloqueia nova mudança antes dele (409); o plano precisa ter política vigente na data (senão as vendas da empresa falhariam). Migration `078` guarda quem encerrou, quando e por quê. Alterar o **percentual do catálogo** ainda é SQL (seção abaixo).
+
 ## Como alterar (só GiroOne; nenhuma rota de tenant escreve estas tabelas)
 Não há tela nem API de administração ainda (planejada para depois, restrita a `plataforma_admin`). Hoje é SQL, **com autorização explícita do Product Owner**, em uma transação. Nunca editar o percentual da linha existente: encerrar e criar outra.
 
