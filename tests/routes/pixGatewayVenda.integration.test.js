@@ -225,11 +225,18 @@ describe('taxas a receber abatem a comissão já retida pelo Mercado Pago', () =
         return items.find((i) => i.empresa_id === empresas[rotulo].id);
     }
 
-    test('empresa sem Pix de gateway: nada abatido', async () => {
+    test('Pix lançado manualmente (sem gateway): nada abatido, a taxa inteira fica a receber', async () => {
         await montarEmpresa('C');
-        const venda = await vender('C', [{ forma_pagamento: 'dinheiro', valor: 120 }]);
+        const venda = await vender('C', [{ forma_pagamento: 'pix', valor: 120 }]);
         expect(venda.status).toBe(201);
         expect(await linhaDoMes('C')).toMatchObject({ total_taxa: '0.18', total_cobrado_gateway: '0.00', total_a_receber: '0.18' });
+    });
+
+    test('venda sem Pix (dinheiro): a taxa da plataforma é zero e nada fica a receber', async () => {
+        await montarEmpresa('G');
+        const venda = await vender('G', [{ forma_pagamento: 'dinheiro', valor: 120 }]);
+        expect(venda.status).toBe(201);
+        expect(await linhaDoMes('G')).toMatchObject({ total_base: '0.00', total_taxa: '0.00', total_cobrado_gateway: '0.00', total_a_receber: '0.00' });
     });
 
     test('Pix integral no gateway: a taxa da venda já foi retida, a receber zera', async () => {
@@ -239,7 +246,7 @@ describe('taxas a receber abatem a comissão já retida pelo Mercado Pago', () =
         expect(await linhaDoMes('D')).toMatchObject({ total_taxa: '0.18', total_cobrado_gateway: '0.18', total_a_receber: '0.00' });
     });
 
-    test('venda mista (Pix no gateway + dinheiro): só a parte do Pix é abatida', async () => {
+    test('venda mista (Pix no gateway + dinheiro): a taxa incide só no Pix, já retido, e nada fica a receber', async () => {
         await montarEmpresa('E');
         const codigo = await cobranca('E', { valor: 60, taxa: 0.09 });
         const res = await vender('E', [
@@ -247,7 +254,7 @@ describe('taxas a receber abatem a comissão já retida pelo Mercado Pago', () =
             { forma_pagamento: 'dinheiro', valor: 60 }
         ]);
         expect(res.status).toBe(201);
-        expect(await linhaDoMes('E')).toMatchObject({ total_taxa: '0.18', total_cobrado_gateway: '0.09', total_a_receber: '0.09' });
+        expect(await linhaDoMes('E')).toMatchObject({ total_base: '60.00', total_taxa: '0.09', total_cobrado_gateway: '0.09', total_a_receber: '0.00' });
     });
 
     test('venda cancelada sai do a receber e do abatimento (a taxa estorna)', async () => {

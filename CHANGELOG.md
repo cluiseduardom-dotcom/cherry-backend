@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Taxa da plataforma só sobre o Pix** (migration `077`, planos `cortesia`, `basico`, `padrao`, `pro`). A base da taxa deixa de ser o total da venda e passa a ser a soma dos pagamentos Pix (gateway ou manual); dinheiro, débito, crédito e crediário não pagam taxa (a linha de `taxas_venda` é gravada com base e valor 0). Planos novos com 0,50% / 0,50% / 0,40% / 0,30% desde 30/10/2026; os legados e o plano padrão de empresa sem plano não mudam. **Mudança de regra pedida pelo PO.** Vendas já feitas não são recalculadas. Nenhuma empresa é movida de plano por esta migration. Ver `docs/TAXA_PLATAFORMA.md`.
 - **Documentação da taxa da plataforma** (`docs/TAXA_PLATAFORMA.md`): ordem de resolução, como alterar por SQL e histórico. Produção passou de 0,15%/0,10% para 0,50%/0,40% em 30/10/2026 (dado, sem migration; CI e ambientes novos continuam semeados com 0,15%/0,10%). `CLAUDE.md` deixou de citar os percentuais.
 - **E-mail do pagador do Pix**: novo `MP_EMAIL_PAGADOR_PADRAO` (opcional). Ordem: `cliente_email` > `MP_EMAIL_PAGADOR_PADRAO` > e-mail de contato da empresa. Sem a variável, nada muda. Sem migration.
 - **Devolução de Pix sem saldo na conta da loja**: a causa `120065` do Mercado Pago agora vira a mensagem "A conta Mercado Pago da loja não tem saldo disponível para devolver este Pix…" em vez de "recusou a operação". Sem migration nem mudança de contrato (continua 424).
