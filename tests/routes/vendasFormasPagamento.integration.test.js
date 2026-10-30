@@ -145,3 +145,43 @@ describe('forma de pagamento no Histórico', () => {
         expect(legada.forma_pagamento).toBe('a_vista');
     });
 });
+
+describe('vendedor (nome e foto) no Histórico', () => {
+    test('GET /vendas e GET /vendas/:id trazem nome e URL pública da foto (nunca a chave); sem foto é null; isolado por empresa', async () => {
+        const chave = `${A.empresaId}/usuarios/${A.u.vendedor}/${crypto.randomUUID()}.webp`;
+        const baseAnterior = process.env.R2_PUBLIC_BASE_URL;
+        process.env.R2_PUBLIC_BASE_URL = 'https://fotos.exemplo.test';
+
+        await db.query(
+            `INSERT INTO usuarios_fotos (usuario_id, empresa_id, chave, content_type, tamanho_bytes) VALUES ($1, $2, $3, 'image/webp', 10)`,
+            [A.u.vendedor, A.empresaId, chave]
+        );
+
+        try {
+            const comFoto = (await vender(A, 'vendedor', { pagamentos: [{ forma_pagamento: 'pix', valor: 100 }] })).body.data.id;
+            const semFoto = (await vender(A, 'vendedor2', { pagamentos: [{ forma_pagamento: 'pix', valor: 100 }] })).body.data.id;
+
+            const lista = (await listar(A, 'gerente', '?pageSize=100')).body.data.items;
+            const a = lista.find((v) => v.id === comFoto);
+            const b = lista.find((v) => v.id === semFoto);
+
+            expect(a.vendedor_nome).toBe(`vendedor ${sufixo}`);
+            expect(a.vendedor_foto_url).toBe(`https://fotos.exemplo.test/${chave}`);
+            expect(b.vendedor_nome).toBe(`vendedor2 ${sufixo}`);
+            expect(b.vendedor_foto_url).toBeNull();
+            expect(lista.every((v) => !('vendedor_foto_chave' in v))).toBe(true);
+
+            const detalhe = await request(app).get(`/vendas/${comFoto}`).set(auth(A, 'gerente'));
+            expect(detalhe.body.data.vendedor_foto_url).toBe(`https://fotos.exemplo.test/${chave}`);
+            expect('vendedor_foto_chave' in detalhe.body.data).toBe(false);
+
+            // Outra empresa nunca enxerga a foto nem o nome do vendedor da empresa A.
+            const deB = (await listar(B, 'gerente', '?pageSize=100')).body.data.items;
+            expect(deB.some((v) => v.vendedor_nome?.includes(`vendedor ${sufixo}`) && v.vendedor_foto_url)).toBe(false);
+        } finally {
+            await db.query('DELETE FROM usuarios_fotos WHERE usuario_id = $1 AND empresa_id = $2', [A.u.vendedor, A.empresaId]);
+            if (baseAnterior === undefined) delete process.env.R2_PUBLIC_BASE_URL;
+            else process.env.R2_PUBLIC_BASE_URL = baseAnterior;
+        }
+    });
+});

@@ -577,10 +577,13 @@ async function listarPaginado({ limit, offset, usuario_id, empresa_id, status, c
     const valoresListagem = [...valores, limit, offset];
     const { rows } = await db.query(
         `SELECT v.*, c.nome AS canal,
+                vend.nome AS vendedor_nome, vf.chave AS vendedor_foto_chave,
                 (SELECT COUNT(*)::int FROM itens_venda iv WHERE iv.venda_id = v.id AND iv.empresa_id = v.empresa_id) AS itens_count,
                 ${SQL_PAGAMENTOS_RESUMO}
          FROM vendas v
          JOIN canais_venda c ON c.id = v.canal_id
+         LEFT JOIN usuarios vend ON vend.id = v.usuario_id AND vend.empresa_id = v.empresa_id
+         LEFT JOIN usuarios_fotos vf ON vf.usuario_id = vend.id AND vf.empresa_id = vend.empresa_id
          ${where}
          ORDER BY v.data DESC, v.id DESC
          LIMIT $${valoresListagem.length - 1} OFFSET $${valoresListagem.length}`,
@@ -597,9 +600,12 @@ async function listarPaginado({ limit, offset, usuario_id, empresa_id, status, c
 
 async function buscarPorId(id, empresa_id) {
     const { rows } = await db.query(
-        `SELECT v.*, c.nome AS canal
+        `SELECT v.*, c.nome AS canal,
+                vend.nome AS vendedor_nome, vf.chave AS vendedor_foto_chave
          FROM vendas v
          JOIN canais_venda c ON c.id = v.canal_id
+         LEFT JOIN usuarios vend ON vend.id = v.usuario_id AND vend.empresa_id = v.empresa_id
+         LEFT JOIN usuarios_fotos vf ON vf.usuario_id = vend.id AND vf.empresa_id = vend.empresa_id
          WHERE v.id = $1 AND v.empresa_id = $2`,
         [id, empresa_id]
     );

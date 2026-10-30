@@ -115,7 +115,7 @@ describe('listar', () => {
     const result = await vendasService.listar({ page: 1, pageSize: 20 }, { id: 1, role: 'admin', empresa_id: 9 });
 
     expect(vendasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, usuario_id: undefined, empresa_id: 9, status: undefined, canal: undefined, data_de: undefined, data_ate: undefined });
-    expect(result).toEqual({ items: [{ id: 1 }, { id: 2 }], page: 1, pageSize: 20, total: 2, totalPages: 1 });
+    expect(result).toEqual({ items: [{ id: 1, vendedor_foto_url: null }, { id: 2, vendedor_foto_url: null }], page: 1, pageSize: 20, total: 2, totalPages: 1 });
   });
 
   test('filters by usuario_id for a vendedor (sees only their own vendas)', async () => {
@@ -150,7 +150,7 @@ describe('buscarPorId', () => {
 
     const result = await vendasService.buscarPorId(1, { id: 1, role: 'admin' });
 
-    expect(result).toEqual({ id: 1, usuario_id: 99, itens: [] });
+    expect(result).toEqual({ id: 1, usuario_id: 99, itens: [], vendedor_foto_url: null });
   });
 
   test('returns the venda for a vendedor who owns it', async () => {
