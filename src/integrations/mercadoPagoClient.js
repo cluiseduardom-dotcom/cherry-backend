@@ -166,9 +166,10 @@ async function criarPagamentoPix(config, { accessToken, codigo, valor, descricao
     };
 }
 
-// Tipos de pagamento do Checkout Pro EXCLUÍDOS: o link só aceita cartão de crédito e de débito.
-// [CONFIRMAR NO TESTE REAL] a lista de ids de tipo aceitos em excluded_payment_types e se o débito aparece no link.
-const TIPOS_EXCLUIDOS_LINK_CARTAO = ['ticket', 'bank_transfer', 'account_money', 'atm', 'digital_currency', 'digital_wallet'];
+// Tipos de pagamento do Checkout Pro EXCLUÍDOS: o link é para cartão. O Mercado Pago NÃO deixa excluir
+// `account_money` (saldo em conta: 400 "account_money cannot be excluded", visto no teste real de 31/10/2026);
+// ele é tratado como débito (à vista) na confirmação. [CONFIRMAR NO TESTE REAL] os demais ids e se o débito aparece.
+const TIPOS_EXCLUIDOS_LINK_CARTAO = ['ticket', 'bank_transfer', 'atm', 'digital_currency', 'digital_wallet'];
 
 // Documentado (Checkout Pro marketplace): POST /checkout/preferences com o access token do VENDEDOR;
 // a comissão da plataforma vai em marketplace_fee (valor em reais). external_reference = nosso código.

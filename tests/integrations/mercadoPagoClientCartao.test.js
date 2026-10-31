@@ -35,7 +35,9 @@ describe('criarPreferenciaCartao', () => {
             payment_methods: { installments: 12 },
             expires: true
         });
-        expect(corpo.payment_methods.excluded_payment_types.map((t) => t.id)).toEqual(expect.arrayContaining(['ticket', 'bank_transfer', 'account_money']));
+        expect(corpo.payment_methods.excluded_payment_types.map((t) => t.id)).toEqual(expect.arrayContaining(['ticket', 'bank_transfer']));
+        // O Mercado Pago recusa excluir saldo em conta (400): nunca pode ir na lista.
+        expect(corpo.payment_methods.excluded_payment_types.map((t) => t.id)).not.toContain('account_money');
         expect(corpo).not.toHaveProperty('marketplace_fee');
         expect(res).toEqual({ preferenciaId: 'pref-1', linkUrl: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' });
     });
