@@ -119,6 +119,8 @@ Webhook: para pagamento sem cobrança ligada ainda, a loja vem do `user_id` da n
 
 **Fora do escopo desta entrega**: devolução de pagamento de cartão (recusada com 409; fazer pelo painel do Mercado Pago), maquininha integrada (Fase 3, pesquisa).
 
+**Débito no link: NÃO confirmado (decisão do PO em 31/10/2026).** No teste real o Checkout Pro ofereceu só "Cartão salvo", "Novo cartão: Crédito ou pré-pago" e "Combinar 2 meios"; nenhuma opção de débito apareceu e a documentação oficial não pôde ser consultada para confirmar. O lançamento segue com crédito (até 12x) e Pix no link; **débito entra na Fase 3** (maquininha integrada). O código já reconhece `debit_card` se o Mercado Pago o devolver, então nada precisa mudar se a conta passar a aceitar. Ver `docs/MAQUININHA_FASE3.md`.
+
 ### Experiência do cliente no link (ajustes de 31/10/2026)
 
 - Título do item = nome da empresa; `statement_descriptor` = nome sem acento, até 16 caracteres; `back_urls` (sucesso/pendente/falha) apontam para `MP_FRONTEND_URL/pagamento-recebido`, com `auto_return=approved`; `default_installments=1`. **Não** enviamos `binary_mode` (pagamento que depende de autorização do banco deve ficar pendente, não recusado).
