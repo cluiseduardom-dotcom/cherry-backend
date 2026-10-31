@@ -51,4 +51,24 @@ async function desativar(id, empresaId) {
     return rows.length ? rows[0] : null;
 }
 
-module.exports = { listarPorProduto, buscarPorCodigo, criar, desativar };
+// Produtos da empresa entre os ids pedidos (isolamento: ids de outra empresa simplesmente não voltam).
+async function idsDeProdutosDaEmpresa(produtoIds, empresaId) {
+    const { rows } = await db.query(
+        'SELECT id FROM produtos WHERE empresa_id = $1 AND id = ANY($2::int[])',
+        [empresaId, produtoIds]
+    );
+    return rows.map((r) => r.id);
+}
+
+// Códigos ativos dos produtos, o principal primeiro (o de cada produto que serve para a etiqueta).
+async function listarAtivosDeProdutos(produtoIds, empresaId) {
+    const { rows } = await db.query(
+        `SELECT produto_id, codigo, tipo, principal FROM produtos_codigos
+         WHERE empresa_id = $1 AND produto_id = ANY($2::int[]) AND ativo = true
+         ORDER BY produto_id, principal DESC, id ASC`,
+        [empresaId, produtoIds]
+    );
+    return rows;
+}
+
+module.exports = { listarPorProduto, buscarPorCodigo, criar, desativar, idsDeProdutosDaEmpresa, listarAtivosDeProdutos };
