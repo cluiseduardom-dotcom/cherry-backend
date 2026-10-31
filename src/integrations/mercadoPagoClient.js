@@ -190,7 +190,7 @@ function descritivoDeFatura(nome) {
 // Documentado (Checkout Pro marketplace): POST /checkout/preferences com o access token do VENDEDOR;
 // a comissão da plataforma vai em marketplace_fee (valor em reais). external_reference = nosso código.
 // Experiência do cliente: título = nome da loja, descritivo na fatura, volta para a nossa página ao final
-// (back_urls + auto_return só no pagamento aprovado) e binary_mode (aprovado ou recusado, sem "em análise").
+// (back_urls + auto_return só no pagamento aprovado).
 // [CONFIRMAR NO TESTE REAL] criação com o token OAuth da loja, installments como teto de parcelas e init_point.
 async function criarPreferenciaCartao(config, { accessToken, codigo, valor, descricao, nomeLoja, taxaPlataforma, parcelasMaximas, expiraDe, expiraAte }) {
     const corpo = {
@@ -202,7 +202,6 @@ async function criarPreferenciaCartao(config, { accessToken, codigo, valor, desc
             installments: parcelasMaximas,
             default_installments: 1
         },
-        binary_mode: true,
         expires: true,
         expiration_date_from: expiraDe,
         expiration_date_to: expiraAte
