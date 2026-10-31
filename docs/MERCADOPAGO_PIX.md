@@ -122,7 +122,7 @@ Webhook: para pagamento sem cobrança ligada ainda, a loja vem do `user_id` da n
 ### Ainda NÃO confirmado (validar com cobrança real de R$ 1 na conta da loja)
 
 - Criação da preferência com o **token OAuth da loja** (não só credenciais da aplicação) e aceitação de `payment_methods.installments = 12`.
-- Se o **débito** aparece no link e se `excluded_payment_types` com esses ids está correto.
+- Se o **débito** aparece no link e se os demais ids de `excluded_payment_types` estão corretos. Confirmado no teste real (31/10/2026): `account_money` **não pode** ser excluído (400); o saldo em conta do comprador entra como débito.
 - Se `transaction_amount` do pagamento continua igual ao valor do item quando o comprador paga juros do parcelamento (se vier maior, a cobrança nunca confirma: ajustar a comparação).
 - Quem paga o juro do parcelamento (configuração da conta do vendedor no Mercado Pago) e o parcelamento máximo disponível.
 - Endereço do link (`init_point`) em produção e comportamento da expiração (`expiration_date_from/to`).

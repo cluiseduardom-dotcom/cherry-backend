@@ -15,7 +15,8 @@ const VALIDADE_PIX_MS = 30 * 60 * 1000;
 // (a taxa só incide sobre Pix); o campo marketplace_fee existe no cliente e só é enviado se isto mudar.
 const VALIDADE_LINK_CARTAO_MS = 2 * 60 * 60 * 1000;
 const PARCELAS_MAXIMAS_LINK = 12;
-const TIPO_CARTAO_POR_TIPO_PAGAMENTO = { credit_card: 'credito', debit_card: 'debito' };
+// account_money (saldo do comprador no Mercado Pago) não pode ser excluído do link: entra como débito (à vista, 1x).
+const TIPO_CARTAO_POR_TIPO_PAGAMENTO = { credit_card: 'credito', debit_card: 'debito', account_money: 'debito' };
 // Consulta ao provedor na leitura da cobrança: no máximo uma a cada 5 s por cobrança.
 const INTERVALO_CONSULTA_MS = 5000;
 

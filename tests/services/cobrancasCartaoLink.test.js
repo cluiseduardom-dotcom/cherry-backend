@@ -80,6 +80,10 @@ describe('escolherPagamentoCartao', () => {
         expect(service.escolherPagamentoCartao([pagamentoMp({ transaction_amount: 119.99 })], base)).toBeNull();
     });
 
+    test('saldo em conta do Mercado Pago (account_money) vale como débito', () => {
+        expect(service.escolherPagamentoCartao([pagamentoMp({ payment_type_id: 'account_money' })], base)).toMatchObject({ id: 555 });
+    });
+
     test('uma tentativa recusada não impede de achar a aprovada depois', () => {
         const lista = [pagamentoMp({ id: 1, status: 'rejected' }), pagamentoMp({ id: 2 })];
         expect(service.escolherPagamentoCartao(lista, base)).toMatchObject({ id: 2 });
