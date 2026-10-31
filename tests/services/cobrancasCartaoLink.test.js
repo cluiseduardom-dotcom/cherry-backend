@@ -5,10 +5,12 @@ jest.mock('../../src/repositories/cobrancasPagamentoRepository');
 jest.mock('../../src/repositories/cobrancaDevolucoesRepository');
 jest.mock('../../src/repositories/taxasPlataformaRepository');
 jest.mock('../../src/repositories/mercadoPagoRepository');
+jest.mock('../../src/repositories/empresaRepository');
 
 const client = require('../../src/integrations/mercadoPagoClient');
 const mercadoPagoService = require('../../src/services/mercadoPagoService');
 const repo = require('../../src/repositories/cobrancasPagamentoRepository');
+const empresaRepo = require('../../src/repositories/empresaRepository');
 const mpRepo = require('../../src/repositories/mercadoPagoRepository');
 const service = require('../../src/services/cobrancasPagamentoService');
 
@@ -30,6 +32,7 @@ beforeEach(() => {
     jest.resetAllMocks();
     mercadoPagoService.exigirConfig.mockReturnValue(CONFIG);
     mercadoPagoService.obterAccessToken.mockResolvedValue('token-da-loja');
+    empresaRepo.obterDados.mockResolvedValue({ id: 3, nome: 'Cherry Semijoias' });
 });
 
 describe('criarLinkCartao', () => {
@@ -44,11 +47,25 @@ describe('criarLinkCartao', () => {
             empresa_id: 3, metodo: 'cartao_link', taxa_plataforma: 0, parcelas_maximas: 12, valor: '120.00'
         }));
         expect(client.criarPreferenciaCartao).toHaveBeenCalledWith(CONFIG, expect.objectContaining({
-            accessToken: 'token-da-loja', valor: 120, taxaPlataforma: 0, parcelasMaximas: 12
+            accessToken: 'token-da-loja', valor: 120, taxaPlataforma: 0, parcelasMaximas: 12,
+            descricao: 'Cherry Semijoias', nomeLoja: 'Cherry Semijoias'
         }));
+        // O nome vem do tenant do JWT, nunca do cliente.
+        expect(empresaRepo.obterDados).toHaveBeenCalledWith(3);
         expect(res).toMatchObject({ metodo: 'cartao_link', link_url: 'https://mp.exemplo/checkout', parcelas_maximas: 12, status: 'pendente' });
         expect(res).not.toHaveProperty('taxa_plataforma');
         expect(res).not.toHaveProperty('id_externo');
+    });
+
+    test('empresa sem nome usa título neutro', async () => {
+        empresaRepo.obterDados.mockResolvedValue({ id: 3, nome: '   ' });
+        repo.criar.mockResolvedValue(cobranca());
+        client.criarPreferenciaCartao.mockResolvedValue({ preferenciaId: 'pref-1', linkUrl: 'https://mp.exemplo/checkout' });
+        repo.registrarLinkCriado.mockResolvedValue(cobranca());
+
+        await service.criarLinkCartao({ empresa_id: 3, usuario_id: 9 }, { valor: 120 });
+
+        expect(client.criarPreferenciaCartao).toHaveBeenCalledWith(CONFIG, expect.objectContaining({ descricao: 'Venda', nomeLoja: '' }));
     });
 
     test('falha do provedor marca a cobrança como falhou e repassa o erro', async () => {
