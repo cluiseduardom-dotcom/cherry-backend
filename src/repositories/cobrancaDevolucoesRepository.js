@@ -27,6 +27,10 @@ async function reservar({ empresa_id, codigo, motivo, solicitado_por }) {
             throw new AppError('Cobrança Pix não encontrada', 404);
         }
 
+        if (cobranca.metodo !== 'pix') {
+            throw new AppError('A devolução de pagamentos de cartão ainda não está disponível.', 409);
+        }
+
         if (cobranca.status === 'estornado') {
             throw new AppError('Este Pix já foi devolvido.', 409);
         }
@@ -93,7 +97,7 @@ async function marcarFalhou({ id, empresa_id, erro }) {
 // Pix pagos que podem ser devolvidos agora: sem venda, ou de venda cancelada, e sem devolução ativa.
 // Nunca traz taxa da plataforma, id do provedor ou dados do pagador.
 async function listarADevolver({ empresa_id, limit = LIMITE_PADRAO, offset = 0 }) {
-    const filtro = `c.empresa_id = $1 AND c.status = 'pago'
+    const filtro = `c.empresa_id = $1 AND c.metodo = 'pix' AND c.status = 'pago'
                     AND (c.venda_id IS NULL OR v.status = 'cancelada')
                     AND NOT EXISTS (
                         SELECT 1 FROM cobranca_devolucoes d

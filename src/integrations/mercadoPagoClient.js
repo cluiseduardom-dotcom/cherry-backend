@@ -166,6 +166,54 @@ async function criarPagamentoPix(config, { accessToken, codigo, valor, descricao
     };
 }
 
+// Tipos de pagamento do Checkout Pro EXCLUÍDOS: o link só aceita cartão de crédito e de débito.
+// [CONFIRMAR NO TESTE REAL] a lista de ids de tipo aceitos em excluded_payment_types e se o débito aparece no link.
+const TIPOS_EXCLUIDOS_LINK_CARTAO = ['ticket', 'bank_transfer', 'account_money', 'atm', 'digital_currency', 'digital_wallet'];
+
+// Documentado (Checkout Pro marketplace): POST /checkout/preferences com o access token do VENDEDOR;
+// a comissão da plataforma vai em marketplace_fee (valor em reais). external_reference = nosso código.
+// [CONFIRMAR NO TESTE REAL] criação com o token OAuth da loja, installments como teto de parcelas e init_point.
+async function criarPreferenciaCartao(config, { accessToken, codigo, valor, descricao, taxaPlataforma, parcelasMaximas, expiraDe, expiraAte }) {
+    const corpo = {
+        items: [{ id: codigo, title: descricao, quantity: 1, currency_id: 'BRL', unit_price: valor }],
+        external_reference: codigo,
+        notification_url: config.webhookUrl,
+        payment_methods: {
+            excluded_payment_types: TIPOS_EXCLUIDOS_LINK_CARTAO.map((id) => ({ id })),
+            installments: parcelasMaximas
+        },
+        expires: true,
+        expiration_date_from: expiraDe,
+        expiration_date_to: expiraAte
+    };
+
+    if (taxaPlataforma > 0) corpo.marketplace_fee = taxaPlataforma;
+
+    const dados = await chamar(config, {
+        metodo: 'POST', base: config.apiUrl, caminho: '/checkout/preferences', corpo, token: accessToken, idempotencia: codigo
+    });
+
+    const link = config.sandbox ? dados?.sandbox_init_point : dados?.init_point;
+
+    if (!dados || typeof dados.id !== 'string' || !dados.id || typeof link !== 'string' || !link.startsWith('https://')) {
+        throw new AppError('Resposta inesperada do Mercado Pago ao gerar o link de pagamento.', 424);
+    }
+
+    return { preferenciaId: dados.id, linkUrl: link };
+}
+
+// Pagamentos de uma preferência/cobrança, pelo external_reference (o nosso código), com o token da loja.
+async function buscarPagamentosPorReferencia(config, { accessToken, codigo }) {
+    const dados = await chamar(config, {
+        metodo: 'GET',
+        base: config.apiUrl,
+        caminho: `/v1/payments/search?external_reference=${encodeURIComponent(codigo)}&sort=date_created&criteria=desc`,
+        token: accessToken
+    });
+
+    return Array.isArray(dados?.results) ? dados.results : [];
+}
+
 async function buscarPagamento(config, { accessToken, idExterno }) {
     return chamar(config, {
         metodo: 'GET', base: config.apiUrl, caminho: `/v1/payments/${encodeURIComponent(idExterno)}`, token: accessToken
@@ -205,4 +253,7 @@ async function devolverPagamento(config, { accessToken, idExterno, idempotencia 
     return { idExterno: String(dados.id), status: dados.status ?? null };
 }
 
-module.exports = { montarUrlAutorizacao, trocarCodigo, renovarToken, criarPagamentoPix, buscarPagamento, devolverPagamento };
+module.exports = {
+    montarUrlAutorizacao, trocarCodigo, renovarToken, criarPagamentoPix, criarPreferenciaCartao,
+    buscarPagamentosPorReferencia, buscarPagamento, devolverPagamento
+};

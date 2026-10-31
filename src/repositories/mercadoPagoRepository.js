@@ -13,6 +13,16 @@ async function buscarConexao(empresa_id, client = db) {
     return rows[0] ?? null;
 }
 
+// Só para o webhook de link de cartão: a conta do Mercado Pago identifica a loja (índice único entre as ativas).
+async function buscarEmpresaPorMpUserId(mpUserId, client = db) {
+    const { rows } = await client.query(
+        'SELECT empresa_id FROM empresa_mercadopago WHERE mp_user_id = $1 AND ativo',
+        [mpUserId]
+    );
+
+    return rows[0] ?? null;
+}
+
 async function criarEstado({ state, empresa_id, usuario_id, ttlMinutos }) {
     // Faxina de estados vencidos junto da criação: a tabela não cresce sem controle.
     await db.query(`DELETE FROM mp_oauth_estados WHERE expira_em < NOW() - INTERVAL '1 day'`);
@@ -87,4 +97,4 @@ async function desativar(empresa_id) {
     return rowCount > 0;
 }
 
-module.exports = { buscarConexao, criarEstado, consumirEstado, salvarConexao, atualizarTokens, desativar };
+module.exports = { buscarConexao, buscarEmpresaPorMpUserId, criarEstado, consumirEstado, salvarConexao, atualizarTokens, desativar };

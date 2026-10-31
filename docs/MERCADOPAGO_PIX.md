@@ -102,3 +102,27 @@ Cancelar a venda **não** devolve o Pix sozinho: a devolução é um pedido expl
 - A recusa por falta de saldo disponível também ocorre no app do Mercado Pago da lojista, mesmo com saldo visível maior que o valor. O motivo exato (saldo "a liberar", rendimento, regra de marketplace) **não foi esclarecido**; o teste de devolução concluída continua pendente.
 - A comissão `application_fee` (R$ 0,03) chegou na conta dona do app e ficou em "Dinheiro a liberar".
 - Tratamento: `120065` vira "A conta Mercado Pago da loja não tem saldo disponível para devolver este Pix…" (424, ≤ 200 caracteres). Até o fluxo estar validado, devolução de cliente pode ser feita fora do sistema; a cobrança segue `pago` no Vertumno.
+
+
+## Link de pagamento de cartão (migration 079)
+
+Mesma tabela `cobrancas_pagamento`, `metodo = 'cartao_link'`. Fluxo:
+
+1. `POST /pagamentos-gateway/cartao` `{ valor }` (admin/vendedor; empresa do JWT) → cria a cobrança e a preferência do Checkout Pro com o token OAuth da loja. Resposta: `codigo`, `link_url`, `parcelas_maximas` (12), `expira_em(_segundos)`, `status`. Nunca devolve taxa nem ids do provedor.
+2. O cliente abre `link_url` e paga na página do Mercado Pago (crédito ou débito).
+3. `GET /pagamentos-gateway/:codigo` (PDV, a cada poucos segundos) e o webhook consultam `GET /v1/payments/search?external_reference=<codigo>` com o token da loja. Só vale pagamento **aprovado**, com a nossa referência, de cartão (`credit_card`/`debit_card`) e valor exato. Grava `id_externo`, `tipo_cartao` e `parcelas` (débito = 1) a partir do pagamento. Tentativa recusada não fecha a cobrança: o cliente pode tentar de novo no mesmo link.
+4. A venda (`POST /vendas`) envia `{ forma_pagamento: 'credito'|'debito', numero_parcelas, valor, cobranca_codigo }`; o backend confere empresa, status `pago`, valor, forma e parcelas **contra o pagamento confirmado**, uma única vez. A origem `gateway` só nasce aí.
+
+Webhook: para pagamento sem cobrança ligada ainda, a loja vem do `user_id` da notificação, o pagamento é lido com o token DELA e o `external_reference` liga à cobrança. Nada do corpo recebido é gravado.
+
+**Taxa da plataforma**: 0 no cartão (decisão do PO: a taxa incide só no Pix). O cliente já envia `marketplace_fee` apenas se `taxaPlataforma > 0` (documentado para Checkout Pro marketplace, com o token do vendedor), então ligar a taxa depois não exige mudança de contrato; exige decisão de percentual (regra de negócio).
+
+**Fora do escopo desta entrega**: devolução de pagamento de cartão (recusada com 409; fazer pelo painel do Mercado Pago), maquininha integrada (Fase 3, pesquisa).
+
+### Ainda NÃO confirmado (validar com cobrança real de R$ 1 na conta da loja)
+
+- Criação da preferência com o **token OAuth da loja** (não só credenciais da aplicação) e aceitação de `payment_methods.installments = 12`.
+- Se o **débito** aparece no link e se `excluded_payment_types` com esses ids está correto.
+- Se `transaction_amount` do pagamento continua igual ao valor do item quando o comprador paga juros do parcelamento (se vier maior, a cobrança nunca confirma: ajustar a comparação).
+- Quem paga o juro do parcelamento (configuração da conta do vendedor no Mercado Pago) e o parcelamento máximo disponível.
+- Endereço do link (`init_point`) em produção e comportamento da expiração (`expiration_date_from/to`).

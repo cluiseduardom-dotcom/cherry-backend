@@ -435,7 +435,8 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             // conferir a cobrança (mesma empresa, paga, mesmo valor, nunca usada). O cliente não a declara.
             const cobranca = pagamentoInput.cobranca_codigo
                 ? await cobrancasPagamentoRepository.consumirParaVenda({
-                    codigo: pagamentoInput.cobranca_codigo, empresa_id, venda_id: venda.id, valor
+                    codigo: pagamentoInput.cobranca_codigo, empresa_id, venda_id: venda.id, valor,
+                    forma_pagamento: forma, numero_parcelas: pagamentoInput.numero_parcelas
                 }, client)
                 : null;
 
