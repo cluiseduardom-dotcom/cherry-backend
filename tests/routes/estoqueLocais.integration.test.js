@@ -53,7 +53,14 @@ const centralId = async (alvo) => (await db.query(`SELECT id FROM locais_estoque
 const saldos = async (produtoId) => (await db.query('SELECT local_id, saldo FROM estoque_locais WHERE produto_id = $1 ORDER BY local_id', [produtoId])).rows;
 const total = async (produtoId) => (await db.query('SELECT estoque_atual FROM produtos WHERE id = $1', [produtoId])).rows[0].estoque_atual;
 const somaLocais = async (produtoId) => Number((await db.query('SELECT COALESCE(SUM(saldo), 0) AS s FROM estoque_locais WHERE produto_id = $1', [produtoId])).rows[0].s);
-const mov = (alvo, produtoId, corpo) => api(alvo, alvo.estoquista, 'estoquista', 'post', `/produtos/${produtoId}/movimentacoes`, corpo);
+// Estes testes exercitam saldo por local, não a regra de origem: o estoquista da empresa A recebe as
+// capacidades de estoque (ver beforeAll) e cada tipo usa um motivo válido da lista.
+const MOTIVO_PADRAO = {
+    entrada: { motivo_codigo: 'recebimento_sem_compra', observacao: 'Teste de saldo por local' },
+    saida: { motivo_codigo: 'perda' },
+    ajuste: { motivo_codigo: 'contagem' }
+};
+const mov = (alvo, produtoId, corpo) => api(alvo, alvo.estoquista, 'estoquista', 'post', `/produtos/${produtoId}/movimentacoes`, { ...MOTIVO_PADRAO[corpo.tipo], ...corpo });
 
 beforeAll(async () => {
     await criarEmpresa(A, 'A');
@@ -63,6 +70,12 @@ beforeAll(async () => {
     A.vendedor = await criarUsuario(A, 'vendedor');
     B.admin = await criarUsuario(B, 'admin');
     B.estoquista = await criarUsuario(B, 'estoquista');
+    for (const alvo of [A, B]) {
+        await db.query(
+            `INSERT INTO cargos_empresa (empresa_id, cargo, ativo, capacidades) VALUES ($1, 'estoquista', true, ARRAY['ajustar_estoque', 'receber_sem_compra'])`,
+            [alvo.empresaId]
+        );
+    }
 });
 
 afterAll(async () => {

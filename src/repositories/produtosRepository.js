@@ -72,6 +72,7 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
             tipo: 'entrada',
             quantidade: estoqueInicial,
             motivo: 'Estoque inicial',
+            origem: 'estoque_inicial',
             usuario_id,
             empresa_id
         }, client);

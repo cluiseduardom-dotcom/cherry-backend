@@ -1,8 +1,30 @@
 const estoqueRepository = require('../repositories/estoqueRepository');
 const produtosRepository = require('../repositories/produtosRepository');
 const AppError = require('../errors/AppError');
+const { MOTIVOS_ESTOQUE } = require('../constants/motivosEstoque');
+const { CAPACIDADES } = require('../constants/cargos');
+const { temCapacidade } = require('./permissoesService');
 
-async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo, local_id }, usuario_id, empresaId) {
+// Movimentação AVULSA (tela de Estoque). Entrada de mercadoria normal é Compra ou Recebimento; aqui só
+// entram: estoque inicial (Admin, produto sem nenhuma movimentação) e recebimento sem compra
+// (capacidade `receber_sem_compra`). Ajuste para MAIS exige `ajustar_estoque`; saída e ajuste para
+// MENOS seguem liberados ao Estoquista, sempre com motivo da lista. As permissões são checadas aqui
+// no backend; a tela só esconde o que o usuário não pode.
+// `usuario` é o req.usuario; sem ele, nada que exija permissão passa.
+async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo_codigo, observacao, local_id }, usuario_id, empresaId, usuario) {
+    if (tipo === 'entrada') {
+        if (motivo_codigo === 'estoque_inicial' && usuario?.role !== 'admin') {
+            throw new AppError('Somente o administrador pode lançar estoque inicial', 403);
+        }
+
+        if (motivo_codigo === 'recebimento_sem_compra' && !temCapacidade(usuario, CAPACIDADES.RECEBER_SEM_COMPRA)) {
+            throw new AppError('Sem permissão para receber mercadoria sem compra', 403);
+        }
+    }
+
+    const rotulo = MOTIVOS_ESTOQUE[tipo][motivo_codigo].rotulo;
+    const motivo = observacao ? `${rotulo} — ${observacao}` : rotulo;
+
     const produto = await produtosRepository.buscarPorId(produto_id, empresaId);
 
     if (!produto) {
@@ -20,7 +42,10 @@ async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo, loc
         motivo,
         usuario_id,
         empresa_id: empresaId,
-        local_id
+        local_id,
+        origem: motivo_codigo,
+        bloquearAjusteParaMais: tipo === 'ajuste' && !temCapacidade(usuario, CAPACIDADES.AJUSTAR_ESTOQUE),
+        exigirSemHistorico: motivo_codigo === 'estoque_inicial'
     });
 
     if (resultado.erro === 'PRODUTO_NAO_ENCONTRADO') {
@@ -33,6 +58,14 @@ async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo, loc
 
     if (resultado.erro === 'ESTOQUE_INSUFICIENTE') {
         throw new AppError('Estoque insuficiente para essa saída', 409);
+    }
+
+    if (resultado.erro === 'AJUSTE_PARA_MAIS_NAO_AUTORIZADO') {
+        throw new AppError('Sem permissão para ajustar o estoque para mais. Para entrada de mercadoria, registre uma compra ou um recebimento', 403);
+    }
+
+    if (resultado.erro === 'ENTRADA_INICIAL_COM_HISTORICO') {
+        throw new AppError('Estoque inicial só pode ser lançado em produto sem nenhuma movimentação. Para entrada de mercadoria, registre uma compra ou um recebimento', 409);
     }
 
     return resultado.movimentacao;

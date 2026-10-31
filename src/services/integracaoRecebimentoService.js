@@ -54,6 +54,7 @@ async function aprovar(recebimentoId, usuario) {
                     tipo: 'entrada',
                     quantidade: Number(item.quantidade_recebida),
                     motivo: `Recebimento #${recebimento.id}`,
+                    origem: 'recebimento',
                     usuario_id: usuario.id,
                     empresa_id: empresaId
                 }, client);

@@ -189,7 +189,7 @@ beforeAll(async () => {
     const movRes = await request(app)
         .post(`/produtos/${produtosE2[0]}/movimentacoes`)
         .set('Authorization', `Bearer ${empresa2AdminToken}`)
-        .send({ tipo: 'entrada', quantidade: 5, motivo: 'Estoque inicial teste isolamento' });
+        .send({ tipo: 'saida', quantidade: 1, motivo_codigo: 'perda' });
 
     if (movRes.status !== 201) throw new Error(`Falha ao criar movimentação e2: ${movRes.status} ${JSON.stringify(movRes.body)}`);
 
@@ -605,10 +605,10 @@ describe('empresa 2 não vê dados da empresa 1', () => {
             .get(`/produtos/${produtosE2[0]}/movimentacoes`)
             .set('Authorization', `Bearer ${empresa2AdminToken}`);
 
-        // 5 esperadas: o estoque inicial do produto + a entrada manual + uma entrada da compra + uma saída para cada venda.
+        // 5 esperadas: o estoque inicial do produto + a saída manual (perda) + uma entrada da compra + uma saída para cada venda.
         expect(res.status).toBe(200);
         expect(res.body.data.total).toBe(5);
-        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'entrada', 'entrada', 'saida', 'saida']);
+        expect(res.body.data.items.map((m) => m.tipo).sort()).toEqual(['entrada', 'entrada', 'saida', 'saida', 'saida']);
     });
 });
 

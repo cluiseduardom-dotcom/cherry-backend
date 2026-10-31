@@ -82,6 +82,7 @@ async function criar({ fornecedor_id, data_compra, nota_fiscal, forma_pagamento,
                     tipo: 'entrada',
                     quantidade: item.quantidade,
                     motivo: `Compra #${compra.id}`,
+                    origem: 'compra',
                     usuario_id,
                     empresa_id
                 },
@@ -291,6 +292,7 @@ async function cancelar(id, usuario_id, empresa_id) {
                     tipo: 'saida',
                     quantidade: item.quantidade,
                     motivo: 'cancelamento_compra',
+                    origem: 'cancelamento_compra',
                     usuario_id,
                     empresa_id
                 },
