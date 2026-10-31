@@ -36,4 +36,12 @@ async function remover(req, res, next) {
     } catch (error) { next(error); }
 }
 
-module.exports = { listar, buscar, adicionar, remover };
+async function gerarParaEtiquetas(req, res, next) {
+    try {
+        const ids = req.body?.produto_ids;
+        if (!Array.isArray(ids)) throw new AppError('produto_ids deve ser uma lista', 400);
+        return response.success(res, await produtosCodigosService.garantirCodigosParaEtiqueta(ids, req.usuario.empresa_id, req.usuario.id));
+    } catch (error) { next(error); }
+}
+
+module.exports = { listar, buscar, adicionar, remover, gerarParaEtiquetas };

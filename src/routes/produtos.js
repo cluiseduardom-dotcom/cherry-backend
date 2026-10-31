@@ -14,6 +14,8 @@ const requireEstoquista = require('../middlewares/requireEstoquista');
 router.get('/', controller.listar);
 router.get('/buscar-codigo/:codigo', produtosCodigosController.buscar);
 router.post('/', requireAdmin, controller.criar);
+// Garante o código de cada produto para imprimir etiqueta (idempotente). Estoquista/admin, como o cadastro de códigos.
+router.post('/codigos/etiquetas', requireEstoquista, produtosCodigosController.gerarParaEtiquetas);
 router.get('/mais-vendidos', controller.maisVendidos);
 router.get('/curva-abc', controller.curvaABC);
 router.get('/reposicao', controller.reposicao);

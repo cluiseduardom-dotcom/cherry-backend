@@ -94,4 +94,76 @@ async function remover(id, empresaId) {
     return removido;
 }
 
-module.exports = { listarPorProduto, buscarPorCodigo, adicionar, remover };
+const LIMITE_ETIQUETAS_POR_PEDIDO = 200;
+
+// Códigos internos candidatos, do mais curto ao mais longo: o curto cabe em etiqueta pequena (Code 128 em
+// dígitos usa 2 por símbolo). Nunca é EAN: EAN oficial exige a GS1; se a loja contratar depois, o EAN entra como
+// principal e este continua ativo (as etiquetas já coladas seguem lendo).
+function candidatosCodigoInterno(produtoId) {
+    return [String(produtoId).padStart(6, '0'), `I${String(produtoId).padStart(8, '0')}`];
+}
+
+function primeiroCodigoPorProduto(linhas) {
+    const mapa = new Map();
+
+    for (const linha of linhas) {
+        if (!mapa.has(linha.produto_id)) mapa.set(linha.produto_id, linha);
+    }
+
+    return mapa;
+}
+
+// Garante um código por produto para imprimir etiqueta e devolve o código a usar. Idempotente: quem já tem
+// código ativo (principal primeiro) mantém o dele; só quem não tem recebe um INTERNO novo. Código por PRODUTO
+// (todas as peças iguais leem o mesmo código); empresa vem do JWT.
+async function garantirCodigosParaEtiqueta(produtoIds, empresaId, usuarioId) {
+    if (!Array.isArray(produtoIds) || produtoIds.length === 0) throw new AppError('Informe ao menos um produto', 400);
+
+    const ids = [...new Set(produtoIds)];
+
+    if (ids.length > LIMITE_ETIQUETAS_POR_PEDIDO) throw new AppError(`Máximo de ${LIMITE_ETIQUETAS_POR_PEDIDO} produtos por pedido`, 400);
+    if (!ids.every((id) => Number.isInteger(id) && id > 0)) throw new AppError('ID de produto inválido', 400);
+
+    const daEmpresa = await produtosCodigosRepository.idsDeProdutosDaEmpresa(ids, empresaId);
+
+    if (daEmpresa.length !== ids.length) throw new AppError('Produto não encontrado', 404);
+
+    const existentes = primeiroCodigoPorProduto(await produtosCodigosRepository.listarAtivosDeProdutos(ids, empresaId));
+    const resultado = [];
+
+    for (const produtoId of ids) {
+        let atual = existentes.get(produtoId);
+
+        if (!atual) {
+            for (const candidato of candidatosCodigoInterno(produtoId)) {
+                try {
+                    const criado = await produtosCodigosRepository.criar({
+                        empresaId, produtoId, codigo: candidato, tipo: 'INTERNO', principal: true,
+                        descricao: 'Código interno (etiqueta)', usuarioId
+                    });
+
+                    atual = criado;
+                    break;
+                } catch (error) {
+                    if (error.code !== '23505') throw error;
+
+                    // Corrida (outro pedido criou agora) ou código já usado por outro produto: relê antes de tentar o próximo.
+                    const relido = primeiroCodigoPorProduto(await produtosCodigosRepository.listarAtivosDeProdutos([produtoId], empresaId)).get(produtoId);
+
+                    if (relido) {
+                        atual = relido;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!atual) throw new AppError('Não foi possível gerar o código do produto', 409);
+
+        resultado.push({ produto_id: produtoId, codigo: atual.codigo, tipo: atual.tipo });
+    }
+
+    return resultado;
+}
+
+module.exports = { listarPorProduto, buscarPorCodigo, adicionar, remover, garantirCodigosParaEtiqueta, LIMITE_ETIQUETAS_POR_PEDIDO };
