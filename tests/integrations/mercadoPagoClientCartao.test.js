@@ -42,6 +42,39 @@ describe('criarPreferenciaCartao', () => {
         expect(res).toEqual({ preferenciaId: 'pref-1', linkUrl: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' });
     });
 
+    test('experiência do cliente: nome da loja, fatura, volta para a nossa página, binary_mode e 1x como padrão', async () => {
+        fetchSpy.mockResolvedValue(respostaFetch({ id: 'p', init_point: 'https://mp.exemplo/x' }, 201));
+        await client.criarPreferenciaCartao({ ...CONFIG, frontendUrl: 'https://app.exemplo.com' }, { ...params, descricao: 'Cherry Semijoias', nomeLoja: 'Cherry Semijóias & Cia Ltda Matriz' });
+
+        const corpo = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(corpo.items[0].title).toBe('Cherry Semijoias');
+        expect(corpo.statement_descriptor).toBe('CHERRY SEMIJOIAS');
+        expect(corpo.statement_descriptor.length).toBeLessThanOrEqual(16);
+        expect(corpo.back_urls).toEqual({
+            success: 'https://app.exemplo.com/pagamento-recebido?resultado=sucesso',
+            pending: 'https://app.exemplo.com/pagamento-recebido?resultado=pendente',
+            failure: 'https://app.exemplo.com/pagamento-recebido?resultado=falha'
+        });
+        expect(corpo.auto_return).toBe('approved');
+        expect(corpo.binary_mode).toBe(true);
+        expect(corpo.payment_methods.default_installments).toBe(1);
+    });
+
+    test('sem nome utilizável não envia statement_descriptor; sem frontendUrl não envia back_urls', async () => {
+        fetchSpy.mockResolvedValue(respostaFetch({ id: 'p', init_point: 'https://mp.exemplo/x' }, 201));
+        await client.criarPreferenciaCartao(CONFIG, { ...params, nomeLoja: '***' });
+
+        const corpo = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(corpo).not.toHaveProperty('statement_descriptor');
+        expect(corpo).not.toHaveProperty('back_urls');
+        expect(corpo).not.toHaveProperty('auto_return');
+    });
+
+    test('descritivoDeFatura remove acentos, símbolos e limita a 16 caracteres', () => {
+        expect(client.descritivoDeFatura('Grazielá Doces & Cia')).toBe('GRAZIELA DOCES C');
+        expect(client.descritivoDeFatura(null)).toBe('');
+    });
+
     test('envia marketplace_fee só quando há taxa', async () => {
         fetchSpy.mockResolvedValue(respostaFetch({ id: 'p', init_point: 'https://mp.exemplo/x' }, 201));
         await client.criarPreferenciaCartao(CONFIG, { ...params, taxaPlataforma: 0.6 });

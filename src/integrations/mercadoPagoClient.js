@@ -171,22 +171,53 @@ async function criarPagamentoPix(config, { accessToken, codigo, valor, descricao
 // ele é tratado como débito (à vista) na confirmação. [CONFIRMAR NO TESTE REAL] os demais ids e se o débito aparece.
 const TIPOS_EXCLUIDOS_LINK_CARTAO = ['ticket', 'bank_transfer', 'atm', 'digital_currency', 'digital_wallet'];
 
+// Texto que aparece na fatura do cartão do cliente: o Mercado Pago aceita até 16 caracteres.
+// Só letras sem acento, números e espaço; vazio = não enviar (o Mercado Pago usa o padrão dele).
+const LIMITE_DESCRITIVO_FATURA = 16;
+
+function descritivoDeFatura(nome) {
+    return String(nome ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^A-Za-z0-9 ]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase()
+        .slice(0, LIMITE_DESCRITIVO_FATURA)
+        .trim();
+}
+
 // Documentado (Checkout Pro marketplace): POST /checkout/preferences com o access token do VENDEDOR;
 // a comissão da plataforma vai em marketplace_fee (valor em reais). external_reference = nosso código.
+// Experiência do cliente: título = nome da loja, descritivo na fatura, volta para a nossa página ao final
+// (back_urls + auto_return só no pagamento aprovado) e binary_mode (aprovado ou recusado, sem "em análise").
 // [CONFIRMAR NO TESTE REAL] criação com o token OAuth da loja, installments como teto de parcelas e init_point.
-async function criarPreferenciaCartao(config, { accessToken, codigo, valor, descricao, taxaPlataforma, parcelasMaximas, expiraDe, expiraAte }) {
+async function criarPreferenciaCartao(config, { accessToken, codigo, valor, descricao, nomeLoja, taxaPlataforma, parcelasMaximas, expiraDe, expiraAte }) {
     const corpo = {
         items: [{ id: codigo, title: descricao, quantity: 1, currency_id: 'BRL', unit_price: valor }],
         external_reference: codigo,
         notification_url: config.webhookUrl,
         payment_methods: {
             excluded_payment_types: TIPOS_EXCLUIDOS_LINK_CARTAO.map((id) => ({ id })),
-            installments: parcelasMaximas
+            installments: parcelasMaximas,
+            default_installments: 1
         },
+        binary_mode: true,
         expires: true,
         expiration_date_from: expiraDe,
         expiration_date_to: expiraAte
     };
+
+    if (config.frontendUrl) {
+        const retorno = (resultado) => `${config.frontendUrl}/pagamento-recebido?resultado=${resultado}`;
+
+        corpo.back_urls = { success: retorno('sucesso'), pending: retorno('pendente'), failure: retorno('falha') };
+        corpo.auto_return = 'approved';
+    }
+
+    const fatura = descritivoDeFatura(nomeLoja);
+
+    if (fatura) corpo.statement_descriptor = fatura;
 
     if (taxaPlataforma > 0) corpo.marketplace_fee = taxaPlataforma;
 
@@ -256,5 +287,5 @@ async function devolverPagamento(config, { accessToken, idExterno, idempotencia 
 
 module.exports = {
     montarUrlAutorizacao, trocarCodigo, renovarToken, criarPagamentoPix, criarPreferenciaCartao,
-    buscarPagamentosPorReferencia, buscarPagamento, devolverPagamento
+    buscarPagamentosPorReferencia, buscarPagamento, devolverPagamento, descritivoDeFatura
 };

@@ -6,6 +6,7 @@ const mercadoPagoRepository = require('../repositories/mercadoPagoRepository');
 const cobrancasRepository = require('../repositories/cobrancasPagamentoRepository');
 const devolucoesRepository = require('../repositories/cobrancaDevolucoesRepository');
 const taxasPlataformaRepository = require('../repositories/taxasPlataformaRepository');
+const empresaRepository = require('../repositories/empresaRepository');
 const db = require('../config/db');
 const { reaisParaCentavos, calcularTaxaPlataformaCentavos, centavosParaReais } = require('../utils/taxaPlataforma');
 
@@ -161,6 +162,10 @@ async function criarLinkCartao({ empresa_id, usuario_id }, { valor }) {
     // Falha cedo (409) se a loja não conectou o Mercado Pago, antes de gravar qualquer cobrança.
     const accessToken = await mercadoPagoService.obterAccessToken(empresa_id);
 
+    // Nome da loja (do tenant do JWT) para o título do link e o texto da fatura do cliente.
+    const empresa = await empresaRepository.obterDados(empresa_id);
+    const nomeLoja = String(empresa?.nome ?? '').trim();
+
     const codigo = crypto.randomUUID();
     const cobranca = await cobrancasRepository.criar({
         codigo,
@@ -182,7 +187,8 @@ async function criarLinkCartao({ empresa_id, usuario_id }, { valor }) {
             accessToken,
             codigo,
             valor: Number(centavosParaReais(valorCentavos)),
-            descricao: 'Venda no PDV',
+            descricao: nomeLoja.slice(0, 120) || 'Venda',
+            nomeLoja,
             taxaPlataforma: 0,
             parcelasMaximas: PARCELAS_MAXIMAS_LINK,
             expiraDe: formatarExpiracao(agora),
