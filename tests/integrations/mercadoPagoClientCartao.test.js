@@ -42,7 +42,7 @@ describe('criarPreferenciaCartao', () => {
         expect(res).toEqual({ preferenciaId: 'pref-1', linkUrl: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' });
     });
 
-    test('experiência do cliente: nome da loja, fatura, volta para a nossa página, binary_mode e 1x como padrão', async () => {
+    test('experiência do cliente: nome da loja, fatura, volta para a nossa página e 1x como padrão', async () => {
         fetchSpy.mockResolvedValue(respostaFetch({ id: 'p', init_point: 'https://mp.exemplo/x' }, 201));
         await client.criarPreferenciaCartao({ ...CONFIG, frontendUrl: 'https://app.exemplo.com' }, { ...params, descricao: 'Cherry Semijoias', nomeLoja: 'Cherry Semijóias & Cia Ltda Matriz' });
 
@@ -56,7 +56,8 @@ describe('criarPreferenciaCartao', () => {
             failure: 'https://app.exemplo.com/pagamento-recebido?resultado=falha'
         });
         expect(corpo.auto_return).toBe('approved');
-        expect(corpo.binary_mode).toBe(true);
+        // binary_mode derrubaria pagamentos que dependem de autorização do banco: nunca enviar.
+        expect(corpo).not.toHaveProperty('binary_mode');
         expect(corpo.payment_methods.default_installments).toBe(1);
     });
 
