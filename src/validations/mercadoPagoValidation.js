@@ -11,6 +11,8 @@ const criarPixSchema = z.strictObject({
     cliente_email: z.string().trim().max(254).email('E-mail do cliente inválido').optional()
 });
 
+const criarLinkCartaoSchema = z.strictObject({ valor: valorPix });
+
 const codigoCobrancaSchema = z.string().uuid('Código de cobrança inválido');
 
 const devolucaoSchema = z.strictObject({
@@ -22,4 +24,4 @@ const paginacaoDevolucoesSchema = z.object({
     offset: z.coerce.number().int().min(0).default(0)
 });
 
-module.exports = { criarPixSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema };
+module.exports = { criarPixSchema, criarLinkCartaoSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema };

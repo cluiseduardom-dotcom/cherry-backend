@@ -37,7 +37,7 @@ async function taxasPorEmpresa(mes) {
                     COALESCE((
                         SELECT SUM(cp.taxa_plataforma)
                         FROM cobrancas_pagamento cp
-                        WHERE cp.venda_id = tv.venda_id AND cp.empresa_id = tv.empresa_id AND cp.status = 'pago'
+                        WHERE cp.venda_id = tv.venda_id AND cp.empresa_id = tv.empresa_id AND cp.status = 'pago' AND cp.metodo = 'pix'
                     ), 0) AS cobrada_gateway
              FROM taxas_venda tv
              JOIN vendas v ON v.id = tv.venda_id AND v.empresa_id = tv.empresa_id

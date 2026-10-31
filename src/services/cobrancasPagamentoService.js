@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const AppError = require('../errors/AppError');
 const mercadoPagoClient = require('../integrations/mercadoPagoClient');
 const mercadoPagoService = require('./mercadoPagoService');
+const mercadoPagoRepository = require('../repositories/mercadoPagoRepository');
 const cobrancasRepository = require('../repositories/cobrancasPagamentoRepository');
 const devolucoesRepository = require('../repositories/cobrancaDevolucoesRepository');
 const taxasPlataformaRepository = require('../repositories/taxasPlataformaRepository');
@@ -10,6 +11,11 @@ const { reaisParaCentavos, calcularTaxaPlataformaCentavos, centavosParaReais } =
 
 // O QR vale 30 minutos (mínimo aceito pelo Mercado Pago): o PDV é um fluxo de balcão.
 const VALIDADE_PIX_MS = 30 * 60 * 1000;
+// Link de cartão: validade e teto de parcelas oferecidas. Taxa da plataforma no cartão = 0 por decisão do PO
+// (a taxa só incide sobre Pix); o campo marketplace_fee existe no cliente e só é enviado se isto mudar.
+const VALIDADE_LINK_CARTAO_MS = 2 * 60 * 60 * 1000;
+const PARCELAS_MAXIMAS_LINK = 12;
+const TIPO_CARTAO_POR_TIPO_PAGAMENTO = { credit_card: 'credito', debit_card: 'debito' };
 // Consulta ao provedor na leitura da cobrança: no máximo uma a cada 5 s por cobrança.
 const INTERVALO_CONSULTA_MS = 5000;
 
@@ -48,7 +54,7 @@ function paraResposta(cobranca) {
     const alvo = cobranca.expira_em ? new Date(cobranca.expira_em).getTime() : NaN;
     const expirada = cobranca.status === 'pendente' && cobranca.expira_em && alvo < agora;
 
-    return {
+    const resposta = {
         codigo: cobranca.codigo,
         status: cobranca.status,
         valor: cobranca.valor,
@@ -61,6 +67,20 @@ function paraResposta(cobranca) {
         expira_em_segundos: Number.isNaN(alvo) ? null : Math.max(0, Math.floor((alvo - agora) / 1000)),
         expirada: Boolean(expirada)
     };
+
+    if (cobranca.metodo === 'cartao_link') {
+        // Cartão: o PDV recebe o link e, depois de pago, o tipo e as parcelas lidos do Mercado Pago.
+        return {
+            ...resposta,
+            metodo: 'cartao_link',
+            link_url: cobranca.link_url,
+            parcelas_maximas: cobranca.parcelas_maximas,
+            tipo_cartao: cobranca.tipo_cartao,
+            parcelas: cobranca.parcelas
+        };
+    }
+
+    return resposta;
 }
 
 async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }) {
@@ -131,17 +151,107 @@ async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }) {
     return paraResposta(atualizada);
 }
 
+// Link de pagamento de cartão (crédito/débito, até 12x). O cliente paga na página do Mercado Pago; a
+// venda só nasce depois, com o pagamento já confirmado (mesmo modelo do Pix).
+async function criarLinkCartao({ empresa_id, usuario_id }, { valor }) {
+    const config = mercadoPagoService.exigirConfig();
+    const valorCentavos = reaisParaCentavos(valor);
+
+    // Falha cedo (409) se a loja não conectou o Mercado Pago, antes de gravar qualquer cobrança.
+    const accessToken = await mercadoPagoService.obterAccessToken(empresa_id);
+
+    const codigo = crypto.randomUUID();
+    const cobranca = await cobrancasRepository.criar({
+        codigo,
+        empresa_id,
+        valor: centavosParaReais(valorCentavos),
+        taxa_plataforma: 0,
+        criado_por: usuario_id,
+        metodo: 'cartao_link',
+        parcelas_maximas: PARCELAS_MAXIMAS_LINK
+    });
+
+    const agora = new Date();
+    const expiraEm = new Date(agora.getTime() + VALIDADE_LINK_CARTAO_MS);
+
+    let criada;
+
+    try {
+        criada = await mercadoPagoClient.criarPreferenciaCartao(config, {
+            accessToken,
+            codigo,
+            valor: Number(centavosParaReais(valorCentavos)),
+            descricao: 'Venda no PDV',
+            taxaPlataforma: 0,
+            parcelasMaximas: PARCELAS_MAXIMAS_LINK,
+            expiraDe: formatarExpiracao(agora),
+            expiraAte: formatarExpiracao(expiraEm)
+        });
+    } catch (error) {
+        await cobrancasRepository.marcarFalhou(cobranca.id, empresa_id);
+        throw error;
+    }
+
+    const atualizada = await cobrancasRepository.registrarLinkCriado({
+        id: cobranca.id, empresa_id, preferenciaId: criada.preferenciaId, linkUrl: criada.linkUrl, expiraEm
+    });
+
+    return paraResposta(atualizada);
+}
+
+// Entre os pagamentos achados pelo external_reference, só vale um que seja NOSSO (mesma referência), de cartão
+// de crédito/débito e do valor exato da cobrança. Aprovado ganha; tentativas recusadas ou em análise não
+// fecham a cobrança (o cliente pode tentar de novo no mesmo link).
+function escolherPagamentoCartao(pagamentos, cobranca) {
+    const validos = pagamentos.filter((p) => p
+        && p.external_reference === cobranca.codigo
+        && TIPO_CARTAO_POR_TIPO_PAGAMENTO[p.payment_type_id]
+        && reaisParaCentavos(p.transaction_amount) === reaisParaCentavos(cobranca.valor));
+
+    return validos.find((p) => p.status === 'approved') ?? null;
+}
+
 // Consulta o provedor e aplica a transição. NUNCA confia no corpo do webhook: o estado vem da API,
 // com o token da loja dona da cobrança, e é conferido contra o que nós criamos.
-async function sincronizar(cobranca) {
+async function sincronizar(cobrancaInicial) {
     const config = mercadoPagoService.exigirConfig();
+    let cobranca = cobrancaInicial;
 
-    if (!cobranca.id_externo) {
+    // Pix tem o id do pagamento desde a criação; o link de cartão só depois que alguém paga.
+    if (!cobranca.id_externo && cobranca.metodo !== 'cartao_link') {
         return cobranca;
     }
 
     const accessToken = await mercadoPagoService.obterAccessToken(cobranca.empresa_id);
-    const pagamento = await mercadoPagoClient.buscarPagamento(config, { accessToken, idExterno: cobranca.id_externo });
+    let pagamento;
+
+    if (!cobranca.id_externo) {
+        const encontrados = await mercadoPagoClient.buscarPagamentosPorReferencia(config, { accessToken, codigo: cobranca.codigo });
+        const aprovado = escolherPagamentoCartao(encontrados, cobranca);
+
+        if (!aprovado) {
+            await cobrancasRepository.registrarConsulta(cobranca.id, cobranca.empresa_id);
+            return cobranca;
+        }
+
+        const parcelas = TIPO_CARTAO_POR_TIPO_PAGAMENTO[aprovado.payment_type_id] === 'debito'
+            ? 1
+            : Math.min(24, Math.max(1, Number.parseInt(aprovado.installments, 10) || 1));
+
+        const registrada = await cobrancasRepository.registrarPagamentoCartao({
+            id: cobranca.id,
+            empresa_id: cobranca.empresa_id,
+            idExterno: String(aprovado.id),
+            tipoCartao: TIPO_CARTAO_POR_TIPO_PAGAMENTO[aprovado.payment_type_id],
+            parcelas
+        });
+
+        // Outra consulta pode ter registrado antes: segue com a linha atual do banco.
+        cobranca = registrada ?? await cobrancasRepository.buscarPorCodigo(cobranca.codigo, cobranca.empresa_id);
+        pagamento = aprovado;
+    } else {
+        pagamento = await mercadoPagoClient.buscarPagamento(config, { accessToken, idExterno: cobranca.id_externo });
+    }
 
     const confere = pagamento
         && String(pagamento.id) === String(cobranca.id_externo)
@@ -182,7 +292,8 @@ async function consultar(empresa_id, codigo) {
 
     const vencida = !cobranca.consultado_em || Date.now() - new Date(cobranca.consultado_em).getTime() > INTERVALO_CONSULTA_MS;
 
-    if (cobranca.status === 'pendente' && cobranca.id_externo && vencida) {
+    // Link de cartão não tem id de pagamento até alguém pagar: ele é consultado pelo external_reference.
+    if (cobranca.status === 'pendente' && (cobranca.id_externo || cobranca.metodo === 'cartao_link') && vencida) {
         try {
             cobranca = await sincronizar(cobranca);
         } catch (error) {
@@ -194,15 +305,43 @@ async function consultar(empresa_id, codigo) {
     return paraResposta(cobranca);
 }
 
-async function processarNotificacao(dataId) {
+async function processarNotificacao(dataId, { mpUserId } = {}) {
     const cobranca = await cobrancasRepository.buscarPorIdExterno(dataId);
 
-    // Pagamento que não é nosso (outra integração da mesma conta, por exemplo): nada a fazer.
-    if (!cobranca) {
+    if (cobranca) {
+        await sincronizar(cobranca);
+        return { processada: true };
+    }
+
+    // Link de cartão: o pagamento ainda não está ligado a nenhuma cobrança. A loja vem do user_id da
+    // notificação; o pagamento é lido na API com o token DELA, e o external_reference o liga à cobrança.
+    // Nada do corpo recebido é gravado: se o pagamento não for dessa loja, a consulta falha ou não confere.
+    if (!mpUserId) {
         return { processada: false };
     }
 
-    await sincronizar(cobranca);
+    const conexao = await mercadoPagoRepository.buscarEmpresaPorMpUserId(String(mpUserId));
+
+    if (!conexao) {
+        return { processada: false };
+    }
+
+    const config = mercadoPagoService.exigirConfig();
+    const accessToken = await mercadoPagoService.obterAccessToken(conexao.empresa_id);
+    const pagamento = await mercadoPagoClient.buscarPagamento(config, { accessToken, idExterno: dataId });
+    const codigo = typeof pagamento?.external_reference === 'string' ? pagamento.external_reference : null;
+
+    if (!codigo || !/^[0-9a-f-]{36}$/i.test(codigo)) {
+        return { processada: false };
+    }
+
+    const doLink = await cobrancasRepository.buscarPorCodigo(codigo, conexao.empresa_id);
+
+    if (!doLink || doLink.metodo !== 'cartao_link') {
+        return { processada: false };
+    }
+
+    await sincronizar(doLink);
 
     return { processada: true };
 }
@@ -215,12 +354,17 @@ async function processarNotificacao(dataId) {
 // perder, a consulta/webhook seguinte conclui o pedido. Devolver duas vezes é impedido por índice único
 // e, no provedor, porque o valor integral só pode ser devolvido uma vez.
 async function devolver({ empresa_id, usuario_id }, codigo, { motivo }) {
-    const config = mercadoPagoService.exigirConfig();
     const existente = await cobrancasRepository.buscarPorCodigo(codigo, empresa_id);
 
     if (!existente) {
         throw new AppError('Cobrança Pix não encontrada', 404);
     }
+
+    if (existente.metodo !== 'pix') {
+        throw new AppError('A devolução de pagamentos de cartão ainda não está disponível. Faça pelo painel do Mercado Pago.', 409);
+    }
+
+    const config = mercadoPagoService.exigirConfig();
 
     await sincronizar(existente);
 
@@ -262,4 +406,4 @@ async function listarDevolucoes(empresa_id, paginacao) {
     return devolucoesRepository.listarDevolucoes({ empresa_id, ...paginacao });
 }
 
-module.exports = { criarPix, consultar, processarNotificacao, devolver, listarADevolver, listarDevolucoes, mapearStatusProvedor, formatarExpiracao, TRANSICOES };
+module.exports = { criarPix, criarLinkCartao, escolherPagamentoCartao, consultar, processarNotificacao, devolver, listarADevolver, listarDevolucoes, mapearStatusProvedor, formatarExpiracao, TRANSICOES };

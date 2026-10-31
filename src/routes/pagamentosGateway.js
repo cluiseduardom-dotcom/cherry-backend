@@ -7,6 +7,7 @@ const { CAPACIDADES } = require('../constants/cargos');
 // O mount (app.js) já é authMiddleware + requireVendedor (admin e vendedor). Empresa sempre do JWT.
 router.get('/disponibilidade', controller.disponibilidade);
 router.post('/pix', controller.criarPix);
+router.post('/cartao', controller.criarLinkCartao);
 
 // Devolução de Pix (dinheiro saindo): só quem tem `gerir_financeiro` (Admin tem todas).
 // Declaradas antes de '/:codigo' para não serem lidas como código de cobrança.

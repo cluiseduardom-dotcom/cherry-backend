@@ -4,7 +4,7 @@ const mercadoPagoService = require('../services/mercadoPagoService');
 const cobrancasService = require('../services/cobrancasPagamentoService');
 const { obterConfigMercadoPago } = require('../config/mercadoPagoConfig');
 const { assinaturaValida } = require('../utils/mercadoPagoAssinatura');
-const { criarPixSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema } = require('../validations/mercadoPagoValidation');
+const { criarPixSchema, criarLinkCartaoSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema } = require('../validations/mercadoPagoValidation');
 
 async function status(req, res, next) {
     try {
@@ -80,6 +80,25 @@ async function criarPix(req, res, next) {
         res.set('Cache-Control', 'no-store');
 
         return response.success(res, await cobrancasService.criarPix(
+            { empresa_id: req.usuario.empresa_id, usuario_id: req.usuario.id },
+            parsed.data
+        ), 201);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function criarLinkCartao(req, res, next) {
+    try {
+        const parsed = criarLinkCartaoSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        res.set('Cache-Control', 'no-store');
+
+        return response.success(res, await cobrancasService.criarLinkCartao(
             { empresa_id: req.usuario.empresa_id, usuario_id: req.usuario.id },
             parsed.data
         ), 201);
@@ -190,7 +209,7 @@ async function webhook(req, res, next) {
         const tipo = req.query.type ?? req.body?.type;
 
         if (tipo === 'payment' && dataId) {
-            await cobrancasService.processarNotificacao(dataId);
+            await cobrancasService.processarNotificacao(dataId, { mpUserId: req.body?.user_id });
         }
 
         return res.status(200).json({ success: true });
@@ -199,4 +218,4 @@ async function webhook(req, res, next) {
     }
 }
 
-module.exports = { status, disponibilidade, conectar, desconectar, callback, criarPix, consultarCobranca, webhook, devolverPix, pixADevolver, devolucoes };
+module.exports = { status, disponibilidade, conectar, desconectar, callback, criarPix, criarLinkCartao, consultarCobranca, webhook, devolverPix, pixADevolver, devolucoes };
