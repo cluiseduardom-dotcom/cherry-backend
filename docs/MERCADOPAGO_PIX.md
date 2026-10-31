@@ -121,13 +121,13 @@ Webhook: para pagamento sem cobrança ligada ainda, a loja vem do `user_id` da n
 
 ### Experiência do cliente no link (ajustes de 31/10/2026)
 
-- Título do item = nome da empresa; `statement_descriptor` = nome sem acento, até 16 caracteres; `back_urls` (sucesso/pendente/falha) apontam para `MP_FRONTEND_URL/pagamento-recebido`, com `auto_return=approved`; `binary_mode=true`; `default_installments=1`.
+- Título do item = nome da empresa; `statement_descriptor` = nome sem acento, até 16 caracteres; `back_urls` (sucesso/pendente/falha) apontam para `MP_FRONTEND_URL/pagamento-recebido`, com `auto_return=approved`; `default_installments=1`. **Não** enviamos `binary_mode` (pagamento que depende de autorização do banco deve ficar pendente, não recusado).
 - A página `/pagamento-recebido` é só informativa: o resultado na URL **não confirma nada**. A confirmação continua sendo webhook/consulta ao Mercado Pago.
 - O nome que aparece ao lado do valor na tela do Mercado Pago ("Graziela Doces" no teste) é o nome da **conta Mercado Pago do vendedor**, não é controlável por nós.
 
 ### Ainda NÃO confirmado (validar com cobrança real de R$ 1 na conta da loja)
 
-- `binary_mode`, `default_installments`, `statement_descriptor`, `back_urls`/`auto_return` aceitos na criação com o token da loja (se o Mercado Pago recusar algum, o log do Render mostra a causa).
+- `default_installments`, `statement_descriptor`, `back_urls`/`auto_return` aceitos na criação com o token da loja (se o Mercado Pago recusar algum, o log do Render mostra a causa).
 
 - Criação da preferência com o **token OAuth da loja** (não só credenciais da aplicação) e aceitação de `payment_methods.installments = 12`.
 - Se o **débito** aparece no link e se os demais ids de `excluded_payment_types` estão corretos. Confirmado no teste real (31/10/2026): `account_money` **não pode** ser excluído (400); o saldo em conta do comprador entra como débito.
