@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Identidade por cliente** (migration `081`). `empresas.slug` (identificador da URL de login, único) e o tema `valvazori`; `GET /publico/marca/:slug` (sem login, só slug e tema de empresa ativa, `404` uniforme, 60/min por IP); no painel da plataforma, `GET /plataforma/empresas/identidade`, `PATCH /plataforma/empresas/:id/identidade` e `GET .../historico`, com trilha de responsável. A Cherry Semijoias recebe o slug `cherry`. Sem mudança no login nem nos dados de negócio. Ver `docs/IDENTIDADE_POR_CLIENTE.md`.
+
 ### Changed
 
 - **Entrada de estoque deixa de ser livre** (migration `080`, **mudança de regra pedida pelo PO**). `POST /produtos/:id/movimentacoes` passa a exigir `motivo_codigo` de lista fechada por tipo (+ `observacao` quando o motivo pede); o campo `motivo` de texto livre foi removido do contrato. `tipo = entrada` só aceita `estoque_inicial` (só admin, só produto sem nenhuma movimentação) e `recebimento_sem_compra` (capacidade nova `receber_sem_compra`); ajuste **para mais** exige a capacidade nova `ajustar_estoque`. Entrada de mercadoria passa a ser só por Compra ou Recebimento. Saída e ajuste para menos seguem com o estoquista, com motivo. Novo `movimentacoes_estoque.origem` (anulável; backfill só do que tem marca inequívoca). **Quebra de contrato: o frontend antigo (modal de Entrada de Estoque) recebe 400 até a PR de tela correspondente.** Ver `docs/ESTOQUE_ENTRADAS.md`.

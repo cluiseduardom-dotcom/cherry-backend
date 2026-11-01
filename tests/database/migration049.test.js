@@ -31,11 +31,11 @@ describe('migration 049 — arquivo', () => {
         expect(EXECUTAVEL).toMatch(/conname = 'empresas_tema_visual_chk' AND conrelid = 'empresas'::regclass/);
     });
 
-    test('o CHECK do banco acompanha o conjunto fechado do código', () => {
+    test('o CHECK original (049) cobre os dois primeiros temas; a 081 o amplia e o teste dela cobre o conjunto atual', () => {
         const lista = EXECUTAVEL.match(/CHECK \(tema_visual IN \(([^)]*)\)\)/)[1];
         const valores = lista.split(',').map((v) => v.trim().replace(/'/g, ''));
 
-        expect(valores).toEqual(TEMAS_VISUAIS);
+        expect(valores).toEqual(TEMAS_VISUAIS.slice(0, 2));
         expect(EXECUTAVEL).toMatch(/NOT NULL DEFAULT 'vertumno'/);
     });
 });
