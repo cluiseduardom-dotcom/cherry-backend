@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { TEMAS_VISUAIS, SLUG_REGEX, SLUGS_RESERVADOS } = require('../constants/temasVisuais');
 
 // mes = YYYY-MM (mês civil no fuso de Brasília). Sem mes: mês corrente.
 const taxasPorEmpresaQuerySchema = z.strictObject({
@@ -42,7 +43,18 @@ const encerrarCondicaoSchema = z.strictObject({
     justificativa
 });
 
+// Identidade visual: tema (conjunto fechado) e/ou slug de login (null remove). Slug em minúsculas.
+const slug = z.string().trim().toLowerCase()
+    .regex(SLUG_REGEX, 'Identificador deve ter 1 a 40 caracteres: letras minúsculas, números e hífen (sem hífen no início ou no fim)')
+    .refine((valor) => !SLUGS_RESERVADOS.includes(valor), 'Este identificador é reservado');
+
+const identidadeSchema = z.strictObject({
+    tema_visual: z.enum(TEMAS_VISUAIS, { error: 'Tema inválido' }).optional(),
+    slug: slug.nullable().optional()
+}).refine((dados) => dados.tema_visual !== undefined || dados.slug !== undefined, { message: 'Informe o tema e/ou o identificador' });
+
 module.exports = {
+    identidadeSchema,
     taxasPorEmpresaQuerySchema,
     empresaIdParamSchema,
     trocarPlanoSchema,

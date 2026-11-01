@@ -116,6 +116,7 @@ const authMiddleware = require('./middlewares/authMiddleware');
 const requireAdmin = require('./middlewares/requireAdmin');
 const empresaRoutes = require('./routes/empresa');
 const plataformaRoutes = require('./routes/plataforma');
+const publicoRoutes = require('./routes/publico');
 const integracoesMercadoPagoRoutes = require('./routes/integracoesMercadoPago');
 const pagamentosGatewayRoutes = require('./routes/pagamentosGateway');
 const webhooksMercadoPagoRoutes = require('./routes/webhooksMercadoPago');
@@ -133,6 +134,7 @@ const estoqueRoutes = require('./routes/estoque');
 const errorHandler = require('./middlewares/errorHandler');
 
 app.use('/auth', authRoutes);
+app.use('/publico', publicoRoutes);
 app.use('/onboarding', onboardingRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);
 app.use('/vendas', authMiddleware, vendasRoutes);
