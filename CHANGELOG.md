@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Script de provisionamento de empresa** (`npm run tenant:provisionar`, `scripts/provisionar-tenant.js`). Cliente de operador para `POST /onboarding` (Fase B de `docs/secure-tenant-provisioning.md`): URL e segredo só por variável de ambiente (`PROVISION_API_URL`, `ONBOARDING_SECRET`), senha sem eco, token descartado, `--dry-run`, e em servidor remoto a confirmação exige digitar o endereço do servidor. Não acessa banco nem altera a API. Sem migration.
 - **Identidade por cliente** (migration `081`). `empresas.slug` (identificador da URL de login, único) e o tema `valvazori`; `GET /publico/marca/:slug` (sem login, só slug e tema de empresa ativa, `404` uniforme, 60/min por IP); no painel da plataforma, `GET /plataforma/empresas/identidade`, `PATCH /plataforma/empresas/:id/identidade` e `GET .../historico`, com trilha de responsável. A Cherry Semijoias recebe o slug `cherry`. Sem mudança no login nem nos dados de negócio. Ver `docs/IDENTIDADE_POR_CLIENTE.md`.
 
 ### Changed
