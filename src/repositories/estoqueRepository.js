@@ -38,7 +38,13 @@ async function garantirLocalTransito(client, empresa_id) {
 // locais sempre fecha com o total. Saldo de local nunca fica negativo. A trava do produto
 // (FOR UPDATE) vem primeiro e serializa todas as movimentações do mesmo produto, o que também
 // protege as linhas de saldo por local.
-async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario_id, empresa_id, local_id, transferencia_id }, clienteExterno) {
+//
+// `origem` (migration 080) grava de onde veio a movimentação. As regras abaixo valem dentro da mesma
+// transação, com o produto já travado, para não haver corrida entre checar e gravar:
+// * `bloquearAjusteParaMais`: ajuste que AUMENTA o saldo do local é recusado (AJUSTE_PARA_MAIS_NAO_AUTORIZADO).
+//   Os fluxos internos não passam o flag e seguem como antes.
+// * `exigirSemHistorico`: só aceita se o produto ainda não tem nenhuma movimentação (ENTRADA_INICIAL_COM_HISTORICO).
+async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario_id, empresa_id, local_id, transferencia_id, origem, bloquearAjusteParaMais, exigirSemHistorico }, clienteExterno) {
     const client = clienteExterno || await db.connect();
     const gerenciaTransacao = !clienteExterno;
 
@@ -53,6 +59,17 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
         if (!produtoRows.length) {
             if (gerenciaTransacao) await client.query('ROLLBACK');
             return { erro: 'PRODUTO_NAO_ENCONTRADO' };
+        }
+
+        if (exigirSemHistorico) {
+            const { rows: historicoRows } = await client.query(
+                'SELECT 1 FROM movimentacoes_estoque WHERE produto_id = $1 AND empresa_id = $2 LIMIT 1',
+                [produto_id, empresa_id]
+            );
+            if (historicoRows.length) {
+                if (gerenciaTransacao) await client.query('ROLLBACK');
+                return { erro: 'ENTRADA_INICIAL_COM_HISTORICO' };
+            }
         }
 
         let localId = local_id;
@@ -96,6 +113,11 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
             return { erro: 'ESTOQUE_INSUFICIENTE' };
         }
 
+        if (bloquearAjusteParaMais && tipo === 'ajuste' && novoSaldoLocal > saldoLocal) {
+            if (gerenciaTransacao) await client.query('ROLLBACK');
+            return { erro: 'AJUSTE_PARA_MAIS_NAO_AUTORIZADO' };
+        }
+
         const novoEstoque = estoqueAtual + (novoSaldoLocal - saldoLocal);
 
         await client.query(
@@ -105,10 +127,10 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
         await client.query('UPDATE produtos SET estoque_atual = $1 WHERE id = $2', [novoEstoque, produto_id]);
 
         const { rows } = await client.query(
-            `INSERT INTO movimentacoes_estoque (produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id, empresa_id, local_id, saldo_local_resultante, transferencia_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            `INSERT INTO movimentacoes_estoque (produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id, empresa_id, local_id, saldo_local_resultante, transferencia_id, origem)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
              RETURNING *`,
-            [produto_id, tipo, quantidade, novoEstoque, motivo ?? null, usuario_id, empresa_id, localId, novoSaldoLocal, transferencia_id ?? null]
+            [produto_id, tipo, quantidade, novoEstoque, motivo ?? null, usuario_id, empresa_id, localId, novoSaldoLocal, transferencia_id ?? null, origem ?? null]
         );
 
         if (gerenciaTransacao) await client.query('COMMIT');

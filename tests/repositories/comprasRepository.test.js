@@ -233,11 +233,11 @@ describe('cancelar', () => {
 
     expect(resultado.status).toBe('cancelado');
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
-      { produto_id: 1, tipo: 'saida', quantidade: 3, motivo: 'cancelamento_compra', usuario_id: 9, empresa_id: 5 },
+      { produto_id: 1, tipo: 'saida', quantidade: 3, motivo: 'cancelamento_compra', origem: 'cancelamento_compra', usuario_id: 9, empresa_id: 5 },
       fakeClient
     );
     expect(estoqueRepository.criarMovimentacao).toHaveBeenCalledWith(
-      { produto_id: 2, tipo: 'saida', quantidade: 1, motivo: 'cancelamento_compra', usuario_id: 9, empresa_id: 5 },
+      { produto_id: 2, tipo: 'saida', quantidade: 1, motivo: 'cancelamento_compra', origem: 'cancelamento_compra', usuario_id: 9, empresa_id: 5 },
       fakeClient
     );
     expect(fakeClient.query).toHaveBeenCalledWith('COMMIT');

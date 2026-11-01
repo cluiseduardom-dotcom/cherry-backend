@@ -64,7 +64,8 @@ async function registrarMovimentacao(req, res, next) {
             produtoId,
             parsed.data,
             req.usuario.id,
-            req.usuario.empresa_id
+            req.usuario.empresa_id,
+            req.usuario
         );
 
         return response.success(res, movimentacao, 201);

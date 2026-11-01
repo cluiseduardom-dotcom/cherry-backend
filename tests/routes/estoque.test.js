@@ -24,7 +24,7 @@ describe('POST /produtos/:id/movimentacoes', () => {
     const res = await request(app)
       .post('/produtos/1/movimentacoes')
       .set('Authorization', `Bearer ${vendedorToken}`)
-      .send({ tipo: 'entrada', quantidade: 5 });
+      .send({ tipo: 'saida', quantidade: 5, motivo_codigo: 'perda' });
 
     expect(res.status).toBe(403);
     expect(estoqueService.registrarMovimentacao).not.toHaveBeenCalled();
@@ -43,7 +43,7 @@ describe('POST /produtos/:id/movimentacoes', () => {
     const res = await request(app)
       .post('/produtos/abc/movimentacoes')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ tipo: 'entrada', quantidade: 5 });
+      .send({ tipo: 'saida', quantidade: 5, motivo_codigo: 'perda' });
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('ID inválido');
@@ -53,7 +53,7 @@ describe('POST /produtos/:id/movimentacoes', () => {
     estoqueService.registrarMovimentacao.mockResolvedValue({
       id: 1,
       produto_id: 1,
-      tipo: 'entrada',
+      tipo: 'saida',
       quantidade: 10,
       estoque_resultante: 10
     });
@@ -61,15 +61,16 @@ describe('POST /produtos/:id/movimentacoes', () => {
     const res = await request(app)
       .post('/produtos/1/movimentacoes')
       .set('Authorization', `Bearer ${estoquistaToken}`)
-      .send({ tipo: 'entrada', quantidade: 10, motivo: 'Reposição' });
+      .send({ tipo: 'saida', quantidade: 10, motivo_codigo: 'perda' });
 
     expect(res.status).toBe(201);
     expect(res.body.data.estoque_resultante).toBe(10);
     expect(estoqueService.registrarMovimentacao).toHaveBeenCalledWith(
       1,
-      { tipo: 'entrada', quantidade: 10, motivo: 'Reposição' },
+      { tipo: 'saida', quantidade: 10, motivo_codigo: 'perda' },
       2,
-      1
+      1,
+      expect.objectContaining({ id: 2, role: 'estoquista', empresa_id: 1 })
     );
   });
 
@@ -79,7 +80,7 @@ describe('POST /produtos/:id/movimentacoes', () => {
     const res = await request(app)
       .post('/produtos/1/movimentacoes')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ tipo: 'ajuste', quantidade: 0 });
+      .send({ tipo: 'ajuste', quantidade: 0, motivo_codigo: 'contagem' });
 
     expect(res.status).toBe(201);
   });
@@ -92,9 +93,45 @@ describe('POST /produtos/:id/movimentacoes', () => {
     const res = await request(app)
       .post('/produtos/1/movimentacoes')
       .set('Authorization', `Bearer ${estoquistaToken}`)
-      .send({ tipo: 'saida', quantidade: 999 });
+      .send({ tipo: 'saida', quantidade: 999, motivo_codigo: 'perda' });
 
     expect(res.status).toBe(409);
+  });
+});
+
+describe('POST /produtos/:id/movimentacoes: entrada livre deixou de existir', () => {
+  test.each([
+    [{ tipo: 'entrada', quantidade: 5 }],
+    [{ tipo: 'entrada', quantidade: 5, motivo: 'Reposição' }],
+    [{ tipo: 'entrada', quantidade: 5, motivo_codigo: 'reposicao' }],
+    [{ tipo: 'entrada', quantidade: 5, motivo_codigo: 'compra' }]
+  ])('responde 400 e não chega ao serviço: %j', async (corpo) => {
+    for (const token of [estoquistaToken, adminToken]) {
+      const res = await request(app).post('/produtos/1/movimentacoes').set('Authorization', `Bearer ${token}`).send(corpo);
+      expect(res.status).toBe(400);
+    }
+    expect(estoqueService.registrarMovimentacao).not.toHaveBeenCalled();
+  });
+
+  test('recebimento sem compra exige observação', async () => {
+    const res = await request(app)
+      .post('/produtos/1/movimentacoes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ tipo: 'entrada', quantidade: 5, motivo_codigo: 'recebimento_sem_compra' });
+
+    expect(res.status).toBe(400);
+    expect(estoqueService.registrarMovimentacao).not.toHaveBeenCalled();
+  });
+
+  test('repassa a falta de permissão do serviço como 403', async () => {
+    estoqueService.registrarMovimentacao.mockRejectedValue(new AppError('Sem permissão para receber mercadoria sem compra', 403));
+
+    const res = await request(app)
+      .post('/produtos/1/movimentacoes')
+      .set('Authorization', `Bearer ${estoquistaToken}`)
+      .send({ tipo: 'entrada', quantidade: 5, motivo_codigo: 'recebimento_sem_compra', observacao: 'Bonificação' });
+
+    expect(res.status).toBe(403);
   });
 });
 
@@ -188,11 +225,11 @@ describe('estoque por local', () => {
     const res = await request(app)
       .post('/produtos/1/movimentacoes')
       .set('Authorization', `Bearer ${estoquistaToken}`)
-      .send({ tipo: 'entrada', quantidade: 5, local_id: 9 });
+      .send({ tipo: 'saida', quantidade: 5, motivo_codigo: 'perda', local_id: 9 });
 
     expect(res.status).toBe(404);
     expect(estoqueService.registrarMovimentacao).toHaveBeenCalledWith(
-      1, expect.objectContaining({ local_id: 9 }), 2, 1
+      1, expect.objectContaining({ local_id: 9 }), 2, 1, expect.objectContaining({ id: 2 })
     );
   });
 
@@ -200,7 +237,7 @@ describe('estoque por local', () => {
     const res = await request(app)
       .post('/produtos/1/movimentacoes')
       .set('Authorization', `Bearer ${estoquistaToken}`)
-      .send({ tipo: 'entrada', quantidade: 5, local_id: -3 });
+      .send({ tipo: 'saida', quantidade: 5, motivo_codigo: 'perda', local_id: -3 });
 
     expect(res.status).toBe(400);
     expect(estoqueService.registrarMovimentacao).not.toHaveBeenCalled();

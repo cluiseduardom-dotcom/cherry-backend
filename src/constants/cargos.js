@@ -22,7 +22,11 @@ const CAPACIDADES = Object.freeze({
     // Diretor, Gerente e Admin). Não dá acesso a custo, margem nem a configurações.
     GERIR_FINANCEIRO: 'gerir_financeiro',
     // Ver todos os clientes da empresa. Sem ela, o usuário vê só os clientes que ele cadastrou.
-    VER_TODOS_CLIENTES: 'ver_todos_clientes'
+    VER_TODOS_CLIENTES: 'ver_todos_clientes',
+    // Estoque: só o Admin tem por padrão; a empresa pode conceder a um cargo (ex.: quem cuida das compras).
+    // Ajuste para MAIS (sobra de contagem) e entrada sem compra/recebimento (bonificação, devolução).
+    AJUSTAR_ESTOQUE: 'ajustar_estoque',
+    RECEBER_SEM_COMPRA: 'receber_sem_compra'
 });
 
 const TODAS_CAPACIDADES = Object.freeze(Object.values(CAPACIDADES));
