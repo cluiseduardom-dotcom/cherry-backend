@@ -33,6 +33,8 @@ Use a trusted server-to-server/operator workflow, not a public self-registration
 - Verify the integration suite only uses a disposable isolated database.
 
 ### Phase B — operator provisioning client
+
+Status: implementado em `scripts/provisionar-tenant.js` (`npm run tenant:provisionar`). Uso: `PROVISION_API_URL=https://<servidor> ONBOARDING_SECRET=<segredo> npm run tenant:provisionar [-- --dry-run]`. Depois de criar, defina tema e slug no painel da plataforma. O script não resolve a Fase C (convite/senha de uso único): a senha inicial ainda trafega no corpo da requisição.
 - Add a small Node CLI or private server-side client that reads the API URL and secret from environment variables only.
 - Prompt for non-secret company/admin fields interactively; read the initial password without echo if password-based setup remains temporarily necessary.
 - Send the secret only as `X-Onboarding-Secret` over HTTPS.
