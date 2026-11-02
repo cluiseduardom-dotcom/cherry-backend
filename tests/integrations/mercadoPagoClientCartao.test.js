@@ -58,7 +58,9 @@ describe('criarPreferenciaCartao', () => {
         expect(corpo.auto_return).toBe('approved');
         // binary_mode derrubaria pagamentos que dependem de autorização do banco: nunca enviar.
         expect(corpo).not.toHaveProperty('binary_mode');
-        expect(corpo.payment_methods.default_installments).toBe(1);
+        // Só o teto de parcelas; default_installments=1 deixou o cliente sem opção de parcelar (teste real de 02/11/2026).
+        expect(corpo.payment_methods.installments).toBe(12);
+        expect(corpo.payment_methods).not.toHaveProperty('default_installments');
     });
 
     test('sem nome utilizável não envia statement_descriptor; sem frontendUrl não envia back_urls', async () => {
