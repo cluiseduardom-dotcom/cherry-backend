@@ -123,13 +123,17 @@ Webhook: para pagamento sem cobrança ligada ainda, a loja vem do `user_id` da n
 
 ### Experiência do cliente no link (ajustes de 31/10/2026)
 
-- Título do item = nome da empresa; `statement_descriptor` = nome sem acento, até 16 caracteres; `back_urls` (sucesso/pendente/falha) apontam para `MP_FRONTEND_URL/pagamento-recebido`, com `auto_return=approved`; `default_installments=1`. **Não** enviamos `binary_mode` (pagamento que depende de autorização do banco deve ficar pendente, não recusado).
+- Título do item = nome da empresa; `statement_descriptor` = nome sem acento, até 16 caracteres; `back_urls` (sucesso/pendente/falha) apontam para `MP_FRONTEND_URL/pagamento-recebido`, com `auto_return=approved`; `installments=12` (só o teto). **Não** enviamos `default_installments` (ver abaixo). **Não** enviamos `binary_mode` (pagamento que depende de autorização do banco deve ficar pendente, não recusado).
 - A página `/pagamento-recebido` é só informativa: o resultado na URL **não confirma nada**. A confirmação continua sendo webhook/consulta ao Mercado Pago.
 - O nome que aparece ao lado do valor na tela do Mercado Pago ("Graziela Doces" no teste) é o nome da **conta Mercado Pago do vendedor**, não é controlável por nós.
 
+### Parcelamento no link: ocorrência de 02/11/2026
+
+Com `default_installments=1` o Checkout Pro mostrou ao cliente só pagamento à vista (R$ 44, sem opção de parcelas), mesmo com `installments=12`. O link de pagamento **nativo** da mesma conta, com o mesmo cartão, listou 2x R$ 24,12 (total R$ 48,24), 3x R$ 16,31 (R$ 48,94), 4x R$ 12,25 (R$ 49,00): o comprador paga o juro do parcelamento e a conta/cartão parcelam. A documentação consultada só descreve `installments` (número máximo de parcelas); `default_installments` não aparece nela. Ajuste: remover `default_installments`. **A confirmar no teste real:** (1) se o link passa a oferecer parcelas; (2) se, num pagamento parcelado com juros, o `transaction_amount` do Mercado Pago continua igual ao valor da cobrança (a confirmação compara esse campo; o total pago com juros vem em `transaction_details.total_paid_amount`). Se o valor divergir, o pagamento fica pendente mesmo cobrado: tratar manualmente e abrir correção.
+
 ### Ainda NÃO confirmado (validar com cobrança real de R$ 1 na conta da loja)
 
-- `default_installments`, `statement_descriptor`, `back_urls`/`auto_return` aceitos na criação com o token da loja (se o Mercado Pago recusar algum, o log do Render mostra a causa).
+- `statement_descriptor`, `back_urls`/`auto_return` aceitos na criação com o token da loja (se o Mercado Pago recusar algum, o log do Render mostra a causa).
 
 - Criação da preferência com o **token OAuth da loja** (não só credenciais da aplicação) e aceitação de `payment_methods.installments = 12`.
 - Se o **débito** aparece no link e se os demais ids de `excluded_payment_types` estão corretos. Confirmado no teste real (31/10/2026): `account_money` **não pode** ser excluído (400); o saldo em conta do comprador entra como débito.

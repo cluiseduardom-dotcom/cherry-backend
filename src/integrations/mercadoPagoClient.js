@@ -191,6 +191,9 @@ function descritivoDeFatura(nome) {
 // a comissão da plataforma vai em marketplace_fee (valor em reais). external_reference = nosso código.
 // Experiência do cliente: título = nome da loja, descritivo na fatura, volta para a nossa página ao final
 // (back_urls + auto_return só no pagamento aprovado).
+// `installments` é só o TETO de parcelas. Não enviamos `default_installments`: no teste real de 02/11/2026 o link com
+// default_installments=1 ofereceu apenas pagamento à vista, enquanto o link nativo da mesma conta e do mesmo cartão
+// ofereceu 2x, 3x, 4x… (causa provável, a confirmar no teste real depois desta mudança).
 // [CONFIRMAR NO TESTE REAL] criação com o token OAuth da loja, installments como teto de parcelas e init_point.
 async function criarPreferenciaCartao(config, { accessToken, codigo, valor, descricao, nomeLoja, taxaPlataforma, parcelasMaximas, expiraDe, expiraAte }) {
     const corpo = {
@@ -199,8 +202,7 @@ async function criarPreferenciaCartao(config, { accessToken, codigo, valor, desc
         notification_url: config.webhookUrl,
         payment_methods: {
             excluded_payment_types: TIPOS_EXCLUIDOS_LINK_CARTAO.map((id) => ({ id })),
-            installments: parcelasMaximas,
-            default_installments: 1
+            installments: parcelasMaximas
         },
         expires: true,
         expiration_date_from: expiraDe,
