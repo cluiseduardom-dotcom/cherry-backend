@@ -1,5 +1,5 @@
 const crypto = require('node:crypto');
-const { obterConfigMercadoPago, OBRIGATORIAS } = require('../../src/config/mercadoPagoConfig');
+const { obterConfigMercadoPago, lerParcelasMaximasLink, OBRIGATORIAS } = require('../../src/config/mercadoPagoConfig');
 
 const env = () => ({
     MP_APP_ID: '123',
@@ -35,6 +35,17 @@ describe('obterConfigMercadoPago', () => {
         const invalido = obterConfigMercadoPago({ ...env(), MP_EMAIL_PAGADOR_PADRAO: 'nao-e-email' });
         expect(invalido).not.toBeNull();
         expect(invalido.emailPagadorPadrao).toBeNull();
+    });
+
+    test('MP_LINK_PARCELAS_MAXIMAS: padrão 12; aceita inteiro de 1 a 24; qualquer outra coisa volta ao padrão', () => {
+        expect(obterConfigMercadoPago(env()).parcelasMaximasLink).toBe(12);
+        expect(obterConfigMercadoPago({ ...env(), MP_LINK_PARCELAS_MAXIMAS: ' 6 ' }).parcelasMaximasLink).toBe(6);
+        expect(lerParcelasMaximasLink('1')).toBe(1);
+        expect(lerParcelasMaximasLink('24')).toBe(24);
+
+        for (const invalido of ['0', '25', '-3', '6.5', 'seis', '', undefined, null, '100', '1e1']) {
+            expect(lerParcelasMaximasLink(invalido)).toBe(12);
+        }
     });
 
     test('chave de cifra que não tem 32 bytes desliga a integração', () => {
