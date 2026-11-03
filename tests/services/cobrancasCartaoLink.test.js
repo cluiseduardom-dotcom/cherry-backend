@@ -149,10 +149,24 @@ describe('consultar / sincronizar link de cartão', () => {
 
         expect(client.buscarPagamentosPorReferencia).toHaveBeenCalledWith(CONFIG, { accessToken: 'token-da-loja', codigo: CODIGO });
         expect(repo.registrarPagamentoCartao).toHaveBeenCalledWith({
-            id: 7, empresa_id: 3, idExterno: '555', tipoCartao: 'credito', parcelas: 3
+            id: 7, empresa_id: 3, idExterno: '555', tipoCartao: 'credito', parcelas: 3, valorTotalPago: null
         });
         expect(repo.atualizarStatus).toHaveBeenCalledWith({ id: 7, empresa_id: 3, de: 'pendente', para: 'pago' });
         expect(res).toMatchObject({ status: 'pago', tipo_cartao: 'credito', parcelas: 3 });
+    });
+
+    test('grava o total pago com juros informado pelo Mercado Pago e o expõe como juros_pagos (informativo)', async () => {
+        const total = pagamentoMp({ transaction_details: { total_paid_amount: 133.61 } });
+        const registrada = cobranca({ id_externo: '555', tipo_cartao: 'credito', parcelas: 3, valor_total_pago: '133.61' });
+        repo.buscarPorCodigo.mockResolvedValueOnce(cobranca());
+        client.buscarPagamentosPorReferencia.mockResolvedValue([total]);
+        repo.registrarPagamentoCartao.mockResolvedValue(registrada);
+        repo.atualizarStatus.mockResolvedValue({ ...registrada, status: 'pago' });
+
+        const res = await service.consultar(3, CODIGO);
+
+        expect(repo.registrarPagamentoCartao).toHaveBeenCalledWith(expect.objectContaining({ valorTotalPago: 133.61 }));
+        expect(res).toMatchObject({ valor: '120.00', valor_total_pago: '133.61', juros_pagos: 13.61 });
     });
 
     test('débito fica sempre em 1 parcela, mesmo que o provedor informe outro número', async () => {
@@ -235,5 +249,21 @@ describe('devolver', () => {
 
         await expect(service.devolver({ empresa_id: 3, usuario_id: 9 }, CODIGO, { motivo: 'teste' })).rejects.toMatchObject({ statusCode: 409 });
         expect(client.devolverPagamento).not.toHaveBeenCalled();
+    });
+});
+
+describe('extrairTotalPago', () => {
+    test.each([
+        [{ transaction_details: { total_paid_amount: 22.27 } }, '20.00', 22.27],
+        [{ transaction_details: { total_paid_amount: '44.54' } }, '40.00', 44.54],
+        [{ transaction_details: { total_paid_amount: 20 } }, '20.00', 20],
+        [{ transaction_details: { total_paid_amount: 19.99 } }, '20.00', null],
+        [{ transaction_details: { total_paid_amount: 40.01 } }, '20.00', null],
+        [{ transaction_details: { total_paid_amount: 'abc' } }, '20.00', null],
+        [{ transaction_details: {} }, '20.00', null],
+        [{}, '20.00', null],
+        [null, '20.00', null],
+    ])('%j com valor %s -> %s', (pagamento, valor, esperado) => {
+        expect(service.extrairTotalPago(pagamento, valor)).toBe(esperado);
     });
 });

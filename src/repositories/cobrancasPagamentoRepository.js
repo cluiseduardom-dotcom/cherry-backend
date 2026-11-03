@@ -5,7 +5,7 @@ const { reaisParaCentavos } = require('../utils/taxaPlataforma');
 
 const COLUNAS = `id, codigo, empresa_id, provedor, metodo, valor, taxa_plataforma, status, id_externo,
                  qr_code, qr_code_base64, ticket_url, expira_em, venda_id, usada_em, consultado_em, criado_em, atualizado_em,
-                 preferencia_id, link_url, tipo_cartao, parcelas, parcelas_maximas`;
+                 preferencia_id, link_url, tipo_cartao, parcelas, parcelas_maximas, valor_total_pago`;
 
 async function criar({ codigo, empresa_id, valor, taxa_plataforma, criado_por, metodo = 'pix', parcelas_maximas = null }) {
     const { rows } = await db.query(
@@ -45,13 +45,25 @@ async function registrarLinkCriado({ id, empresa_id, preferenciaId, linkUrl, exp
 
 // Grava o pagamento de cartão encontrado no provedor (id, tipo e parcelas vêm do Mercado Pago, não do PDV).
 // Só enquanto a cobrança ainda não tem pagamento associado: o primeiro vence e não é trocado depois.
-async function registrarPagamentoCartao({ id, empresa_id, idExterno, tipoCartao, parcelas }) {
+async function registrarPagamentoCartao({ id, empresa_id, idExterno, tipoCartao, parcelas, valorTotalPago = null }) {
     const { rows } = await db.query(
         `UPDATE cobrancas_pagamento
-         SET id_externo = $3, tipo_cartao = $4, parcelas = $5, atualizado_em = NOW()
+         SET id_externo = $3, tipo_cartao = $4, parcelas = $5, valor_total_pago = $6, atualizado_em = NOW()
          WHERE id = $1 AND empresa_id = $2 AND metodo = 'cartao_link' AND id_externo IS NULL
          RETURNING ${COLUNAS}`,
-        [id, empresa_id, idExterno, tipoCartao, parcelas]
+        [id, empresa_id, idExterno, tipoCartao, parcelas, valorTotalPago]
+    );
+
+    return rows[0] ?? null;
+}
+
+// Preenche o total pago (com juros) de um link já registrado, uma única vez e só para cartão.
+async function registrarTotalPago({ id, empresa_id, valorTotalPago }) {
+    const { rows } = await db.query(
+        `UPDATE cobrancas_pagamento SET valor_total_pago = $3, atualizado_em = NOW()
+         WHERE id = $1 AND empresa_id = $2 AND metodo = 'cartao_link' AND valor_total_pago IS NULL
+         RETURNING ${COLUNAS}`,
+        [id, empresa_id, valorTotalPago]
     );
 
     return rows[0] ?? null;
@@ -181,6 +193,7 @@ module.exports = {
     registrarCriadaNoProvedor,
     registrarLinkCriado,
     registrarPagamentoCartao,
+    registrarTotalPago,
     marcarFalhou,
     buscarPorCodigo,
     buscarPorIdExterno,
