@@ -96,23 +96,27 @@ async function marcarFalhou({ id, empresa_id, erro }) {
 
 // Pix pagos que podem ser devolvidos agora: sem venda, ou de venda cancelada, e sem devolução ativa.
 // Nunca traz taxa da plataforma, id do provedor ou dados do pagador.
-async function listarADevolver({ empresa_id, limit = LIMITE_PADRAO, offset = 0 }) {
-    const filtro = `c.empresa_id = $1 AND c.metodo = 'pix' AND c.status = 'pago'
+// `metodo` ('pix' por padrão, ou 'cartao_link') é sempre um valor validado na entrada e vai como parâmetro.
+async function listarADevolver({ empresa_id, limit = LIMITE_PADRAO, offset = 0, metodo = 'pix' }) {
+    const filtro = `c.empresa_id = $1 AND c.metodo = $2 AND c.status = 'pago'
                     AND (c.venda_id IS NULL OR v.status = 'cancelada')
                     AND NOT EXISTS (
                         SELECT 1 FROM cobranca_devolucoes d
                          WHERE d.cobranca_id = c.id AND d.empresa_id = c.empresa_id AND d.status IN ('solicitada', 'concluida')
                     )`;
 
+    // Constante escolhida aqui (nunca vem do cliente). O contrato do Pix não muda: só o cartão traz tipo e parcelas.
+    const colunasExtras = metodo === 'cartao_link' ? ', c.metodo, c.tipo_cartao, c.parcelas' : '';
+
     const { rows } = await db.query(
-        `SELECT c.codigo, c.valor, c.criado_em, c.venda_id,
+        `SELECT c.codigo, c.valor, c.criado_em, c.venda_id${colunasExtras},
                 CASE WHEN c.venda_id IS NULL THEN 'sem_venda' ELSE 'venda_cancelada' END AS situacao
          FROM cobrancas_pagamento c
          LEFT JOIN vendas v ON v.id = c.venda_id AND v.empresa_id = c.empresa_id
          WHERE ${filtro}
          ORDER BY c.criado_em DESC, c.id DESC
-         LIMIT $2 OFFSET $3`,
-        [empresa_id, limit, offset]
+         LIMIT $3 OFFSET $4`,
+        [empresa_id, metodo, limit, offset]
     );
 
     const { rows: [total] } = await db.query(
@@ -120,7 +124,7 @@ async function listarADevolver({ empresa_id, limit = LIMITE_PADRAO, offset = 0 }
          FROM cobrancas_pagamento c
          LEFT JOIN vendas v ON v.id = c.venda_id AND v.empresa_id = c.empresa_id
          WHERE ${filtro}`,
-        [empresa_id]
+        [empresa_id, metodo]
     );
 
     return { items: rows, total: total.quantidade, valor_total: total.valor_total };
