@@ -4,7 +4,7 @@ const mercadoPagoService = require('../services/mercadoPagoService');
 const cobrancasService = require('../services/cobrancasPagamentoService');
 const { obterConfigMercadoPago } = require('../config/mercadoPagoConfig');
 const { assinaturaValida } = require('../utils/mercadoPagoAssinatura');
-const { criarPixSchema, criarLinkCartaoSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema } = require('../validations/mercadoPagoValidation');
+const { criarPixSchema, criarLinkCartaoSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema, aDevolverSchema } = require('../validations/mercadoPagoValidation');
 
 async function status(req, res, next) {
     try {
@@ -107,8 +107,8 @@ async function criarLinkCartao(req, res, next) {
     }
 }
 
-function paginacao(req) {
-    const parsed = paginacaoDevolucoesSchema.safeParse(req.query);
+function paginacao(req, schema = paginacaoDevolucoesSchema) {
+    const parsed = schema.safeParse(req.query);
 
     if (!parsed.success) {
         throw new AppError(parsed.error.issues[0].message, 400);
@@ -145,7 +145,7 @@ async function devolverPix(req, res, next) {
 
 async function pixADevolver(req, res, next) {
     try {
-        const pagina = paginacao(req);
+        const pagina = paginacao(req, aDevolverSchema);
 
         res.set('Cache-Control', 'no-store');
 

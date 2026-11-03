@@ -29,4 +29,10 @@ const paginacaoDevolucoesSchema = z.object({
     offset: z.coerce.number().int().min(0).default(0)
 });
 
-module.exports = { criarPixSchema, criarLinkCartaoSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema };
+// "A devolver": Pix (padrão, como sempre foi) ou link de cartão pago sem venda (só listagem: a devolução do
+// cartão é feita no painel do Mercado Pago).
+const aDevolverSchema = paginacaoDevolucoesSchema.extend({
+    metodo: z.enum(['pix', 'cartao_link'], { error: 'Método inválido' }).default('pix')
+});
+
+module.exports = { criarPixSchema, criarLinkCartaoSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema, aDevolverSchema };
