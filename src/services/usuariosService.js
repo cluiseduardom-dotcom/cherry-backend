@@ -198,6 +198,17 @@ async function editarDados(usuarioId, dados, ator) {
     });
 }
 
+// Nome completo: mesma permissão dos dados cadastrais (o próprio ou quem pode gerenciá-lo).
+async function alterarNome(usuarioId, { nome }, ator) {
+    return usuariosRepository.alterarNome({
+        empresa_id: ator.empresa_id,
+        usuario_id: usuarioId,
+        nome,
+        executado_por: ator.id,
+        autorizar: (alvo) => garantirPodeVerOuEditar(ator, alvo)
+    });
+}
+
 // Login (código de usuário): mesma permissão dos dados cadastrais (o próprio ou quem pode gerenciá-lo).
 async function alterarLogin(usuarioId, { login }, ator) {
     return usuariosRepository.alterarLogin({
@@ -265,6 +276,7 @@ async function redefinirSenha(alvoId, senhaConfirmacao, ator) {
 }
 
 module.exports = {
+    alterarNome,
     alterarLogin,
     redefinirSenha,
     avaliarAlvo,
