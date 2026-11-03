@@ -11,7 +11,12 @@ const criarPixSchema = z.strictObject({
     cliente_email: z.string().trim().max(254).email('E-mail do cliente inválido').optional()
 });
 
-const criarLinkCartaoSchema = z.strictObject({ valor: valorPix });
+// `parcelas_maximas` (opcional): teto de parcelas escolhido na venda. Nunca passa do teto global da plataforma
+// (MP_LINK_PARCELAS_MAXIMAS): o serviço usa o menor dos dois.
+const criarLinkCartaoSchema = z.strictObject({
+    valor: valorPix,
+    parcelas_maximas: z.number('Parcelas máximas inválidas').int('Parcelas máximas inválidas').min(1, 'Parcelas máximas deve ser de 1 a 24').max(24, 'Parcelas máximas deve ser de 1 a 24').optional()
+});
 
 const codigoCobrancaSchema = z.string().uuid('Código de cobrança inválido');
 

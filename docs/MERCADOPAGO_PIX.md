@@ -30,7 +30,7 @@ Perder `MP_TOKEN_ENC_KEY` invalida os tokens guardados (as lojas precisam recone
 | `POST /integracoes/mercadopago/conectar` | admin | devolve `{url}` de autorização; grava `state` de uso único (10 min) |
 | `GET /integracoes/mercadopago/callback` | público (por `state`) | troca o código, guarda tokens cifrados, redireciona a `MP_FRONTEND_URL/configuracoes/empresa?mercadopago=conectado\|erro` |
 | `DELETE /integracoes/mercadopago` | admin | desconecta e apaga os tokens |
-| `GET /pagamentos-gateway/disponibilidade` | admin, vendedor | `{ pix, motivo }`: `pix=true` se a integração está configurada e a loja conectada; senão `motivo` = `nao_configurado` ou `loja_nao_conectada`. Não consulta o provedor (um token recusado ainda vira 409 ao cobrar) |
+| `GET /pagamentos-gateway/disponibilidade` | admin, vendedor | `{ pix, motivo, parcelas_maximas_link? }`: `parcelas_maximas_link` (teto global do link de cartão, `MP_LINK_PARCELAS_MAXIMAS`) só vem com `pix=true`; `pix=true` se a integração está configurada e a loja conectada; senão `motivo` = `nao_configurado` ou `loja_nao_conectada`. Não consulta o provedor (um token recusado ainda vira 409 ao cobrar) |
 | `POST /pagamentos-gateway/pix` `{valor, cliente_email?}` | admin, vendedor | cria cobrança Pix (QR válido por 30 min) |
 | `GET /pagamentos-gateway/:codigo` | admin, vendedor | estado da cobrança (reconsulta o provedor, no máximo a cada 5 s) |
 | `POST /webhooks/mercadopago` | público (assinatura) | reconsulta o pagamento e aplica a transição |
@@ -109,7 +109,7 @@ Cancelar a venda **não** devolve o Pix sozinho: a devolução é um pedido expl
 
 Mesma tabela `cobrancas_pagamento`, `metodo = 'cartao_link'`. Fluxo:
 
-1. `POST /pagamentos-gateway/cartao` `{ valor }` (admin/vendedor; empresa do JWT) → cria a cobrança e a preferência do Checkout Pro com o token OAuth da loja. Resposta: `codigo`, `link_url`, `parcelas_maximas` (12), `expira_em(_segundos)`, `status`. Nunca devolve taxa nem ids do provedor.
+1. `POST /pagamentos-gateway/cartao` `{ valor, parcelas_maximas? }` (admin/vendedor; empresa do JWT; `parcelas_maximas` opcional, 1 a 24, nunca acima do teto `MP_LINK_PARCELAS_MAXIMAS`: vale o menor dos dois; é um **teto**, o cliente escolhe na página do Mercado Pago e o ERP grava as parcelas que ele informa) → cria a cobrança e a preferência do Checkout Pro com o token OAuth da loja. Resposta: `codigo`, `link_url`, `parcelas_maximas` (teto efetivo), `expira_em(_segundos)`, `status`. Nunca devolve taxa nem ids do provedor.
 2. O cliente abre `link_url` e paga na página do Mercado Pago (crédito ou débito).
 3. `GET /pagamentos-gateway/:codigo` (PDV, a cada poucos segundos) e o webhook consultam `GET /v1/payments/search?external_reference=<codigo>` com o token da loja. Só vale pagamento **aprovado**, com a nossa referência, de cartão (`credit_card`/`debit_card`) e valor exato. Grava `id_externo`, `tipo_cartao` e `parcelas` (débito = 1) a partir do pagamento. Tentativa recusada não fecha a cobrança: o cliente pode tentar de novo no mesmo link.
 4. A venda (`POST /vendas`) envia `{ forma_pagamento: 'credito'|'debito', numero_parcelas, valor, cobranca_codigo }`; o backend confere empresa, status `pago`, valor, forma e parcelas **contra o pagamento confirmado**, uma única vez. A origem `gateway` só nasce aí.

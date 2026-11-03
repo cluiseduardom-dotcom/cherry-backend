@@ -155,11 +155,13 @@ async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }) {
 
 // Link de pagamento de cartão (crédito/débito, até 12x). O cliente paga na página do Mercado Pago; a
 // venda só nasce depois, com o pagamento já confirmado (mesmo modelo do Pix).
-async function criarLinkCartao({ empresa_id, usuario_id }, { valor }) {
+async function criarLinkCartao({ empresa_id, usuario_id }, { valor, parcelas_maximas }) {
     const config = mercadoPagoService.exigirConfig();
     const valorCentavos = reaisParaCentavos(valor);
-    // Teto de parcelas do link: variável MP_LINK_PARCELAS_MAXIMAS (padrão 12). O Mercado Pago ainda limita por valor.
-    const parcelasMaximas = config.parcelasMaximasLink ?? PARCELAS_LINK_PADRAO;
+    // Teto de parcelas do link: o menor entre o pedido na venda e a variável MP_LINK_PARCELAS_MAXIMAS (padrão 12).
+    // O Mercado Pago ainda limita por valor da compra. O cliente escolhe as parcelas na página dele, até esse teto.
+    const tetoGlobal = config.parcelasMaximasLink ?? PARCELAS_LINK_PADRAO;
+    const parcelasMaximas = Math.min(tetoGlobal, parcelas_maximas ?? tetoGlobal);
 
     // Falha cedo (409) se a loja não conectou o Mercado Pago, antes de gravar qualquer cobrança.
     const accessToken = await mercadoPagoService.obterAccessToken(empresa_id);

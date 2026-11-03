@@ -223,7 +223,7 @@ describe('link de cartão não entra no fluxo de devolução de Pix', () => {
 });
 
 describe('POST /pagamentos-gateway/cartao', () => {
-    test.each([[{ valor: 0 }], [{ valor: -5 }], [{ valor: 10.123 }], [{ valor: 10, extra: 1 }], [{}]])('corpo inválido %j: 400', async (corpo) => {
+    test.each([[{ valor: 0 }], [{ valor: -5 }], [{ valor: 10.123 }], [{ valor: 10, extra: 1 }], [{ valor: 10, parcelas_maximas: 0 }], [{ valor: 10, parcelas_maximas: 25 }], [{ valor: 10, parcelas_maximas: 2.5 }], [{ valor: 10, parcelas_maximas: '3' }], [{}]])('corpo inválido %j: 400', async (corpo) => {
         const res = await request(app).post('/pagamentos-gateway/cartao').set('Authorization', `Bearer ${empresas.A.admin.token}`).send(corpo);
         expect(res.status).toBe(400);
     });
