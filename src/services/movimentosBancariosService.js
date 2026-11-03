@@ -33,8 +33,36 @@ async function criar(dados,usuario){
     });
 }
 
+const hojeBrasilia=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
+
+// Lançamento feito por uma pessoa: origem sempre MANUAL, data só do dia (meio-dia de Brasília, para não
+// virar o dia por fuso) e nunca no futuro — o que ainda vai acontecer é conta a pagar/receber, não saldo.
+async function lancarManual(dados,usuario){
+    if(dados.data_movimento>hojeBrasilia()) throw new AppError('Movimento manual não pode ter data futura',400);
+    return criar({
+        conta_bancaria_id:dados.conta_bancaria_id,
+        tipo:dados.tipo,
+        origem:'MANUAL',
+        valor:dados.valor,
+        data_movimento:`${dados.data_movimento}T12:00:00-03:00`,
+        descricao:dados.descricao,
+        observacao:dados.observacao??null
+    },usuario);
+}
+
 async function buscarPorId(id,usuario){return repository.buscarPorId(id,usuario.empresa_id);}
 async function listar(filtros,usuario){return repository.listar(usuario.empresa_id,filtros);}
 async function marcarConciliado(id,usuario){return repository.marcarConciliado(id,usuario.empresa_id);}
 
-module.exports={criar,buscarPorId,listar,marcarConciliado};
+// Movimento não se apaga: cancela-se, com motivo, e o saldo deixa de contá-lo. Conciliado exige desfazer antes.
+async function cancelar(id,motivo,usuario){
+    const movimento=await repository.buscarPorId(id,usuario.empresa_id);
+    if(!movimento) throw new AppError('Movimento bancário não encontrado',404);
+    if(movimento.cancelado_em) throw new AppError('Movimento já cancelado',409);
+    if(movimento.conciliado) throw new AppError('Movimento conciliado: desfaça a conciliação antes de cancelar',409);
+    const cancelado=await repository.cancelar(id,usuario.empresa_id,usuario.id,motivo);
+    if(!cancelado) throw new AppError('Movimento não pôde ser cancelado (já conciliado ou cancelado)',409);
+    return cancelado;
+}
+
+module.exports={criar,lancarManual,buscarPorId,listar,marcarConciliado,cancelar};

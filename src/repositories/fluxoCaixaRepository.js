@@ -10,7 +10,8 @@ async function resumo(empresaId,{dataInicio,dataFim,contaBancariaId=null}){
      COALESCE(SUM(CASE WHEN tipo='SAIDA' THEN valor ELSE 0 END),0) AS saidas,
      COUNT(*)::int AS movimentos
    FROM movimentos_bancarios
-   WHERE empresa_id=$1 AND data_movimento::date >= $2 AND data_movimento::date <= $3${contaFiltro}`,
+   WHERE empresa_id=$1 AND cancelado_em IS NULL
+     AND (data_movimento AT TIME ZONE 'America/Sao_Paulo')::date >= $2 AND (data_movimento AT TIME ZONE 'America/Sao_Paulo')::date <= $3${contaFiltro}`,
   params);
  return rows[0];
 }
@@ -20,12 +21,13 @@ async function porDia(empresaId,{dataInicio,dataFim,contaBancariaId=null}){
  const params=[empresaId,dataInicio,dataFim];
  if(contaBancariaId!=null) params.push(contaBancariaId);
  const {rows}=await db.query(
-  `SELECT data_movimento::date AS data,
+  `SELECT (data_movimento AT TIME ZONE 'America/Sao_Paulo')::date AS data,
      COALESCE(SUM(CASE WHEN tipo='ENTRADA' THEN valor ELSE 0 END),0) AS entradas,
      COALESCE(SUM(CASE WHEN tipo='SAIDA' THEN valor ELSE 0 END),0) AS saidas
    FROM movimentos_bancarios
-   WHERE empresa_id=$1 AND data_movimento::date >= $2 AND data_movimento::date <= $3${contaFiltro}
-   GROUP BY data_movimento::date ORDER BY data`,
+   WHERE empresa_id=$1 AND cancelado_em IS NULL
+     AND (data_movimento AT TIME ZONE 'America/Sao_Paulo')::date >= $2 AND (data_movimento AT TIME ZONE 'America/Sao_Paulo')::date <= $3${contaFiltro}
+   GROUP BY (data_movimento AT TIME ZONE 'America/Sao_Paulo')::date ORDER BY data`,
   params);
  return rows;
 }
