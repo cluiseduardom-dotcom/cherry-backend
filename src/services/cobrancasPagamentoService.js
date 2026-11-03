@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const AppError = require('../errors/AppError');
 const mercadoPagoClient = require('../integrations/mercadoPagoClient');
+const { PARCELAS_LINK_PADRAO } = require('../config/mercadoPagoConfig');
 const mercadoPagoService = require('./mercadoPagoService');
 const mercadoPagoRepository = require('../repositories/mercadoPagoRepository');
 const cobrancasRepository = require('../repositories/cobrancasPagamentoRepository');
@@ -15,7 +16,6 @@ const VALIDADE_PIX_MS = 30 * 60 * 1000;
 // Link de cartão: validade e teto de parcelas oferecidas. Taxa da plataforma no cartão = 0 por decisão do PO
 // (a taxa só incide sobre Pix); o campo marketplace_fee existe no cliente e só é enviado se isto mudar.
 const VALIDADE_LINK_CARTAO_MS = 2 * 60 * 60 * 1000;
-const PARCELAS_MAXIMAS_LINK = 12;
 // account_money (saldo do comprador no Mercado Pago) não pode ser excluído do link: entra como débito (à vista, 1x).
 const TIPO_CARTAO_POR_TIPO_PAGAMENTO = { credit_card: 'credito', debit_card: 'debito', account_money: 'debito' };
 // Consulta ao provedor na leitura da cobrança: no máximo uma a cada 5 s por cobrança.
@@ -158,6 +158,8 @@ async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }) {
 async function criarLinkCartao({ empresa_id, usuario_id }, { valor }) {
     const config = mercadoPagoService.exigirConfig();
     const valorCentavos = reaisParaCentavos(valor);
+    // Teto de parcelas do link: variável MP_LINK_PARCELAS_MAXIMAS (padrão 12). O Mercado Pago ainda limita por valor.
+    const parcelasMaximas = config.parcelasMaximasLink ?? PARCELAS_LINK_PADRAO;
 
     // Falha cedo (409) se a loja não conectou o Mercado Pago, antes de gravar qualquer cobrança.
     const accessToken = await mercadoPagoService.obterAccessToken(empresa_id);
@@ -174,7 +176,7 @@ async function criarLinkCartao({ empresa_id, usuario_id }, { valor }) {
         taxa_plataforma: 0,
         criado_por: usuario_id,
         metodo: 'cartao_link',
-        parcelas_maximas: PARCELAS_MAXIMAS_LINK
+        parcelas_maximas: parcelasMaximas
     });
 
     const agora = new Date();
@@ -190,7 +192,7 @@ async function criarLinkCartao({ empresa_id, usuario_id }, { valor }) {
             descricao: nomeLoja.slice(0, 120) || 'Venda',
             nomeLoja,
             taxaPlataforma: 0,
-            parcelasMaximas: PARCELAS_MAXIMAS_LINK,
+            parcelasMaximas,
             expiraDe: formatarExpiracao(agora),
             expiraAte: formatarExpiracao(expiraEm)
         });

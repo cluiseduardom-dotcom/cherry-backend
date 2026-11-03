@@ -11,6 +11,8 @@
 //   MP_SANDBOX          'true' envia test_token no OAuth (credenciais de teste)
 //   MP_EMAIL_PAGADOR_PADRAO  opcional: e-mail neutro (da plataforma) enviado como payer.email do Pix quando o PDV não
 //                       informa o e-mail do cliente. Inválido ou ausente = ignorado (cai no e-mail de contato da empresa).
+//   MP_LINK_PARCELAS_MAXIMAS  opcional: teto de parcelas oferecido no link de cartão (1 a 24; padrão 12). Fora do
+//                       intervalo ou não numérico = padrão. O Mercado Pago ainda limita por valor da compra.
 //   MP_API_URL / MP_AUTH_URL  opcionais (padrão: api.mercadopago.com / auth.mercadopago.com)
 
 const OBRIGATORIAS = ['MP_APP_ID', 'MP_CLIENT_SECRET', 'MP_REDIRECT_URI', 'MP_WEBHOOK_SECRET', 'MP_WEBHOOK_URL', 'MP_TOKEN_ENC_KEY', 'MP_FRONTEND_URL'];
@@ -26,6 +28,20 @@ function lerEmailPadrao(valor) {
     const email = String(valor ?? '').trim();
 
     return email.length <= 254 && FORMATO_EMAIL.test(email) ? email : null;
+}
+
+const PARCELAS_LINK_PADRAO = 12;
+const PARCELAS_LINK_MAXIMO = 24;
+
+// Opcional e nunca derruba a integração: só aceita inteiro de 1 a 24; qualquer outra coisa vira o padrão.
+function lerParcelasMaximasLink(valor) {
+    const texto = String(valor ?? '').trim();
+
+    if (!/^\d{1,2}$/.test(texto)) return PARCELAS_LINK_PADRAO;
+
+    const n = Number(texto);
+
+    return n >= 1 && n <= PARCELAS_LINK_MAXIMO ? n : PARCELAS_LINK_PADRAO;
 }
 
 function obterConfigMercadoPago(env = process.env) {
@@ -51,10 +67,11 @@ function obterConfigMercadoPago(env = process.env) {
         chaveCifra: chave,
         frontendUrl: semBarraFinal(env.MP_FRONTEND_URL.trim()),
         emailPagadorPadrao: lerEmailPadrao(env.MP_EMAIL_PAGADOR_PADRAO),
+        parcelasMaximasLink: lerParcelasMaximasLink(env.MP_LINK_PARCELAS_MAXIMAS),
         sandbox: String(env.MP_SANDBOX).toLowerCase() === 'true',
         apiUrl: semBarraFinal(env.MP_API_URL || 'https://api.mercadopago.com'),
         authUrl: semBarraFinal(env.MP_AUTH_URL || 'https://auth.mercadopago.com')
     };
 }
 
-module.exports = { obterConfigMercadoPago, OBRIGATORIAS };
+module.exports = { obterConfigMercadoPago, lerParcelasMaximasLink, OBRIGATORIAS, PARCELAS_LINK_PADRAO };

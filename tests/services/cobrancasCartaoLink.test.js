@@ -36,6 +36,18 @@ beforeEach(() => {
 });
 
 describe('criarLinkCartao', () => {
+    test('usa o teto de parcelas da configuração (MP_LINK_PARCELAS_MAXIMAS) na cobrança e na preferência', async () => {
+        mercadoPagoService.exigirConfig.mockReturnValue({ ...CONFIG, parcelasMaximasLink: 6 });
+        repo.criar.mockResolvedValue(cobranca({ parcelas_maximas: 6 }));
+        client.criarPreferenciaCartao.mockResolvedValue({ preferenciaId: 'pref-1', linkUrl: 'https://mp.exemplo/checkout' });
+        repo.registrarLinkCriado.mockImplementation(async (dados) => cobranca({ parcelas_maximas: 6, preferencia_id: dados.preferenciaId, link_url: dados.linkUrl }));
+
+        await service.criarLinkCartao({ empresa_id: 3, usuario_id: 9 }, { valor: 120 });
+
+        expect(repo.criar).toHaveBeenCalledWith(expect.objectContaining({ parcelas_maximas: 6 }));
+        expect(client.criarPreferenciaCartao).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ parcelasMaximas: 6 }));
+    });
+
     test('cria a cobrança de cartão, a preferência com teto de 12x e devolve o link sem expor taxa', async () => {
         repo.criar.mockResolvedValue(cobranca());
         client.criarPreferenciaCartao.mockResolvedValue({ preferenciaId: 'pref-1', linkUrl: 'https://mp.exemplo/checkout' });
