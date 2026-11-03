@@ -6,10 +6,20 @@ describe('loginSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  test('rejects an invalid email', () => {
-    const result = loginSchema.safeParse({ email: 'not-an-email', senha: 'senha123' });
+  test('e-mail ou código de usuário viram o mesmo campo identificador', () => {
+    expect(loginSchema.parse({ email: 'a@x.com', senha: 's' })).toEqual({ identificador: 'a@x.com', senha: 's' });
+    expect(loginSchema.parse({ identificador: 'egasil', empresa_slug: 'Cherry', senha: 's' }))
+      .toEqual({ identificador: 'egasil', empresa_slug: 'cherry', senha: 's' });
+  });
+
+  test('sem e-mail nem usuário: recusa', () => {
+    const result = loginSchema.safeParse({ senha: 'senha123' });
     expect(result.success).toBe(false);
-    expect(result.error.issues[0].message).toBe('Email inválido');
+    expect(result.error.issues[0].message).toBe('Informe o e-mail ou o usuário');
+  });
+
+  test('loja (slug) malformada: recusa', () => {
+    expect(loginSchema.safeParse({ identificador: 'EGASIL', empresa_slug: 'a b', senha: 's' }).success).toBe(false);
   });
 
   test('rejects an empty senha', () => {

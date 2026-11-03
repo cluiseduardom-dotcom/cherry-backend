@@ -57,10 +57,33 @@ describe('authService.login', () => {
     expect(result).toEqual({
       token: 'signed-token',
       usuario: {
-        id: 1, nome: 'Ana', email: 'a@x.com', papel: 'admin', empresa_id: undefined, senha_temporaria: false, plataforma_admin: false, foto_url: null,
+        id: 1, nome: 'Ana', email: 'a@x.com', login: null, papel: 'admin', empresa_id: undefined, senha_temporaria: false, plataforma_admin: false, foto_url: null,
         empresa: { id: undefined, tema: 'vertumno' }
       }
     });
+  });
+
+  test('código de usuário: busca pelo login normalizado DENTRO da loja', async () => {
+    usuarioRepository.buscarPorLogin = jest.fn().mockResolvedValue({
+      id: 2, nome: 'Emilly', email: 'emilly@x.com', login: 'EGASIL', senha: 'hash', papel: 'vendedor', empresa_id: 1, ativo: true, empresa_status: 'ativa'
+    });
+    bcrypt.compare.mockResolvedValue(true);
+    jwt.sign.mockReturnValue('signed-token');
+
+    const result = await authService.login(' egasil ', 'senha123', 'cherry');
+
+    expect(usuarioRepository.buscarPorLogin).toHaveBeenCalledWith('EGASIL', 'cherry');
+    expect(usuarioRepository.buscarPorEmail).not.toHaveBeenCalled();
+    expect(result.usuario.login).toBe('EGASIL');
+  });
+
+  test('código sem loja: mesma resposta de senha errada, sem consultar ninguém (e ainda paga o bcrypt)', async () => {
+    usuarioRepository.buscarPorLogin = jest.fn();
+    bcrypt.compare.mockResolvedValue(false);
+
+    await expect(authService.login('EGASIL', 'senha123', undefined)).rejects.toMatchObject({ statusCode: 401 });
+    expect(usuarioRepository.buscarPorLogin).not.toHaveBeenCalled();
+    expect(bcrypt.compare).toHaveBeenCalled();
   });
 
   test('embute a token_version atual do usuário no token', async () => {
