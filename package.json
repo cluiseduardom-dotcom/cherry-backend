@@ -12,7 +12,8 @@
     "test:integration": "jest --selectProjects integration --runInBand",
     "test:coverage": "jest --selectProjects unit --coverage",
     "db:migrate": "node src/database/migrate.js",
-    "tenant:provisionar": "node scripts/provisionar-tenant.js"
+    "tenant:provisionar": "node scripts/provisionar-tenant.js",
+    "painel:operador": "node scripts/painel-operador.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1156.0",

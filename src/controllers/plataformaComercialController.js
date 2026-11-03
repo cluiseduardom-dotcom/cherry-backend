@@ -19,7 +19,8 @@ function validar(schema, dados) {
 }
 
 // Quem fez a mudança: sempre o usuário autenticado (nunca o corpo da requisição).
-const responsavelDe = (req) => `${req.usuario.email} (#${req.usuario.id})`;
+// Painel GiroNex põe o operador em req.responsavelPlataforma; a rota antiga do ERP usa o usuário admin.
+const responsavelDe = (req) => req.responsavelPlataforma ?? `${req.usuario.email} (#${req.usuario.id})`;
 
 async function listarPlanos(req, res, next) {
     try {
