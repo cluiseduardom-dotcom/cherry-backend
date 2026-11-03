@@ -30,6 +30,7 @@ Perder `MP_TOKEN_ENC_KEY` invalida os tokens guardados (as lojas precisam recone
 | `POST /integracoes/mercadopago/conectar` | admin | devolve `{url}` de autorização; grava `state` de uso único (10 min) |
 | `GET /integracoes/mercadopago/callback` | público (por `state`) | troca o código, guarda tokens cifrados, redireciona a `MP_FRONTEND_URL/configuracoes/empresa?mercadopago=conectado\|erro` |
 | `DELETE /integracoes/mercadopago` | admin | desconecta e apaga os tokens |
+| `GET /pagamentos-gateway/a-devolver?metodo=pix\|cartao_link` | `gerir_financeiro` | Pagos sem venda ou de venda cancelada, sem devolução ativa. `metodo` padrão `pix`; `cartao_link` só lista (itens trazem `metodo`, `tipo_cartao`, `parcelas`) porque a devolução de cartão pelo ERP segue bloqueada: devolver no painel do Mercado Pago (o estorno chega por webhook/consulta e tira o item da lista). `limit`/`offset` como nas demais |
 | `GET /pagamentos-gateway/disponibilidade` | admin, vendedor | `{ pix, motivo, parcelas_maximas_link? }`: `parcelas_maximas_link` (teto global do link de cartão, `MP_LINK_PARCELAS_MAXIMAS`) só vem com `pix=true`; `pix=true` se a integração está configurada e a loja conectada; senão `motivo` = `nao_configurado` ou `loja_nao_conectada`. Não consulta o provedor (um token recusado ainda vira 409 ao cobrar) |
 | `POST /pagamentos-gateway/pix` `{valor, cliente_email?}` | admin, vendedor | cria cobrança Pix (QR válido por 30 min) |
 | `GET /pagamentos-gateway/:codigo` | admin, vendedor | estado da cobrança (reconsulta o provedor, no máximo a cada 5 s) |

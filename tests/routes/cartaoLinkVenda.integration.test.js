@@ -220,6 +220,23 @@ describe('link de cartão não entra no fluxo de devolução de Pix', () => {
         expect(devolucao.status).toBe(409);
         expect(devolucao.body.message).toMatch(/cartão/);
     });
+
+    test('com metodo=cartao_link a listagem mostra o cartão pago sem venda (só da própria empresa); metodo inválido: 400', async () => {
+        const codigo = await cobrancaCartao('A', { tipo: 'credito', parcelas: 3 });
+
+        const lista = await request(app).get('/pagamentos-gateway/a-devolver?metodo=cartao_link').set('Authorization', `Bearer ${empresas.A.admin.token}`);
+        expect(lista.status).toBe(200);
+        const item = lista.body.data.items.find(i => i.codigo === codigo);
+        expect(item).toMatchObject({ metodo: 'cartao_link', tipo_cartao: 'credito', parcelas: 3, situacao: 'sem_venda' });
+        expect(JSON.stringify(lista.body)).not.toMatch(/taxa|id_externo|preferencia/);
+
+        const outra = await request(app).get('/pagamentos-gateway/a-devolver?metodo=cartao_link').set('Authorization', `Bearer ${empresas.B.admin.token}`);
+        expect(outra.status).toBe(200);
+        expect(JSON.stringify(outra.body)).not.toContain(codigo);
+
+        const invalido = await request(app).get('/pagamentos-gateway/a-devolver?metodo=boleto').set('Authorization', `Bearer ${empresas.A.admin.token}`);
+        expect(invalido.status).toBe(400);
+    });
 });
 
 describe('POST /pagamentos-gateway/cartao', () => {
