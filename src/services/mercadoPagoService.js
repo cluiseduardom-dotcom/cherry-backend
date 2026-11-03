@@ -39,7 +39,9 @@ async function obterStatus(empresa_id) {
 // booleano e o motivo: nenhum dado da conexão (conta, datas, tokens) sai daqui. Não consulta o
 // Mercado Pago; um token vencido ou recusado ainda aparece como 409 na hora de cobrar.
 async function obterDisponibilidade(empresa_id) {
-    if (obterConfigMercadoPago() === null) {
+    const config = obterConfigMercadoPago();
+
+    if (config === null) {
         return { pix: false, motivo: 'nao_configurado' };
     }
 
@@ -49,7 +51,8 @@ async function obterDisponibilidade(empresa_id) {
         return { pix: false, motivo: 'loja_nao_conectada' };
     }
 
-    return { pix: true, motivo: null };
+    // parcelas_maximas_link: teto global do link de cartão (o PDV mostra quantas parcelas cabem em cada valor).
+    return { pix: true, motivo: null, parcelas_maximas_link: config.parcelasMaximasLink };
 }
 
 async function iniciarConexao(empresa_id, usuario_id) {

@@ -36,6 +36,23 @@ beforeEach(() => {
 });
 
 describe('criarLinkCartao', () => {
+    test.each([
+        ['sem pedido na venda: vale o teto global', 6, undefined, 6],
+        ['pedido menor que o global: vale o pedido', 6, 3, 3],
+        ['pedido maior que o global: nunca passa do global', 6, 12, 6],
+        ['sem teto global na config: usa o padrão 12', undefined, 20, 12]
+    ])('teto efetivo do link: %s', async (_nome, global, pedido, esperado) => {
+        mercadoPagoService.exigirConfig.mockReturnValue(global === undefined ? CONFIG : { ...CONFIG, parcelasMaximasLink: global });
+        repo.criar.mockResolvedValue(cobranca({ parcelas_maximas: esperado }));
+        client.criarPreferenciaCartao.mockResolvedValue({ preferenciaId: 'pref-1', linkUrl: 'https://mp.exemplo/checkout' });
+        repo.registrarLinkCriado.mockImplementation(async (dados) => cobranca({ parcelas_maximas: esperado, preferencia_id: dados.preferenciaId, link_url: dados.linkUrl }));
+
+        await service.criarLinkCartao({ empresa_id: 3, usuario_id: 9 }, { valor: 120, parcelas_maximas: pedido });
+
+        expect(repo.criar).toHaveBeenCalledWith(expect.objectContaining({ parcelas_maximas: esperado }));
+        expect(client.criarPreferenciaCartao).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ parcelasMaximas: esperado }));
+    });
+
     test('usa o teto de parcelas da configuração (MP_LINK_PARCELAS_MAXIMAS) na cobrança e na preferência', async () => {
         mercadoPagoService.exigirConfig.mockReturnValue({ ...CONFIG, parcelasMaximasLink: 6 });
         repo.criar.mockResolvedValue(cobranca({ parcelas_maximas: 6 }));

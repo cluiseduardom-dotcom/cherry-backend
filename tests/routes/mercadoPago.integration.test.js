@@ -227,13 +227,13 @@ describe('conexão da loja (OAuth)', () => {
 });
 
 describe('GET /pagamentos-gateway/disponibilidade', () => {
-    test('vendedor e admin veem só { pix, motivo }; estoquista 403; sem token 401', async () => {
+    test('vendedor e admin veem só { pix, motivo, parcelas_maximas_link }; estoquista 403; sem token 401', async () => {
         await conectarLoja(A);
 
         const vendedor = await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'vendedor');
         expect(vendedor.status).toBe(200);
-        expect(vendedor.body.data).toEqual({ pix: true, motivo: null });
-        expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'admin')).body.data).toEqual({ pix: true, motivo: null });
+        expect(vendedor.body.data).toEqual({ pix: true, motivo: null, parcelas_maximas_link: 12 });
+        expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'admin')).body.data).toEqual({ pix: true, motivo: null, parcelas_maximas_link: 12 });
 
         expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'estoquista')).status).toBe(403);
         expect((await request(app).get('/pagamentos-gateway/disponibilidade')).status).toBe(401);
