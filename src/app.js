@@ -38,8 +38,10 @@ function obterSaltosProxyConfiaveis(env = process.env) {
 
 app.set('trust proxy', obterSaltosProxyConfiaveis());
 
+// PAINEL_CORS_ORIGINS: origem do Painel GiroNex, separada da allowlist do ERP para poder ser
+// trocada (ex.: domínio próprio) sem mexer nas origens das lojas.
 function obterOrigensPermitidas() {
-    return (process.env.CORS_ORIGINS || '')
+    return [process.env.CORS_ORIGINS, process.env.PAINEL_CORS_ORIGINS].filter(Boolean).join(',')
         .split(',')
         .map((origem) => origem.trim())
         .filter(Boolean);
@@ -116,6 +118,7 @@ const authMiddleware = require('./middlewares/authMiddleware');
 const requireAdmin = require('./middlewares/requireAdmin');
 const empresaRoutes = require('./routes/empresa');
 const plataformaRoutes = require('./routes/plataforma');
+const painelRoutes = require('./routes/painel');
 const publicoRoutes = require('./routes/publico');
 const integracoesMercadoPagoRoutes = require('./routes/integracoesMercadoPago');
 const pagamentosGatewayRoutes = require('./routes/pagamentosGateway');
@@ -151,6 +154,8 @@ app.use('/notificacoes', authMiddleware, notificacoesRoutes);
 app.use('/empresa', authMiddleware, requireAdmin, empresaRoutes);
 // Operador da plataforma: leitura agregada entre empresas (única exceção deliberada ao filtro por empresa_id).
 app.use('/plataforma', authMiddleware, requirePlataformaAdmin, plataformaRoutes);
+// Painel GiroNex: operadores separados dos usuários das lojas, com sessão própria (PAINEL_JWT_SECRET) e 2FA.
+app.use('/painel', painelRoutes);
 // Mercado Pago: conexão da loja (admin; o retorno do OAuth é público, por `state`), cobrança Pix
 // (admin/vendedor) e webhook público protegido por assinatura. Sem as variáveis MP_* respondem 503.
 app.use('/integracoes/mercadopago', integracoesMercadoPagoRoutes);
