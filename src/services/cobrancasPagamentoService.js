@@ -51,6 +51,19 @@ function formatarExpiracao(data) {
 }
 
 // O que o PDV pode ver: nunca a taxa da plataforma, nunca ids internos.
+// Total pago pelo cliente (valor + juros do parcelamento) informado pelo Mercado Pago, ou null. Só aceita número
+// finito, nunca menor que o valor cobrado e com teto de 2x (qualquer coisa fora disso é dado suspeito: ignora).
+function extrairTotalPago(pagamento, valor) {
+    const total = Number(pagamento?.transaction_details?.total_paid_amount);
+    const base = reaisParaCentavos(valor);
+
+    if (!Number.isFinite(total) || total <= 0) return null;
+
+    const centavos = Math.round(total * 100);
+
+    return centavos >= base && centavos <= base * 2 ? centavos / 100 : null;
+}
+
 function paraResposta(cobranca) {
     const agora = Date.now();
     const alvo = cobranca.expira_em ? new Date(cobranca.expira_em).getTime() : NaN;
@@ -78,7 +91,10 @@ function paraResposta(cobranca) {
             link_url: cobranca.link_url,
             parcelas_maximas: cobranca.parcelas_maximas,
             tipo_cartao: cobranca.tipo_cartao,
-            parcelas: cobranca.parcelas
+            parcelas: cobranca.parcelas,
+            // Total que o cliente pagou com os juros do parcelamento (só informativo; a venda segue com o valor da cobrança).
+            valor_total_pago: cobranca.valor_total_pago ?? null,
+            juros_pagos: cobranca.valor_total_pago == null ? null : (reaisParaCentavos(cobranca.valor_total_pago) - reaisParaCentavos(cobranca.valor)) / 100
         };
     }
 
@@ -254,7 +270,8 @@ async function sincronizar(cobrancaInicial) {
             empresa_id: cobranca.empresa_id,
             idExterno: String(aprovado.id),
             tipoCartao: TIPO_CARTAO_POR_TIPO_PAGAMENTO[aprovado.payment_type_id],
-            parcelas
+            parcelas,
+            valorTotalPago: extrairTotalPago(aprovado, cobranca.valor)
         });
 
         // Outra consulta pode ter registrado antes: segue com a linha atual do banco.
@@ -273,6 +290,15 @@ async function sincronizar(cobrancaInicial) {
         console.error(`Mercado Pago: pagamento ${cobranca.id_externo} não confere com a cobrança ${cobranca.codigo}; ignorado`);
         await cobrancasRepository.registrarConsulta(cobranca.id, cobranca.empresa_id);
         return cobranca;
+    }
+
+    // Cobrança de cartão já registrada sem o total (anterior a esta coluna): completa uma vez, só informativo.
+    if (cobranca.metodo === 'cartao_link' && cobranca.valor_total_pago == null) {
+        const total = extrairTotalPago(pagamento, cobranca.valor);
+
+        if (total !== null) {
+            cobranca = await cobrancasRepository.registrarTotalPago({ id: cobranca.id, empresa_id: cobranca.empresa_id, valorTotalPago: total }) ?? cobranca;
+        }
     }
 
     const novo = mapearStatusProvedor(pagamento.status);
@@ -417,4 +443,4 @@ async function listarDevolucoes(empresa_id, paginacao) {
     return devolucoesRepository.listarDevolucoes({ empresa_id, ...paginacao });
 }
 
-module.exports = { criarPix, criarLinkCartao, escolherPagamentoCartao, consultar, processarNotificacao, devolver, listarADevolver, listarDevolucoes, mapearStatusProvedor, formatarExpiracao, TRANSICOES };
+module.exports = { criarPix, criarLinkCartao, escolherPagamentoCartao, consultar, processarNotificacao, devolver, listarADevolver, listarDevolucoes, mapearStatusProvedor, formatarExpiracao, extrairTotalPago, TRANSICOES };
