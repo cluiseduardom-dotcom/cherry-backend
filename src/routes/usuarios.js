@@ -15,6 +15,8 @@ router.post('/', controller.criar);
 router.get('/eventos', controller.eventos);
 router.get('/:id', controller.detalhar);
 router.patch('/:id/dados', controller.editarDados);
+// Código de usuário (login por loja): mesma permissão dos dados cadastrais.
+router.patch('/:id/login', controller.alterarLogin);
 router.patch('/:id/bloqueio', controller.bloquear);
 // Foto de outro usuário: mesma hierarquia da edição de dados (nunca Admin por aqui, só cargo abaixo do seu).
 router.put('/:id/foto', uploadImagemProduto, fotosController.definir);

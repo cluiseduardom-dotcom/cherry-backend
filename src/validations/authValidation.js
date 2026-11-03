@@ -1,10 +1,17 @@
 const { z } = require('zod');
 const { CARGOS } = require('../constants/cargos');
 
+const { SLUG_REGEX } = require('../constants/temasVisuais');
+
+// Entrar com e-mail (em qualquer tela) ou com o código de usuário (ex.: EGASIL), que é único por empresa e
+// por isso exige a loja (`empresa_slug`, da página /c/<slug>). `email` continua aceito (clientes antigos).
 const loginSchema = z.object({
-    email: z.string().email('Email inválido'),
-    senha: z.string().min(1, 'Senha é obrigatória')
-});
+    identificador: z.string().trim().min(1, 'Informe o e-mail ou o usuário').max(254, 'Usuário inválido').optional(),
+    email: z.string().trim().min(1, 'Informe o e-mail ou o usuário').max(254, 'Usuário inválido').optional(),
+    empresa_slug: z.string().trim().toLowerCase().regex(SLUG_REGEX, 'Loja inválida').optional(),
+    senha: z.string({ error: 'Senha é obrigatória' }).min(1, 'Senha é obrigatória')
+}).refine((d) => Boolean(d.identificador || d.email), { message: 'Informe o e-mail ou o usuário' })
+    .transform(({ identificador, email, ...resto }) => ({ ...resto, identificador: identificador ?? email }));
 
 const registerSchema = z.object({
     nome: z.string().min(1, 'Nome é obrigatório'),

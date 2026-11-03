@@ -15,9 +15,9 @@ async function login(req, res, next) {
             throw new AppError(parsed.error.issues[0].message, 400);
         }
 
-        const { email, senha } = parsed.data;
+        const { identificador, senha, empresa_slug } = parsed.data;
 
-        const resultado = await authService.login(email, senha);
+        const resultado = await authService.login(identificador, senha, empresa_slug);
 
         return response.success(res, resultado);
 

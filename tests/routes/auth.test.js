@@ -14,7 +14,7 @@ describe('POST /auth/login', () => {
     const res = await request(app).post('/auth/login').send({ email: 'not-an-email' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ success: false, message: 'Email inválido' });
+    expect(res.body).toEqual({ success: false, message: 'Senha é obrigatória' });
     expect(authService.login).not.toHaveBeenCalled();
   });
 
@@ -30,7 +30,7 @@ describe('POST /auth/login', () => {
       success: true,
       data: { token: 'tok', usuario: { id: 1, papel: 'admin' } }
     });
-    expect(authService.login).toHaveBeenCalledWith('a@x.com', 'senha123');
+    expect(authService.login).toHaveBeenCalledWith('a@x.com', 'senha123', undefined);
   });
 
   test('tema, empresa_id e empresa enviados no corpo são ignorados: o serviço recebe só email e senha', async () => {
@@ -45,8 +45,16 @@ describe('POST /auth/login', () => {
       .send({ email: 'a@x.com', senha: 'senha123' });
 
     expect(authService.login).toHaveBeenCalledTimes(2);
-    expect(authService.login).toHaveBeenNthCalledWith(1, 'a@x.com', 'senha123');
-    expect(authService.login).toHaveBeenNthCalledWith(2, 'a@x.com', 'senha123');
+    expect(authService.login).toHaveBeenNthCalledWith(1, 'a@x.com', 'senha123', undefined);
+    expect(authService.login).toHaveBeenNthCalledWith(2, 'a@x.com', 'senha123', undefined);
+  });
+
+  test('código de usuário + loja chegam ao serviço (loja em minúsculas)', async () => {
+    authService.login.mockResolvedValue({ token: 'tok', usuario: { id: 1 } });
+
+    await request(app).post('/auth/login').send({ identificador: 'EGASIL', empresa_slug: 'Cherry', senha: 'senha123' });
+
+    expect(authService.login).toHaveBeenCalledWith('EGASIL', 'senha123', 'cherry');
   });
 
   test('propagates a service AppError with its status code', async () => {

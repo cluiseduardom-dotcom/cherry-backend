@@ -3,12 +3,13 @@ const AppError = require('../errors/AppError');
 const { executarComLock } = require('./shared/transacoes');
 const cargosRepository = require('./cargosRepository');
 const { resolverCargo } = require('../services/permissoesService');
+const { gerarLoginBase, proximoLoginLivre } = require('../utils/loginUsuario');
 
 // Colunas que o service precisa para resolver o cargo EFETIVO de cada usuário (cargo do
 // catálogo + linha de cargos_empresa + admin concedido), as mesmas que sessaoRepository usa.
 // Filtra SEMPRE por empresa_id. Nunca devolve a senha.
 const COLUNAS_COM_CARGO = `
-    u.id, u.nome, u.email, u.papel, u.ativo, u.criado_em,
+    u.id, u.nome, u.email, u.login, u.papel, u.ativo, u.criado_em,
     (c.empresa_id IS NOT NULL) AS cargo_configurado,
     c.nivel AS cargo_nivel, c.ativo AS cargo_ativo, c.capacidades AS cargo_capacidades,
     EXISTS (
@@ -50,7 +51,16 @@ async function listarPorEmpresa(empresa_id) {
 // O cargo é REVALIDADO aqui dentro, sob a trava de cargo: se alguém o desligar ao mesmo tempo,
 // a criação vê o cargo desligado e recusa (409) em vez de deixar um usuário ativo sem acesso.
 // O e-mail é único no banco inteiro; a corrida entre duas criações vira 409, não 500.
-async function criarComAuditoria({ nome, email, senhaHash, papel, empresa_id, executado_por, motivo, dados = {} }) {
+// Logins já usados na empresa (para escolher o próximo livre: EGASIL, EGASIL2…).
+async function loginsDaEmpresa(empresa_id, client = db) {
+    const { rows } = await client.query('SELECT login FROM usuarios WHERE empresa_id = $1 AND login IS NOT NULL', [empresa_id]);
+    return new Set(rows.map((r) => r.login));
+}
+
+// `login`: o escolhido pelo admin (já normalizado) ou null para gerar pelo nome. Gerado = primeiro livre na
+// empresa; escolhido e já usado = 409. A trava de cargo serializa as criações da empresa no mesmo cargo; a
+// corrida entre cargos diferentes cai no índice único (23505 → 409, tentar de novo).
+async function criarComAuditoria({ nome, email, senhaHash, papel, empresa_id, executado_por, motivo, dados = {}, login = null }) {
     const client = await db.connect();
 
     try {
@@ -63,11 +73,17 @@ async function criarComAuditoria({ nome, email, senhaHash, papel, empresa_id, ex
             throw new AppError('Cargo não habilitado neste comércio', 409);
         }
 
+        const ocupados = await loginsDaEmpresa(empresa_id, client);
+        if (login && ocupados.has(login)) {
+            throw new AppError(`O usuário ${login} já existe nesta empresa`, 409);
+        }
+        const loginFinal = login ?? proximoLoginLivre(gerarLoginBase(nome), ocupados);
+
         const { rows } = await client.query(
-            `INSERT INTO usuarios (nome, email, senha, papel, empresa_id)
-             VALUES ($1, $2, $3, $4, $5)
-             RETURNING id, nome, email, papel, empresa_id, ativo`,
-            [nome, email, senhaHash, papel, empresa_id]
+            `INSERT INTO usuarios (nome, email, senha, papel, empresa_id, login)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING id, nome, email, login, papel, empresa_id, ativo`,
+            [nome, email, senhaHash, papel, empresa_id, loginFinal]
         );
 
         await client.query(
@@ -89,7 +105,10 @@ async function criarComAuditoria({ nome, email, senhaHash, papel, empresa_id, ex
         await client.query('ROLLBACK');
 
         if (error && error.code === '23505') {
-            throw new AppError(error.constraint === 'uq_usuarios_dados_cpf' ? 'CPF já cadastrado nesta empresa' : 'Email já cadastrado', 409);
+            const mensagem = error.constraint === 'uq_usuarios_dados_cpf' ? 'CPF já cadastrado nesta empresa'
+                : error.constraint === 'uq_usuarios_login_empresa' ? 'Este usuário (login) já existe nesta empresa; tente de novo'
+                : 'Email já cadastrado';
+            throw new AppError(mensagem, 409);
         }
 
         throw error;
@@ -234,6 +253,41 @@ async function editarDados({ empresa_id, usuario_id, dados, executado_por, autor
     });
 }
 
+// Troca do login (código de usuário) com a linha TRAVADA; `autorizar(alvo)` decide se o ator pode. Mesmo
+// login = no-op (sem evento). Trilha: ação 'editar' com o campo 'login' (como os dados cadastrais).
+async function alterarLogin({ empresa_id, usuario_id, login, executado_por, autorizar }) {
+    return executarComLock('usuarios', { coluna: 'id', valor: usuario_id }, empresa_id, undefined, async (linha, client) => {
+        if (!linha) {
+            throw new AppError('Usuário não encontrado', 404);
+        }
+
+        const alvo = await obterDetalhe(empresa_id, usuario_id, client);
+
+        autorizar(alvo);
+
+        if (alvo.login === login) {
+            return { alterado: false, login };
+        }
+
+        try {
+            await client.query('UPDATE usuarios SET login = $1 WHERE id = $2 AND empresa_id = $3', [login, usuario_id, empresa_id]);
+        } catch (error) {
+            if (error && error.code === '23505') {
+                throw new AppError(`O usuário ${login} já existe nesta empresa`, 409);
+            }
+            throw error;
+        }
+
+        await client.query(
+            `INSERT INTO usuarios_eventos (empresa_id, acao, alvo_usuario_id, cargo_alvo, executado_por, motivo, campos)
+             VALUES ($1, 'editar', $2, $3, $4, NULL, ARRAY['login'])`,
+            [empresa_id, usuario_id, alvo.papel, executado_por]
+        );
+
+        return { alterado: true, login };
+    });
+}
+
 // Redefinição por admin: trava o alvo (filtrado por empresa_id), grava o hash, marca a senha como
 // temporária, avança token_version (derruba as sessões dele) e registra a trilha — tudo numa transação.
 async function redefinirSenha({ alvo_id, empresa_id, senhaHash, executado_por }) {
@@ -261,6 +315,8 @@ async function redefinirSenha({ alvo_id, empresa_id, senhaHash, executado_por })
 }
 
 module.exports = {
+    alterarLogin,
+    loginsDaEmpresa,
     redefinirSenha,
     obterDetalhe,
     editarDados,

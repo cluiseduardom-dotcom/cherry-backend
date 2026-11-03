@@ -13,6 +13,20 @@ async function buscarPorEmail(email) {
     return rows.length ? rows[0] : null;
 }
 
+// Login por código: único dentro da empresa da loja (slug). Mesma forma de buscarPorEmail.
+async function buscarPorLogin(login, empresaSlug) {
+    const { rows } = await db.query(
+        `SELECT u.*, e.status AS empresa_status, e.tema_visual AS empresa_tema
+         FROM usuarios u
+         JOIN empresas e ON e.id = u.empresa_id
+         WHERE e.slug = $1 AND u.login = $2
+         LIMIT 1`,
+        [empresaSlug, login]
+    );
+
+    return rows.length ? rows[0] : null;
+}
+
 async function criar({ nome, email, senha, papel, empresa_id }) {
     const { rows } = await db.query(
         `INSERT INTO usuarios (nome, email, senha, papel, empresa_id)
@@ -71,6 +85,7 @@ async function trocarPropriaSenha({ id, empresa_id, senhaHash }) {
 }
 
 module.exports = {
+    buscarPorLogin,
     buscarPorEmail,
     buscarSenhaHash,
     trocarPropriaSenha,

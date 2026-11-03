@@ -1,3 +1,4 @@
+const { normalizarLogin, loginValido } = require('../utils/loginUsuario');
 const { z } = require('zod');
 const { CARGOS } = require('../constants/cargos');
 const { cpfValido, UFS } = require('../utils/documentos');
@@ -41,11 +42,19 @@ const editarDadosSchema = z.object({ telefone: telefone.optional(), ...camposOpc
     .strict()
     .refine((d) => Object.keys(d).length > 0, 'Informe ao menos um campo');
 
+// Código de usuário: normalizado (maiúsculo, sem acento/símbolo) e então validado (A–Z/0–9, 2 a 20).
+const loginUsuario = z.string({ error: 'Usuário inválido' })
+    .transform((v) => normalizarLogin(v))
+    .refine((v) => loginValido(v), 'Usuário deve ter de 2 a 20 letras ou números');
+
+const alterarLoginSchema = z.strictObject({ login: loginUsuario });
+
 const criarUsuarioSchema = z.object({
     nome: z.string().trim().min(1, 'Nome é obrigatório').max(255, 'Nome muito longo'),
     email: z.string().trim().email('Email inválido').max(255, 'Email muito longo'),
     senha: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres').max(128, 'Senha muito longa'),
     papel: z.enum(CARGOS, { message: 'Papel inválido' }),
+    login: loginUsuario.optional(),
     telefone,
     ...camposOpcionais
 }).strict();
@@ -62,6 +71,7 @@ const redefinirSenhaSchema = z.strictObject({
 });
 
 module.exports = {
+    alterarLoginSchema,
     redefinirSenhaSchema,
     criarUsuarioSchema,
     editarDadosSchema,

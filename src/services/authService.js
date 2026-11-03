@@ -1,3 +1,4 @@
+const { normalizarLogin, loginValido } = require('../utils/loginUsuario');
 const bcrypt = require('bcrypt');
 const tokenService = require('./tokenService');
 const usuarioRepository = require('../repositories/usuarioRepository');
@@ -13,9 +14,20 @@ const HASH_DESCARTAVEL = bcrypt.hashSync('hash-descartavel-sem-usuario', 10);
 
 const MENSAGEM_CREDENCIAIS = 'Email ou senha inválidos';
 
-async function login(email, senha) {
+// `identificador`: e-mail (contém @; vale em qualquer tela) ou código de usuário (ex.: EGASIL), que só
+// existe dentro de uma empresa e por isso precisa da loja (`empresaSlug`). Qualquer falta ou erro dá a
+// MESMA resposta de senha errada (não revela se o usuário ou a loja existem).
+async function login(identificador, senha, empresaSlug) {
 
-    const usuario = await usuarioRepository.buscarPorEmail(email);
+    const texto = String(identificador ?? '').trim();
+    let usuario = null;
+
+    if (texto.includes('@')) {
+        usuario = await usuarioRepository.buscarPorEmail(texto);
+    } else if (empresaSlug) {
+        const codigo = normalizarLogin(texto);
+        usuario = loginValido(codigo) ? await usuarioRepository.buscarPorLogin(codigo, empresaSlug) : null;
+    }
 
     const senhaValida = await bcrypt.compare(senha, usuario ? usuario.senha : HASH_DESCARTAVEL);
 
@@ -38,6 +50,7 @@ async function login(email, senha) {
             id: usuario.id,
             nome: usuario.nome,
             email: usuario.email,
+            login: usuario.login ?? null,
             papel: usuario.papel,
             empresa_id: usuario.empresa_id,
             senha_temporaria: usuario.senha_temporaria === true,

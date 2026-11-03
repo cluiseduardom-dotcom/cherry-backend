@@ -90,6 +90,7 @@ async function listar(ator) {
             id: usuario.id,
             nome: usuario.nome,
             email: usuario.email,
+            login: usuario.login ?? null,
             cargo: usuario.papel,
             ativo: usuario.ativo,
             criado_em: usuario.criado_em,
@@ -113,7 +114,7 @@ async function listarCargosAtribuiveis(ator) {
         .map(({ cargo, rotulo, nivel, em_escada }) => ({ cargo, rotulo, nivel: em_escada ? nivel : null, em_escada }));
 }
 
-async function criar({ nome, email, senha, papel, ...dados }, ator) {
+async function criar({ nome, email, senha, papel, login = null, ...dados }, ator) {
     const empresaId = ator.empresa_id;
 
     // Só cargos ligados no comércio.
@@ -146,7 +147,8 @@ async function criar({ nome, email, senha, papel, ...dados }, ator) {
         empresa_id: empresaId,
         executado_por: ator.id,
         motivo: null,
-        dados
+        dados,
+        login
     });
 
     return { usuario };
@@ -165,6 +167,7 @@ function apresentarDetalhe(usuario) {
         id: usuario.id,
         nome: usuario.nome,
         email: usuario.email,
+        login: usuario.login ?? null,
         cargo: usuario.papel,
         ativo: usuario.ativo,
         criado_em: usuario.criado_em,
@@ -190,6 +193,17 @@ async function editarDados(usuarioId, dados, ator) {
         empresa_id: ator.empresa_id,
         usuario_id: usuarioId,
         dados,
+        executado_por: ator.id,
+        autorizar: (alvo) => garantirPodeVerOuEditar(ator, alvo)
+    });
+}
+
+// Login (código de usuário): mesma permissão dos dados cadastrais (o próprio ou quem pode gerenciá-lo).
+async function alterarLogin(usuarioId, { login }, ator) {
+    return usuariosRepository.alterarLogin({
+        empresa_id: ator.empresa_id,
+        usuario_id: usuarioId,
+        login,
         executado_por: ator.id,
         autorizar: (alvo) => garantirPodeVerOuEditar(ator, alvo)
     });
@@ -251,6 +265,7 @@ async function redefinirSenha(alvoId, senhaConfirmacao, ator) {
 }
 
 module.exports = {
+    alterarLogin,
     redefinirSenha,
     avaliarAlvo,
     garantirPodeGerenciar,

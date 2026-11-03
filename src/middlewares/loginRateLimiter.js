@@ -12,10 +12,16 @@ function handler(req, res) {
     });
 }
 
+// Conta = e-mail, ou código de usuário + loja (o código só é único dentro da empresa).
 function emailDaRequisicao(req) {
-    const email = req.body && req.body.email;
+    const corpo = req.body || {};
+    const id = typeof corpo.identificador === 'string' ? corpo.identificador : corpo.email;
+    if (typeof id !== 'string') return '';
 
-    return typeof email === 'string' ? email.trim().toLowerCase().slice(0, 254) : '';
+    const conta = id.trim().toLowerCase().slice(0, 254);
+    const loja = typeof corpo.empresa_slug === 'string' && !conta.includes('@') ? `@${corpo.empresa_slug.trim().toLowerCase().slice(0, 40)}` : '';
+
+    return `${conta}${loja}`;
 }
 
 // Chave por IP + e-mail: errar a senha de uma conta só bloqueia essa conta
