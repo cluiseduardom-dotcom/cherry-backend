@@ -35,4 +35,6 @@ usuário vêm sempre do JWT. Migration `086`.
 
 Campos desconhecidos são recusados (400). Ids e valores `NUMERIC` voltam como string (padrão do `pg`).
 
+`GET /bancos/movimentos` devolve `conciliacao_id` (conciliação ativa) para a tela poder desfazer.
+
 `GET /financeiro/fluxo-caixa` passa a ignorar movimentos cancelados e a agrupar por dia de Brasília.

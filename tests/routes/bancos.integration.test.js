@@ -209,7 +209,13 @@ describe('Bancos: conciliação', () => {
     const { rows } = await db.query('SELECT conciliado FROM movimentos_bancarios WHERE id = $1', [m]);
     expect(rows[0].conciliado).toBe(false);
 
-    expect((await post(t.adminA, '/bancos/conciliacoes', { movimento_bancario_id: m })).status).toBe(201);
+    const nova = await post(t.adminA, '/bancos/conciliacoes', { movimento_bancario_id: m });
+    expect(nova.status).toBe(201);
+
+    // A lista de movimentos informa a conciliação ativa (a tela usa para "desfazer").
+    const item = (await get(t.adminA, `/bancos/movimentos?conta_bancaria_id=${t.contaA}`)).body.data.items.find((x) => x.id === m);
+    expect(item.conciliado).toBe(true);
+    expect(item.conciliacao_id).toBe(nova.body.data.id);
   });
 
   test('movimento cancelado não se concilia; empresa B não desfaz conciliação da A', async () => {

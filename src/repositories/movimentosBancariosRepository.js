@@ -88,9 +88,11 @@ async function listar(empresaId, filtros = {}) {
 
     params.push(limite, deslocamento);
     const { rows } = await db.query(
-        `SELECT m.*, c.nome AS conta_nome
+        `SELECT m.*, c.nome AS conta_nome, cb.id AS conciliacao_id
            FROM movimentos_bancarios m
            JOIN contas_bancarias c ON c.id = m.conta_bancaria_id AND c.empresa_id = m.empresa_id
+           LEFT JOIN conciliacoes_bancarias cb ON cb.movimento_bancario_id = m.id AND cb.empresa_id = m.empresa_id
+                                              AND cb.status = 'CONCILIADA'
           WHERE ${where.join(' AND ')}
           ORDER BY m.data_movimento DESC, m.id DESC
           LIMIT $${params.length - 1} OFFSET $${params.length}`,
