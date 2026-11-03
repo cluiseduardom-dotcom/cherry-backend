@@ -112,6 +112,24 @@ describe('criação e troca do código', () => {
     expect(res.status).toBe(200);
   });
 
+  test('editar o nome completo: grava, registra na trilha e não muda o login', async () => {
+    const res = await request(app).patch(`/usuarios/${lojas.A.adminId}/nome`).set(auth()).send({ nome: '  Luís   Eduardo Cardoso ' });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ alterado: true, nome: 'Luís Eduardo Cardoso' });
+
+    const { rows } = await db.query('SELECT nome, login FROM usuarios WHERE id = $1', [lojas.A.adminId]);
+    expect(rows[0]).toEqual({ nome: 'Luís Eduardo Cardoso', login: 'LEMCAR' });
+
+    const igual = await request(app).patch(`/usuarios/${lojas.A.adminId}/nome`).set(auth()).send({ nome: 'Luís Eduardo Cardoso' });
+    expect(igual.body.data).toEqual({ alterado: false, nome: 'Luís Eduardo Cardoso' });
+
+    const ev = await db.query(`SELECT campos FROM usuarios_eventos WHERE alvo_usuario_id = $1 AND acao = 'editar'`, [lojas.A.adminId]);
+    expect(ev.rows.map(r => r.campos)).toContainEqual(['nome']);
+
+    expect((await request(app).patch(`/usuarios/${lojas.A.adminId}/nome`).set(auth()).send({ nome: '   ' })).status).toBe(400);
+    expect((await request(app).patch(`/usuarios/${lojas.B.adminId}/nome`).set(auth()).send({ nome: 'Invasor' })).status).toBe(404);
+  });
+
   test('usuário de outra loja não é encontrado (isolamento)', async () => {
     const res = await request(app).patch(`/usuarios/${lojas.B.adminId}/login`).set(auth()).send({ login: 'INVASOR' });
     expect(res.status).toBe(404);

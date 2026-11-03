@@ -49,6 +49,11 @@ const loginUsuario = z.string({ error: 'Usuário inválido' })
 
 const alterarLoginSchema = z.strictObject({ login: loginUsuario });
 
+const alterarNomeSchema = z.strictObject({
+    nome: z.string({ error: 'Nome é obrigatório' }).trim().min(1, 'Nome é obrigatório').max(255, 'Nome muito longo')
+        .transform((v) => v.replace(/\s+/g, ' '))
+});
+
 const criarUsuarioSchema = z.object({
     nome: z.string().trim().min(1, 'Nome é obrigatório').max(255, 'Nome muito longo'),
     email: z.string().trim().email('Email inválido').max(255, 'Email muito longo'),
@@ -71,6 +76,7 @@ const redefinirSenhaSchema = z.strictObject({
 });
 
 module.exports = {
+    alterarNomeSchema,
     alterarLoginSchema,
     redefinirSenhaSchema,
     criarUsuarioSchema,
