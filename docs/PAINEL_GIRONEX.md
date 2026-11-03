@@ -42,7 +42,7 @@ O segredo TOTP fica **cifrado** no banco (AES-256-GCM com `PAINEL_ENC_KEY`).
 |---|---|
 | `PAINEL_JWT_SECRET` | ≥ 32 caracteres aleatórios, diferente de `JWT_SECRET` |
 | `PAINEL_ENC_KEY` | 32 bytes aleatórios em base64 (`openssl rand -base64 32`) |
-| `CORS_ORIGINS` | incluir o endereço do frontend do painel |
+| `PAINEL_CORS_ORIGINS` | endereço do frontend do painel (ex.: `https://gironex-painel.onrender.com`); somado à allowlist `CORS_ORIGINS` do ERP, que não muda |
 
 Sem `PAINEL_JWT_SECRET`/`PAINEL_ENC_KEY` válidos, **todo** `/painel` responde 503 (falha fechada).
 Trocar `PAINEL_ENC_KEY` invalida os 2FA cadastrados (resetar e configurar de novo).

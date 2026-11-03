@@ -43,6 +43,29 @@ describe('segurança HTTP', () => {
     process.env.CORS_ORIGINS = originalCorsOrigins;
   });
 
+  test('aceita também a origem do Painel GiroNex (PAINEL_CORS_ORIGINS) sem tirar a do ERP', async () => {
+    const original = { NODE_ENV: process.env.NODE_ENV, CORS_ORIGINS: process.env.CORS_ORIGINS, PAINEL_CORS_ORIGINS: process.env.PAINEL_CORS_ORIGINS };
+
+    process.env.NODE_ENV = 'production';
+    process.env.CORS_ORIGINS = 'https://app.cherry.com.br';
+    process.env.PAINEL_CORS_ORIGINS = 'https://painel.gironex.com.br';
+
+    jest.resetModules();
+    const secureApp = require('../../src/app');
+
+    for (const origem of ['https://app.cherry.com.br', 'https://painel.gironex.com.br']) {
+      const res = await request(secureApp).get('/health').set('Origin', origem);
+      expect(res.status).toBe(200);
+      expect(res.headers['access-control-allow-origin']).toBe(origem);
+    }
+    const outra = await request(secureApp).get('/health').set('Origin', 'https://outra.com');
+    expect(outra.status).toBe(403);
+
+    for (const [k, v] of Object.entries(original)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  });
+
   test('não usa o bypass permissivo em staging quando CORS_ORIGINS não está configurado (mesmo hardening de produção)', async () => {
     const originalNodeEnv = process.env.NODE_ENV;
     const originalCorsOrigins = process.env.CORS_ORIGINS;

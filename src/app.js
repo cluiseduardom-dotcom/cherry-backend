@@ -38,8 +38,10 @@ function obterSaltosProxyConfiaveis(env = process.env) {
 
 app.set('trust proxy', obterSaltosProxyConfiaveis());
 
+// PAINEL_CORS_ORIGINS: origem do Painel GiroNex, separada da allowlist do ERP para poder ser
+// trocada (ex.: domínio próprio) sem mexer nas origens das lojas.
 function obterOrigensPermitidas() {
-    return (process.env.CORS_ORIGINS || '')
+    return [process.env.CORS_ORIGINS, process.env.PAINEL_CORS_ORIGINS].filter(Boolean).join(',')
         .split(',')
         .map((origem) => origem.trim())
         .filter(Boolean);
