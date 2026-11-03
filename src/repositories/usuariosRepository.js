@@ -288,6 +288,34 @@ async function alterarLogin({ empresa_id, usuario_id, login, executado_por, auto
     });
 }
 
+// Troca do nome completo com a linha TRAVADA (mesma permissão e trilha dos dados cadastrais: ação 'editar',
+// campo 'nome'). O login não muda sozinho: quem quiser o código novo troca em seguida.
+async function alterarNome({ empresa_id, usuario_id, nome, executado_por, autorizar }) {
+    return executarComLock('usuarios', { coluna: 'id', valor: usuario_id }, empresa_id, undefined, async (linha, client) => {
+        if (!linha) {
+            throw new AppError('Usuário não encontrado', 404);
+        }
+
+        const alvo = await obterDetalhe(empresa_id, usuario_id, client);
+
+        autorizar(alvo);
+
+        if (alvo.nome === nome) {
+            return { alterado: false, nome };
+        }
+
+        await client.query('UPDATE usuarios SET nome = $1 WHERE id = $2 AND empresa_id = $3', [nome, usuario_id, empresa_id]);
+
+        await client.query(
+            `INSERT INTO usuarios_eventos (empresa_id, acao, alvo_usuario_id, cargo_alvo, executado_por, motivo, campos)
+             VALUES ($1, 'editar', $2, $3, $4, NULL, ARRAY['nome'])`,
+            [empresa_id, usuario_id, alvo.papel, executado_por]
+        );
+
+        return { alterado: true, nome };
+    });
+}
+
 // Redefinição por admin: trava o alvo (filtrado por empresa_id), grava o hash, marca a senha como
 // temporária, avança token_version (derruba as sessões dele) e registra a trilha — tudo numa transação.
 async function redefinirSenha({ alvo_id, empresa_id, senhaHash, executado_por }) {
@@ -315,6 +343,7 @@ async function redefinirSenha({ alvo_id, empresa_id, senhaHash, executado_por })
 }
 
 module.exports = {
+    alterarNome,
     alterarLogin,
     loginsDaEmpresa,
     redefinirSenha,

@@ -1,7 +1,7 @@
 const usuariosService = require('../services/usuariosService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
-const { criarUsuarioSchema, editarDadosSchema, bloqueioSchema, usuarioIdSchema, redefinirSenhaSchema, alterarLoginSchema } = require('../validations/usuariosValidation');
+const { criarUsuarioSchema, editarDadosSchema, bloqueioSchema, usuarioIdSchema, redefinirSenhaSchema, alterarLoginSchema, alterarNomeSchema } = require('../validations/usuariosValidation');
 
 function parsePaginacao(query) {
     let page = parseInt(query.page, 10);
@@ -79,6 +79,26 @@ async function editarDados(req, res, next) {
         }
 
         return response.success(res, await usuariosService.editarDados(id.data, parsed.data, req.usuario));
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function alterarNome(req, res, next) {
+    try {
+        const id = usuarioIdSchema.safeParse(req.params.id);
+
+        if (!id.success) {
+            throw new AppError(id.error.issues[0].message, 400);
+        }
+
+        const parsed = alterarNomeSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        return response.success(res, await usuariosService.alterarNome(id.data, parsed.data, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -162,5 +182,6 @@ async function redefinirSenha(req, res, next) {
 }
 
 module.exports = {
+    alterarNome,
     alterarLogin,
     redefinirSenha, listar, cargosAtribuiveis, criar, detalhar, editarDados, bloquear, eventos };
