@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Bancos: saldo comparava o horário, não o dia.** Lançamento manual/extrato de hoje é gravado ao meio-dia (Brasília) e, antes das 12h, caía em `a_liberar` em vez do saldo. Agora "realizado" = dia do movimento <= hoje (Brasília).
+
 ### Added
 
 - **Bancos — fatia B (Mercado Pago como conta)** (`POST /bancos/mercadopago/sincronizar`, sem migration). Puxa pagamentos pagos e devoluções concluídas do Vertumno para uma conta "Conta de pagamento": entrada pelo valor líquido na data de liberação (futura = a liberar), saída na devolução, idempotente, fora do fluxo de venda.
