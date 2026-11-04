@@ -2,9 +2,11 @@ const db = require('../config/db');
 
 const TZ = 'America/Sao_Paulo';
 
-// Saldo = saldo inicial + movimentos ATIVOS (não cancelados) já realizados (data <= agora) a partir da data
-// do saldo inicial. Movimento com data futura (ex.: liberação de cartão do Mercado Pago) não entra no saldo
-// atual: aparece em `a_liberar`. Nunca soma movimento cancelado.
+// Saldo = saldo inicial + movimentos ATIVOS (não cancelados) já realizados a partir da data do saldo inicial.
+// "Realizado" é comparado por DIA de Brasília (dia do movimento <= hoje), não por horário: o lançamento manual
+// e o de extrato são gravados ao meio-dia, e comparar o instante faria o lançamento de hoje virar "a liberar"
+// até o meio-dia. Movimento de dia futuro (ex.: liberação de cartão do Mercado Pago) não entra no saldo atual:
+// aparece em `a_liberar`. Nunca soma movimento cancelado.
 const SQL_CONTA_COM_SALDO = `
     SELECT c.*,
            c.saldo_inicial + COALESCE(m.entradas, 0) - COALESCE(m.saidas, 0) AS saldo_atual,
@@ -12,10 +14,10 @@ const SQL_CONTA_COM_SALDO = `
            COALESCE(m.movimentos, 0)::int AS movimentos
       FROM contas_bancarias c
       LEFT JOIN LATERAL (
-            SELECT SUM(CASE WHEN mv.tipo = 'ENTRADA' AND mv.data_movimento <= NOW() THEN mv.valor END) AS entradas,
-                   SUM(CASE WHEN mv.tipo = 'SAIDA'   AND mv.data_movimento <= NOW() THEN mv.valor END) AS saidas,
-                   SUM(CASE WHEN mv.tipo = 'ENTRADA' AND mv.data_movimento >  NOW() THEN mv.valor END) AS entradas_futuras,
-                   SUM(CASE WHEN mv.tipo = 'SAIDA'   AND mv.data_movimento >  NOW() THEN mv.valor END) AS saidas_futuras,
+            SELECT SUM(CASE WHEN mv.tipo = 'ENTRADA' AND (mv.data_movimento AT TIME ZONE '${TZ}')::date <= (NOW() AT TIME ZONE '${TZ}')::date THEN mv.valor END) AS entradas,
+                   SUM(CASE WHEN mv.tipo = 'SAIDA'   AND (mv.data_movimento AT TIME ZONE '${TZ}')::date <= (NOW() AT TIME ZONE '${TZ}')::date THEN mv.valor END) AS saidas,
+                   SUM(CASE WHEN mv.tipo = 'ENTRADA' AND (mv.data_movimento AT TIME ZONE '${TZ}')::date >  (NOW() AT TIME ZONE '${TZ}')::date THEN mv.valor END) AS entradas_futuras,
+                   SUM(CASE WHEN mv.tipo = 'SAIDA'   AND (mv.data_movimento AT TIME ZONE '${TZ}')::date >  (NOW() AT TIME ZONE '${TZ}')::date THEN mv.valor END) AS saidas_futuras,
                    COUNT(*) AS movimentos
               FROM movimentos_bancarios mv
              WHERE mv.empresa_id = c.empresa_id

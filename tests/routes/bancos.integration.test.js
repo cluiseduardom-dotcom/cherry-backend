@@ -55,6 +55,25 @@ afterAll(async () => {
   }
 });
 
+describe('Bancos: saldo por dia (independe do horário do teste)', () => {
+  test('movimento de hoje conta no saldo mesmo que o horário gravado ainda não tenha chegado; amanhã vai para a liberar', async () => {
+    const conta = (await post(t.adminA, '/bancos/contas', { nome: 'Saldo por dia', tipo: 'CAIXA', saldo_inicial: 0 })).body.data.id;
+    const hoje = hojeBr();
+    const amanha = new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    const usuario = (await db.query('SELECT id FROM usuarios WHERE empresa_id = $1 LIMIT 1', [empresaA])).rows[0].id;
+    const grava = (data, valor) => movimentosRepo.criar({
+      empresa_id: empresaA, conta_bancaria_id: conta, tipo: 'ENTRADA', origem: 'MANUAL', valor,
+      data_movimento: data, descricao: 'dia', usuario_id: usuario
+    });
+    await grava(`${hoje}T23:59:59-03:00`, 100); // ainda "no futuro" por horário, mas é hoje
+    await grava(`${amanha}T00:00:01-03:00`, 40); // amanhã
+
+    const c = (await get(t.adminA, `/bancos/contas/${conta}`)).body.data;
+    expect(Number(c.saldo_atual)).toBe(100);
+    expect(Number(c.a_liberar)).toBe(40);
+  });
+});
+
 describe('Bancos: acesso', () => {
   test('sem login 401; vendedor 403; admin 200', async () => {
     expect((await request(app).get('/bancos/contas')).status).toBe(401);
