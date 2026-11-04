@@ -92,41 +92,79 @@ function lerData(texto) {
     return null;
 }
 
-function lerCsv(texto) {
-    const linhasTexto = texto.split(/\r?\n/).filter((l) => l.trim() !== '');
-    if (linhasTexto.length < 2) return { linhas: [], erros: [{ linha: 0, erro: 'O CSV precisa de cabeçalho e ao menos um lançamento.' }] };
+// Separa o texto em registros (linhas de dados) respeitando aspas: uma célula entre aspas pode ter quebra de
+// linha (descrição em várias linhas). Devolve a linha física onde cada registro começa, para mensagens de erro.
+function dividirRegistrosCsv(texto) {
+    const registros = []; let atual = ''; let aspas = false; let linhaFisica = 1; let inicio = 1;
+    const fechar = () => { if (atual.trim() !== '') registros.push({ texto: atual, linha: inicio }); atual = ''; };
+    for (let i = 0; i < texto.length; i += 1) {
+        const c = texto[i];
+        if (c === '"') { aspas = !aspas; atual += c; continue; }
+        if (!aspas && (c === '\n' || c === '\r')) {
+            if (c === '\r' && texto[i + 1] === '\n') i += 1;
+            fechar(); linhaFisica += 1; inicio = linhaFisica;
+            continue;
+        }
+        if (c === '\n' || c === '\r') { if (c === '\r' && texto[i + 1] === '\n') i += 1; atual += '\n'; linhaFisica += 1; continue; }
+        atual += c;
+    }
+    fechar();
+    return registros;
+}
 
-    const cab = linhasTexto[0];
-    const sep = (cab.match(/;/g) ?? []).length >= (cab.match(/,/g) ?? []).length ? ';' : ',';
-    const nomes = dividirCsv(cab, sep).map(normalizarTexto);
+function colunasDoCabecalho(registro) {
+    const sep = (registro.match(/;/g) ?? []).length >= (registro.match(/,/g) ?? []).length ? ';' : ',';
+    const nomes = dividirCsv(registro, sep).map(normalizarTexto);
     const achar = (re) => nomes.findIndex((n) => re.test(n));
-    const iData = achar(/^data/);
-    const iDesc = achar(/descri|historic|lancamento|memo|estabelecimento|detalhe/);
-    const iValor = achar(/^valor/);
-    const iCred = achar(/^(credito|entrada)/);
-    const iDeb = achar(/^(debito|saida)/);
-    if (iData < 0 || (iValor < 0 && (iCred < 0 || iDeb < 0))) {
+    const col = {
+        sep,
+        iData: achar(/^data/),
+        iDesc: achar(/descri|historic|lancamento|memo|estabelecimento|detalhe/),
+        iValor: achar(/^valor/),
+        iCred: achar(/^(credito|entrada)/),
+        iDeb: achar(/^(debito|saida)/)
+    };
+    col.valido = col.iData >= 0 && (col.iValor >= 0 || (col.iCred >= 0 && col.iDeb >= 0));
+    return col;
+}
+
+// Alguns bancos (ex.: Santander) põem várias linhas de identificação da conta antes da tabela: procura o
+// cabeçalho nas primeiras linhas em vez de assumir que é a primeira.
+const MAX_LINHAS_ANTES_DO_CABECALHO = 30;
+
+function lerCsv(texto) {
+    const registros = dividirRegistrosCsv(texto);
+    if (registros.length < 2) return { linhas: [], erros: [{ linha: 0, erro: 'O CSV precisa de cabeçalho e ao menos um lançamento.' }] };
+
+    let posCab = -1; let col = null;
+    for (let k = 0; k < Math.min(registros.length, MAX_LINHAS_ANTES_DO_CABECALHO); k += 1) {
+        const candidato = colunasDoCabecalho(registros[k].texto);
+        if (candidato.valido) { posCab = k; col = candidato; break; }
+    }
+    if (!col) {
         return { linhas: [], erros: [{ linha: 1, erro: 'Cabeçalho não reconhecido: são necessárias as colunas Data e Valor (ou Crédito e Débito).' }] };
     }
+    const { sep, iData, iDesc, iValor, iCred, iDeb } = col;
 
     const linhas = []; const erros = [];
     const vistos = new Map();
-    for (let i = 1; i < linhasTexto.length; i += 1) {
-        const c = dividirCsv(linhasTexto[i], sep);
+    for (let i = posCab + 1; i < registros.length; i += 1) {
+        const numero = registros[i].linha;
+        const c = dividirCsv(registros[i].texto, sep);
         const data = lerData(c[iData]);
-        if (!data) { erros.push({ linha: i + 1, erro: 'Data inválida' }); continue; }
+        if (!data) { erros.push({ linha: numero, erro: 'Data inválida' }); continue; }
         let valor;
         if (iValor >= 0) valor = lerValor(c[iValor]);
         else {
             const cred = c[iCred] ? lerValor(c[iCred]) : 0; const deb = c[iDeb] ? lerValor(c[iDeb]) : 0;
             valor = Number.isFinite(cred) && Number.isFinite(deb) ? Math.abs(cred) - Math.abs(deb) : NaN;
         }
-        if (!Number.isFinite(valor) || valor === 0) { erros.push({ linha: i + 1, erro: 'Valor inválido' }); continue; }
+        if (!Number.isFinite(valor) || valor === 0) { erros.push({ linha: numero, erro: 'Valor inválido' }); continue; }
         const descricao = iDesc >= 0 ? c[iDesc] : '';
         const chave = `${data}|${centavos(valor)}|${normalizarTexto(descricao)}`;
         const ocorrencia = (vistos.get(chave) ?? 0) + 1;
         vistos.set(chave, ocorrencia);
-        linhas.push(montarLinha(i + 1, data, valor, descricao, { tipo: 'csv', chave, ocorrencia }));
+        linhas.push(montarLinha(numero, data, valor, descricao, { tipo: 'csv', chave, ocorrencia }));
     }
     return { linhas, erros };
 }

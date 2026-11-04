@@ -84,5 +84,7 @@ Regras:
 - Linha anterior à data do saldo inicial da conta (`fora_do_saldo`) ou com data futura (`futura`) não é importada;
   linha ilegível vai em `erros` com o número da linha do arquivo, nunca é adivinhada. Máximo 5000 linhas.
 - CSV: separador `;` ou `,`; colunas `Data`, `Valor` (ou `Crédito` e `Débito`) e `Descrição/Histórico`; datas
-  `dd/mm/aaaa` ou `aaaa-mm-dd`; valores `1.234,56` ou `1234.56`.
+  `dd/mm/aaaa` ou `aaaa-mm-dd`; valores `1.234,56` ou `1234.56`. O cabeçalho é procurado nas primeiras 30 linhas
+  (extratos como o do Santander trazem nome/agência/conta antes da tabela); células entre aspas podem ter quebra de
+  linha. A coluna `Saldo`, se existir, é ignorada.
 - O arquivo deve chegar já em texto UTF-8 (a tela decodifica Windows-1252 quando preciso).
