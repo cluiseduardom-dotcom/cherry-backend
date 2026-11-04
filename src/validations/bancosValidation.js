@@ -93,8 +93,19 @@ const sincronizarMercadoPagoSchema = z.strictObject({
     conta_bancaria_id: idPositivo('Conta')
 });
 
+const camposImportacao = {
+    conta_bancaria_id: idPositivo('Conta'),
+    conteudo: z.string({ error: 'Conteúdo do extrato é obrigatório' }).min(1, 'Conteúdo do extrato é obrigatório').max(3_000_000, 'Arquivo grande demais (máximo 3 MB)'),
+    formato: z.enum(['OFX', 'CSV']).optional()
+};
+const previaExtratoSchema = z.strictObject(camposImportacao);
+const importarExtratoSchema = z.strictObject({
+    ...camposImportacao,
+    incluir_possiveis_duplicados: z.array(z.string().max(160)).max(5000).optional()
+});
+
 module.exports = {
-    sincronizarMercadoPagoSchema,
+    sincronizarMercadoPagoSchema, previaExtratoSchema, importarExtratoSchema,
     TIPOS_CONTA, criarContaSchema, atualizarContaSchema, statusContaSchema, criarMovimentoSchema,
     cancelarMovimentoSchema, listarMovimentosSchema, listarContasSchema, conciliarSchema, idPositivo
 };

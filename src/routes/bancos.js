@@ -19,4 +19,10 @@ router.post('/conciliacoes/:id/desfazer', bancos.desfazerConciliacao);
 
 router.post('/mercadopago/sincronizar', bancos.sincronizarMercadoPago);
 
+// Extrato (OFX/CSV) vai no corpo JSON como texto; só aqui o limite é maior, e só depois da autenticação
+// (o parser padrão do app pula este caminho).
+router.post('/importacoes/previa', express.json({ limit: '4mb' }), bancos.previaExtrato);
+router.post('/importacoes', express.json({ limit: '4mb' }), bancos.importarExtrato);
+router.get('/movimentos/:id/sugestoes', bancos.sugestoesMovimento);
+
 module.exports = router;
