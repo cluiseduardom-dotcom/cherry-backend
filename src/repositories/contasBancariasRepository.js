@@ -1,5 +1,30 @@
 const db = require('../config/db');
 
+const TZ = 'America/Sao_Paulo';
+
+// Saldo = saldo inicial + movimentos ATIVOS (não cancelados) já realizados (data <= agora) a partir da data
+// do saldo inicial. Movimento com data futura (ex.: liberação de cartão do Mercado Pago) não entra no saldo
+// atual: aparece em `a_liberar`. Nunca soma movimento cancelado.
+const SQL_CONTA_COM_SALDO = `
+    SELECT c.*,
+           c.saldo_inicial + COALESCE(m.entradas, 0) - COALESCE(m.saidas, 0) AS saldo_atual,
+           COALESCE(m.entradas_futuras, 0) - COALESCE(m.saidas_futuras, 0) AS a_liberar,
+           COALESCE(m.movimentos, 0)::int AS movimentos
+      FROM contas_bancarias c
+      LEFT JOIN LATERAL (
+            SELECT SUM(CASE WHEN mv.tipo = 'ENTRADA' AND mv.data_movimento <= NOW() THEN mv.valor END) AS entradas,
+                   SUM(CASE WHEN mv.tipo = 'SAIDA'   AND mv.data_movimento <= NOW() THEN mv.valor END) AS saidas,
+                   SUM(CASE WHEN mv.tipo = 'ENTRADA' AND mv.data_movimento >  NOW() THEN mv.valor END) AS entradas_futuras,
+                   SUM(CASE WHEN mv.tipo = 'SAIDA'   AND mv.data_movimento >  NOW() THEN mv.valor END) AS saidas_futuras,
+                   COUNT(*) AS movimentos
+              FROM movimentos_bancarios mv
+             WHERE mv.empresa_id = c.empresa_id
+               AND mv.conta_bancaria_id = c.id
+               AND mv.cancelado_em IS NULL
+               AND (c.data_saldo_inicial IS NULL
+                    OR (mv.data_movimento AT TIME ZONE '${TZ}')::date >= c.data_saldo_inicial)
+      ) m ON TRUE`;
+
 async function criar(dados) {
     const { rows } = await db.query(
         `INSERT INTO contas_bancarias
@@ -32,27 +57,50 @@ async function buscarPorId(id, empresaId) {
     return rows[0] || null;
 }
 
-async function listar(empresaId, filtros = {}) {
+async function buscarComSaldo(id, empresaId) {
+    const { rows } = await db.query(
+        `${SQL_CONTA_COM_SALDO} WHERE c.id = $1 AND c.empresa_id = $2`,
+        [id, empresaId]
+    );
+    return rows[0] || null;
+}
+
+function montarFiltros(empresaId, filtros) {
     const params = [empresaId];
-    const where = ['empresa_id = $1'];
+    const where = ['c.empresa_id = $1'];
 
     if (filtros.status) {
         params.push(filtros.status);
-        where.push(`status = $${params.length}`);
+        where.push(`c.status = $${params.length}`);
     }
     if (filtros.tipo) {
         params.push(filtros.tipo);
-        where.push(`tipo = $${params.length}`);
+        where.push(`c.tipo = $${params.length}`);
     }
     if (filtros.filial_id != null) {
         params.push(filtros.filial_id);
-        where.push(`filial_id = $${params.length}`);
+        where.push(`c.filial_id = $${params.length}`);
     }
+    return { params, where };
+}
 
+async function listar(empresaId, filtros = {}) {
+    const { params, where } = montarFiltros(empresaId, filtros);
     const { rows } = await db.query(
-        `SELECT * FROM contas_bancarias
+        `SELECT c.* FROM contas_bancarias c
          WHERE ${where.join(' AND ')}
-         ORDER BY principal DESC, nome ASC`,
+         ORDER BY c.principal DESC, c.nome ASC`,
+        params
+    );
+    return rows;
+}
+
+async function listarComSaldo(empresaId, filtros = {}) {
+    const { params, where } = montarFiltros(empresaId, filtros);
+    const { rows } = await db.query(
+        `${SQL_CONTA_COM_SALDO}
+         WHERE ${where.join(' AND ')}
+         ORDER BY c.principal DESC, c.nome ASC`,
         params
     );
     return rows;
@@ -61,7 +109,9 @@ async function listar(empresaId, filtros = {}) {
 async function atualizarStatus(id, empresaId, status) {
     const { rows } = await db.query(
         `UPDATE contas_bancarias
-            SET status = $1, updated_at = NOW()
+            SET status = $1::varchar,
+                principal = CASE WHEN $1::varchar = 'INATIVA' THEN FALSE ELSE principal END,
+                updated_at = NOW()
           WHERE id = $2 AND empresa_id = $3
           RETURNING *`,
         [status, id, empresaId]
@@ -69,4 +119,75 @@ async function atualizarStatus(id, empresaId, status) {
     return rows[0] || null;
 }
 
-module.exports = { criar, buscarPorId, listar, atualizarStatus };
+const CAMPOS_EDITAVEIS = [
+    'nome', 'banco_codigo', 'instituicao_nome', 'agencia', 'conta', 'digito',
+    'saldo_inicial', 'data_saldo_inicial', 'observacao'
+];
+
+// Atualiza só os campos informados. `principal` troca a conta principal numa transação (índice único parcial:
+// uma principal por empresa), sem nunca deixar duas nem apagar a anterior às cegas.
+async function atualizar(id, empresaId, campos) {
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        const { rows: atual } = await client.query(
+            'SELECT id, status FROM contas_bancarias WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
+            [id, empresaId]
+        );
+        if (!atual[0]) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        if (campos.principal === true) {
+            await client.query(
+                `UPDATE contas_bancarias SET principal = FALSE, updated_at = NOW()
+                  WHERE empresa_id = $1 AND principal = TRUE AND id <> $2`,
+                [empresaId, id]
+            );
+        }
+
+        const sets = [];
+        const params = [];
+        for (const campo of CAMPOS_EDITAVEIS) {
+            if (Object.prototype.hasOwnProperty.call(campos, campo)) {
+                params.push(campos[campo]);
+                sets.push(`${campo} = $${params.length}`);
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(campos, 'principal')) {
+            params.push(campos.principal);
+            sets.push(`principal = $${params.length}`);
+        }
+        if (sets.length === 0) {
+            await client.query('ROLLBACK');
+            return buscarPorId(id, empresaId);
+        }
+
+        params.push(id, empresaId);
+        const { rows } = await client.query(
+            `UPDATE contas_bancarias SET ${sets.join(', ')}, updated_at = NOW()
+              WHERE id = $${params.length - 1} AND empresa_id = $${params.length}
+              RETURNING *`,
+            params
+        );
+        await client.query('COMMIT');
+        return rows[0];
+    } catch (erro) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw erro;
+    } finally {
+        client.release();
+    }
+}
+
+async function contarMovimentos(id, empresaId) {
+    const { rows } = await db.query(
+        'SELECT COUNT(*)::int AS total FROM movimentos_bancarios WHERE conta_bancaria_id = $1 AND empresa_id = $2',
+        [id, empresaId]
+    );
+    return rows[0].total;
+}
+
+module.exports = { criar, buscarPorId, buscarComSaldo, listar, listarComSaldo, atualizarStatus, atualizar, contarMovimentos };
