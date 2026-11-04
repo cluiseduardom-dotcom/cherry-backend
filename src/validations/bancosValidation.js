@@ -89,7 +89,12 @@ const conciliarSchema = z.strictObject({
     observacao: textoOpcional('Observação', 500)
 });
 
+const sincronizarMercadoPagoSchema = z.strictObject({
+    conta_bancaria_id: idPositivo('Conta')
+});
+
 module.exports = {
+    sincronizarMercadoPagoSchema,
     TIPOS_CONTA, criarContaSchema, atualizarContaSchema, statusContaSchema, criarMovimentoSchema,
     cancelarMovimentoSchema, listarMovimentosSchema, listarContasSchema, conciliarSchema, idPositivo
 };

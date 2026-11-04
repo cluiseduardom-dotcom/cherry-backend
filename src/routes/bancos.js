@@ -17,4 +17,6 @@ router.get('/conciliacoes', bancos.listarConciliacoes);
 router.post('/conciliacoes', bancos.conciliar);
 router.post('/conciliacoes/:id/desfazer', bancos.desfazerConciliacao);
 
+router.post('/mercadopago/sincronizar', bancos.sincronizarMercadoPago);
+
 module.exports = router;

@@ -38,3 +38,23 @@ Campos desconhecidos são recusados (400). Ids e valores `NUMERIC` voltam como s
 `GET /bancos/movimentos` devolve `conciliacao_id` (conciliação ativa) para a tela poder desfazer.
 
 `GET /financeiro/fluxo-caixa` passa a ignorar movimentos cancelados e a agrupar por dia de Brasília.
+
+
+## Mercado Pago como conta (sincronização)
+
+`POST /bancos/mercadopago/sincronizar` `{ conta_bancaria_id }` (gerir_financeiro).
+
+- A conta é uma "Conta de pagamento" criada normalmente (com o saldo inicial real e a data desse saldo). A primeira
+  sincronização a liga ao provedor `mercadopago`. Exige o Mercado Pago conectado (409 claro se não estiver).
+- **Puxada sob demanda**, fora do fluxo de venda/pagamento: falha aqui não toca em venda, cobrança nem estoque.
+  Máximo 100 cobranças + 100 devoluções por chamada; `tem_mais: true` = chamar de novo.
+- Entrada = `net_received_amount` do pagamento (já sem tarifa e sem a taxa da plataforma), na data
+  `money_release_date` (futura = `a_liberar`). O detalhe (bruto, tarifa, taxa) vai na observação.
+- Devolução concluída = saída pelo valor devolvido, na data da conclusão.
+- Só entram cobranças/devoluções posteriores à data do saldo inicial da conta.
+- Idempotente: referências `mp:pay:<id do pagamento>` e `mp:ref:<id da devolução>` (origem `API_BANCO`).
+  Item com erro não derruba os demais: volta em `erros` e é tentado de novo na próxima chamada.
+- Resposta: `{ entradas, saidas, ja_lancados, erros: [{referencia, erro}], tem_mais }`.
+- **Limites conhecidos**: só vê pagamentos feitos pelo Vertumno (venda recebida fora dele, saques e tarifas
+  avulsas do Mercado Pago não aparecem: exigem o relatório do Mercado Pago/extrato). Se a tarifa é devolvida
+  numa devolução, o saldo fica um pouco abaixo do real (a confirmar no primeiro uso com dinheiro real).
