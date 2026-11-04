@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- **`usuarios.plataforma_admin`** (migration `088`, irreversível, autorizada pelo PO). Nenhum código lia a coluna desde o #201; snapshot Neon `pre-088-drop-plataforma_admin` tirado antes. Teste do painel deixa de inserir a coluna.
 - **ERP: rotas `/plataforma/*`, `requirePlataformaAdmin` e `plataforma_admin` na sessão/`/auth/me`** (Painel GiroNex, etapa 3). Planos, condições, taxas e identidade passam a ser operados só em `/painel/*`. A coluna `usuarios.plataforma_admin` fica no banco sem efeito (sem migration).
 
 ### Added

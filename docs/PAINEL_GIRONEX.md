@@ -82,6 +82,6 @@ As ações de plataforma usam os serviços de planos, taxas e identidade (antes 
 3. **Limpeza do ERP** (feita): as rotas `/plataforma/*` e o middleware `requirePlataformaAdmin` foram removidos
    (agora respondem 404), e `plataforma_admin` deixou de ser lido ou devolvido (`/auth/me`, login, sessão). As telas
    `Planos e condições` / `Taxas a receber` saem do ERP no PR de frontend correspondente.
-   A coluna `usuarios.plataforma_admin` **permanece no banco, sem efeito algum** (nenhuma migration destrutiva); remover
-   a coluna é opcional e fica para uma migration futura, com autorização explícita.
+   A coluna `usuarios.plataforma_admin` foi removida pela migration `088` (autorizada pelo PO; snapshot Neon
+   `pre-088-drop-plataforma_admin` tirado antes).
    Ordem de deploy: **frontend do ERP primeiro**, depois este backend (o ERP antigo ainda chama `/plataforma`).

@@ -40,7 +40,7 @@ beforeAll(async () => {
   const emp = await db.query(`INSERT INTO empresas (nome, status, slug) VALUES ($1, 'ativa', $2) RETURNING id`, [`Teste Painel ${sufixo}`, `t-painel-${sufixo}`]);
   empresaExistente = registro.registrar(emp.rows[0].id);
   const erpEmail = `erp-${sufixo}@teste.invalid`;
-  await db.query(`INSERT INTO usuarios (empresa_id, nome, email, senha, papel, plataforma_admin) VALUES ($1, 'Admin ERP', $2, $3, 'admin', true)`, [empresaExistente, erpEmail, await bcrypt.hash(senhaInicial, 4)]);
+  await db.query(`INSERT INTO usuarios (empresa_id, nome, email, senha, papel) VALUES ($1, 'Admin ERP', $2, $3, 'admin')`, [empresaExistente, erpEmail, await bcrypt.hash(senhaInicial, 4)]);
   tokenErp = (await request(app).post('/auth/login').send({ email: erpEmail, senha: senhaInicial })).body.data.token;
 });
 
@@ -114,7 +114,7 @@ describe('Painel GiroNex: login em três fatores', () => {
 });
 
 describe('Painel GiroNex: separado do ERP', () => {
-  test('token do ERP (mesmo de admin com plataforma_admin) não abre o painel', async () => {
+  test('token do ERP (mesmo de admin) não abre o painel', async () => {
     expect((await request(app).get('/painel/taxas').set('Authorization', `Bearer ${tokenErp}`)).status).toBe(401);
   });
 
