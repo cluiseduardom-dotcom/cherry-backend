@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Bancos: saldo comparava o horário, não o dia.** Lançamento manual/extrato de hoje é gravado ao meio-dia (Brasília) e, antes das 12h, caía em `a_liberar` em vez do saldo. Agora "realizado" = dia do movimento <= hoje (Brasília).
 
+### Removed
+
+- **ERP: rotas `/plataforma/*`, `requirePlataformaAdmin` e `plataforma_admin` na sessão/`/auth/me`** (Painel GiroNex, etapa 3). Planos, condições, taxas e identidade passam a ser operados só em `/painel/*`. A coluna `usuarios.plataforma_admin` fica no banco sem efeito (sem migration).
+
 ### Added
 
 - **Bancos — fatia B (Mercado Pago como conta)** (`POST /bancos/mercadopago/sincronizar`, sem migration). Puxa pagamentos pagos e devoluções concluídas do Vertumno para uma conta "Conta de pagamento": entrada pelo valor líquido na data de liberação (futura = a liberar), saída na devolução, idempotente, fora do fluxo de venda.

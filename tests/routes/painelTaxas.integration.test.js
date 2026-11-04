@@ -1,5 +1,5 @@
-// Integração de verdade: GET /plataforma/taxas (operador da plataforma).
-// Prova o acesso (só plataforma_admin + admin, lido do BANCO), a leitura agregada entre
+// Integração de verdade: GET /painel/taxas (operador do painel).
+// Prova o acesso (só operador do painel, nunca token do ERP), a leitura agregada entre
 // empresas, o corte do mês no fuso de Brasília e que a marca não vem do token.
 jest.setTimeout(60000);
 
@@ -11,6 +11,7 @@ const request = require('supertest');
 const db = require('../../src/config/db');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
+const { criarOperadorComSessao, removerOperador } = require('../helpers/painelSessao');
 const { criarRegistroDeEmpresas } = require('../helpers/limpezaEmpresasTeste');
 
 const registro = criarRegistroDeEmpresas(db);
@@ -47,13 +48,12 @@ async function criarTaxa(alvo, instanteUtc, { base, valor, status = 'apurada', p
     );
 }
 
-const tk = (alvo, papel, extra = {}) => makeToken({ id: alvo.u[papel], role: papel, empresa_id: alvo.empresaId, tv: 0, ...extra });
-const get = (alvo, papel, query = '', extra = {}) =>
-    request(app).get(`/plataforma/taxas${query}`).set('Authorization', `Bearer ${tk(alvo, papel, extra)}`);
-const marcar = (alvo, papel, valor) => db.query('UPDATE usuarios SET plataforma_admin = $1 WHERE id = $2', [valor, alvo.u[papel]]);
+let operador;
+const get = (_alvo, _papel, query = '') => request(app).get(`/painel/taxas${query}`).set(operador.cabecalho);
 const linha = (res, alvo) => res.body.data.items.find((i) => i.empresa_id === alvo.empresaId);
 
 beforeAll(async () => {
+    operador = await criarOperadorComSessao('taxas');
     politica = (await db.query('SELECT id, plano_id FROM politicas_taxa_plataforma ORDER BY id LIMIT 1')).rows[0];
     await criarEmpresa(A, 'A', ['admin', 'vendedor', 'estoquista']);
     await criarEmpresa(B, 'B', ['admin']);
@@ -74,64 +74,27 @@ beforeAll(async () => {
 
 afterAll(async () => {
     try {
+        await removerOperador(operador);
         await registro.limpar();
     } finally {
         await db.end();
     }
 });
 
-describe('GET /plataforma/taxas — acesso', () => {
+describe('GET /painel/taxas — acesso', () => {
     test('sem token: 401', async () => {
-        expect((await request(app).get('/plataforma/taxas')).status).toBe(401);
+        expect((await request(app).get('/painel/taxas')).status).toBe(401);
     });
 
-    test('admin de empresa SEM a marca: 403; vendedor e estoquista: 403', async () => {
-        expect((await get(A, 'admin')).status).toBe(403);
-        expect((await get(A, 'vendedor')).status).toBe(403);
-        expect((await get(A, 'estoquista')).status).toBe(403);
-    });
-
-    test('a marca vem do banco: reivindicar plataforma_admin no token não abre o acesso', async () => {
-        const res = await get(A, 'admin', '', { plataforma_admin: true });
-        expect(res.status).toBe(403);
-    });
-
-    test('vendedor com a marca ligada continua barrado (exige papel admin)', async () => {
-        await marcar(A, 'vendedor', true);
-        expect((await get(A, 'vendedor')).status).toBe(403);
-        await marcar(A, 'vendedor', false);
-    });
-
-    test('marca ligada vale na próxima requisição e desligada é revogada na seguinte', async () => {
-        await marcar(A, 'admin', true);
-        expect((await get(A, 'admin', '?mes=2026-03')).status).toBe(200);
-        await marcar(A, 'admin', false);
-        expect((await get(A, 'admin', '?mes=2026-03')).status).toBe(403);
-    });
-
-    test('/auth/me informa a marca (e false para quem não a tem)', async () => {
-        const me = (alvo, papel) => request(app).get('/auth/me').set('Authorization', `Bearer ${tk(alvo, papel)}`);
-        expect((await me(A, 'admin')).body.data.plataforma_admin).toBe(false);
-        await marcar(A, 'admin', true);
-        expect((await me(A, 'admin')).body.data.plataforma_admin).toBe(true);
-        await marcar(A, 'admin', false);
-    });
-
-    test('a marca não é escrita por nenhuma rota: PATCH de usuário ignora/recusa plataforma_admin', async () => {
-        const res = await request(app)
-            .patch(`/usuarios/${A.u.vendedor}`)
-            .set('Authorization', `Bearer ${tk(A, 'admin')}`)
-            .send({ plataforma_admin: true });
-        expect(res.status).toBeGreaterThanOrEqual(400);
-        const { rows } = await db.query('SELECT plataforma_admin FROM usuarios WHERE id = $1', [A.u.vendedor]);
-        expect(rows[0].plataforma_admin).toBe(false);
+    test('token de usuário do ERP (qualquer papel) não abre o painel', async () => {
+        for (const papel of ['admin', 'vendedor', 'estoquista']) {
+            const erp = makeToken({ id: A.u[papel], role: papel, empresa_id: A.empresaId, tv: 0 });
+            expect((await request(app).get('/painel/taxas').set('Authorization', `Bearer ${erp}`)).status).toBe(401);
+        }
     });
 });
 
-describe('GET /plataforma/taxas — dados (operador)', () => {
-    beforeAll(() => marcar(A, 'admin', true));
-    afterAll(() => marcar(A, 'admin', false));
-
+describe('GET /painel/taxas — dados (operador)', () => {
     test('enxerga as duas empresas (leitura entre empresas) com somas corretas e estorno fora do a receber', async () => {
         const res = await get(A, 'admin', '?mes=2026-03');
         expect(res.status).toBe(200);

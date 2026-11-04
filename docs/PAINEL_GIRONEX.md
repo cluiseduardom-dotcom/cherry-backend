@@ -72,12 +72,16 @@ tela de identidade.
 `POST /painel/empresas`, `POST /painel/empresas/:id/{plano,condicao,condicao/encerrar}`,
 `PATCH /painel/empresas/:id/identidade`, `GET /painel/eventos`.
 
-As ações de plataforma usam os mesmos serviços de `/plataforma`; o responsável gravado é
+As ações de plataforma usam os serviços de planos, taxas e identidade (antes expostos em `/plataforma`); o responsável gravado é
 `painel:<email> (#<id do operador>)`.
 
 ## Etapas
 
 1. **Este backend** (rotas `/painel`, operadores, 2FA, trilha, criação de empresa).
 2. **Frontend** no repositório `gironex-painel`, com deploy próprio e domínio da GiroNex.
-3. **Limpeza do ERP** (depois do painel validado em produção): remover `/plataforma`, as telas
-   `Planos e condições` / `Taxas a receber` do ERP e o `plataforma_admin` dos usuários de loja.
+3. **Limpeza do ERP** (feita): as rotas `/plataforma/*` e o middleware `requirePlataformaAdmin` foram removidos
+   (agora respondem 404), e `plataforma_admin` deixou de ser lido ou devolvido (`/auth/me`, login, sessão). As telas
+   `Planos e condições` / `Taxas a receber` saem do ERP no PR de frontend correspondente.
+   A coluna `usuarios.plataforma_admin` **permanece no banco, sem efeito algum** (nenhuma migration destrutiva); remover
+   a coluna é opcional e fica para uma migration futura, com autorização explícita.
+   Ordem de deploy: **frontend do ERP primeiro**, depois este backend (o ERP antigo ainda chama `/plataforma`).
