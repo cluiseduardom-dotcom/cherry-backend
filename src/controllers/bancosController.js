@@ -3,6 +3,7 @@ const response = require('../utils/response');
 const contasService = require('../services/contasBancariasService');
 const movimentosService = require('../services/movimentosBancariosService');
 const conciliacaoService = require('../services/conciliacaoBancariaService');
+const mercadoPagoContaService = require('../services/mercadoPagoContaService');
 const v = require('../validations/bancosValidation');
 
 function ler(schema, dados) {
@@ -37,7 +38,10 @@ const listarConciliacoes = acao((req) => conciliacaoService.listar({}, req.usuar
 const conciliar = acao((req) => conciliacaoService.conciliar(ler(v.conciliarSchema, req.body), req.usuario), 201);
 const desfazerConciliacao = acao((req) => conciliacaoService.desfazer(idDaRota(req), req.usuario));
 
+const sincronizarMercadoPago = acao((req) => mercadoPagoContaService.sincronizar(ler(v.sincronizarMercadoPagoSchema, req.body), req.usuario));
+
 module.exports = {
+    sincronizarMercadoPago,
     listarContas, buscarConta, criarConta, atualizarConta, statusConta,
     listarMovimentos, lancarMovimento, cancelarMovimento,
     listarConciliacoes, conciliar, desfazerConciliacao
