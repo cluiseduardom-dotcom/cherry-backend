@@ -4,7 +4,7 @@ const contasRepo=require('../repositories/contasBancariasRepository');
 const liquidacoesRepo=require('../repositories/liquidacoesPagamentoRepository');
 
 const TIPOS=new Set(['ENTRADA','SAIDA']);
-const ORIGENS=new Set(['MANUAL','PAGAMENTO','RECEBIMENTO','TRANSFERENCIA','OPEN_FINANCE','API_BANCO','AJUSTE']);
+const ORIGENS=new Set(['MANUAL','PAGAMENTO','RECEBIMENTO','TRANSFERENCIA','OPEN_FINANCE','API_BANCO','AJUSTE','EXTRATO']);
 
 async function criar(dados,usuario){
     if(!Number.isInteger(Number(dados.conta_bancaria_id)) || Number(dados.conta_bancaria_id)<=0)

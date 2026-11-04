@@ -81,7 +81,10 @@ function configurarCors() {
 
 app.use(helmet());
 app.use(cors(configurarCors()));
-app.use(express.json());
+// A importação de extrato (/bancos/importacoes) recebe arquivo no corpo e tem parser próprio, aplicado só depois
+// da autenticação (routes/bancos.js); todo o resto usa o limite padrão.
+const jsonPadrao = express.json();
+app.use((req, res, next) => (req.path.startsWith('/bancos/importacoes') ? next() : jsonPadrao(req, res, next)));
 app.use(rejeitarNumerosNaoFinitos);
 
 // Health-check público pra monitoramento de uptime: sem auth, sem tocar no

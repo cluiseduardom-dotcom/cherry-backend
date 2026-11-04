@@ -4,6 +4,7 @@ const contasService = require('../services/contasBancariasService');
 const movimentosService = require('../services/movimentosBancariosService');
 const conciliacaoService = require('../services/conciliacaoBancariaService');
 const mercadoPagoContaService = require('../services/mercadoPagoContaService');
+const extratoService = require('../services/extratoImportacaoService');
 const v = require('../validations/bancosValidation');
 
 function ler(schema, dados) {
@@ -39,9 +40,12 @@ const conciliar = acao((req) => conciliacaoService.conciliar(ler(v.conciliarSche
 const desfazerConciliacao = acao((req) => conciliacaoService.desfazer(idDaRota(req), req.usuario));
 
 const sincronizarMercadoPago = acao((req) => mercadoPagoContaService.sincronizar(ler(v.sincronizarMercadoPagoSchema, req.body), req.usuario));
+const previaExtrato = acao((req) => extratoService.previa(ler(v.previaExtratoSchema, req.body), req.usuario));
+const importarExtrato = acao((req) => extratoService.importar(ler(v.importarExtratoSchema, req.body), req.usuario), 201);
+const sugestoesMovimento = acao((req) => extratoService.sugestoes(idDaRota(req), req.usuario));
 
 module.exports = {
-    sincronizarMercadoPago,
+    sincronizarMercadoPago, previaExtrato, importarExtrato, sugestoesMovimento,
     listarContas, buscarConta, criarConta, atualizarConta, statusConta,
     listarMovimentos, lancarMovimento, cancelarMovimento,
     listarConciliacoes, conciliar, desfazerConciliacao

@@ -58,3 +58,31 @@ Campos desconhecidos são recusados (400). Ids e valores `NUMERIC` voltam como s
 - **Limites conhecidos**: só vê pagamentos feitos pelo Vertumno (venda recebida fora dele, saques e tarifas
   avulsas do Mercado Pago não aparecem: exigem o relatório do Mercado Pago/extrato). Se a tarifa é devolvida
   numa devolução, o saldo fica um pouco abaixo do real (a confirmar no primeiro uso com dinheiro real).
+
+## Importação de extrato (OFX/CSV)
+
+Dois passos, ambos `gerir_financeiro`, corpo JSON `{ conta_bancaria_id, conteudo (texto do arquivo), formato? ('OFX'|'CSV') }`
+(até ~3 MB de texto; o formato é detectado se omitido):
+
+- `POST /bancos/importacoes/previa` — não grava nada. Devolve `{ formato, resumo, linhas, erros }`. Cada linha:
+  `{ indice, data, tipo, valor, descricao, referencia_externa, situacao }` com `situacao` =
+  `nova` | `ja_importada` | `possivel_duplicado` (+ `duplicado_de`) | `fora_do_saldo` | `futura`.
+- `POST /bancos/importacoes` — grava as linhas `nova` (e os `possivel_duplicado` cujas referências vierem em
+  `incluir_possiveis_duplicados`) **numa transação só**. Resposta `{ importadas, resumo }`.
+- `GET /bancos/movimentos/:id/sugestoes` — até 5 contas a pagar (saída) ou a receber (entrada) **pendentes, de valor
+  idêntico**, com vencimento até 15 dias do movimento. É só sugestão: marcar como paga/recebida segue nas telas atuais
+  (que não geram movimento bancário, então não há lançamento em dobro).
+
+Regras:
+- Movimentos entram com origem `EXTRATO` (migration `087`), valor/tipo pelo sinal, data ao meio-dia de Brasília.
+- **Deduplicação**: OFX usa o `FITID` do banco (`ofx:<FITID>`); CSV não tem id, então usa hash de data+valor+descrição+nº
+  da ocorrência no arquivo. Reimportar o mesmo arquivo nunca duplica. Linha cancelada continua "já importada".
+  Limite do CSV: um arquivo que cubra o mesmo período por outro recorte pode contar diferente uma linha idêntica repetida
+  no mesmo dia.
+- **Contagem em dobro**: linha com lançamento ativo não-extrato (manual, Mercado Pago) de mesmo tipo/valor em ±1 dia
+  vira `possivel_duplicado` e não é importada por padrão.
+- Linha anterior à data do saldo inicial da conta (`fora_do_saldo`) ou com data futura (`futura`) não é importada;
+  linha ilegível vai em `erros` com o número da linha do arquivo, nunca é adivinhada. Máximo 5000 linhas.
+- CSV: separador `;` ou `,`; colunas `Data`, `Valor` (ou `Crédito` e `Débito`) e `Descrição/Histórico`; datas
+  `dd/mm/aaaa` ou `aaaa-mm-dd`; valores `1.234,56` ou `1234.56`.
+- O arquivo deve chegar já em texto UTF-8 (a tela decodifica Windows-1252 quando preciso).
