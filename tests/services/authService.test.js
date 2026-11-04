@@ -57,7 +57,7 @@ describe('authService.login', () => {
     expect(result).toEqual({
       token: 'signed-token',
       usuario: {
-        id: 1, nome: 'Ana', email: 'a@x.com', login: null, papel: 'admin', empresa_id: undefined, senha_temporaria: false, plataforma_admin: false, foto_url: null,
+        id: 1, nome: 'Ana', email: 'a@x.com', login: null, papel: 'admin', empresa_id: undefined, senha_temporaria: false, foto_url: null,
         empresa: { id: undefined, tema: 'vertumno' }
       }
     });

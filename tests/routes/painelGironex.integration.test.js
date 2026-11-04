@@ -120,7 +120,7 @@ describe('Painel GiroNex: separado do ERP', () => {
 
   test('token do painel não abre o ERP', async () => {
     expect((await request(app).get('/usuarios').set('Authorization', `Bearer ${sessao}`)).status).toBe(401);
-    expect((await request(app).get('/plataforma/taxas').set('Authorization', `Bearer ${sessao}`)).status).toBe(401);
+    expect((await request(app).get('/plataforma/taxas').set('Authorization', `Bearer ${sessao}`)).status).toBe(404); // rota antiga removida
   });
 });
 

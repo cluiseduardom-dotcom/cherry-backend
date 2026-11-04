@@ -1,5 +1,5 @@
 // Integração de verdade (Postgres): identidade por cliente. Prova a rota PÚBLICA mínima (só tema,
-// 404 uniforme), o controle do operador da plataforma (acesso lido do banco, auditoria, unicidade,
+// 404 uniforme), o controle do operador do painel (acesso só por sessão do painel, auditoria, unicidade,
 // concorrência) e a migration 081. Empresas e usuários temporários, removidos no fim.
 jest.setTimeout(60000);
 
@@ -13,6 +13,7 @@ const request = require('supertest');
 const db = require('../../src/config/db');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
+const { criarOperadorComSessao, removerOperador } = require('../helpers/painelSessao');
 const { criarRegistroDeEmpresas } = require('../helpers/limpezaEmpresasTeste');
 
 const registro = criarRegistroDeEmpresas(db);
@@ -20,7 +21,7 @@ const sufixo = crypto.randomBytes(4).toString('hex');
 const SENHA = `S-${crypto.randomBytes(6).toString('hex')}`;
 const HASH = bcrypt.hashSync(SENHA, 4);
 
-const operador = {};
+let operador; // operador do painel
 const comum = {};
 const alvo = {};
 
@@ -41,21 +42,21 @@ async function criarEmpresa(rotulo, { status = 'ativa', admin = true } = {}) {
 
 const slugDe = (rotulo) => `t${sufixo}-${rotulo}`;
 const como = (empresa) => ({ Authorization: `Bearer ${makeToken({ id: empresa.adminId, role: 'admin', empresa_id: empresa.id, tv: 0 })}` });
-const patch = (empresa, corpo, quem = operador) => request(app).patch(`/plataforma/empresas/${empresa.id}/identidade`).set(como(quem)).send(corpo);
+const patch = (empresa, corpo) => request(app).patch(`/painel/empresas/${empresa.id}/identidade`).set(operador.cabecalho).send(corpo);
 const eventos = async (empresaId) => (await db.query(
     `SELECT tema_anterior, tema_novo, slug_anterior, slug_novo, responsavel FROM empresas_identidade_eventos WHERE empresa_id = $1 ORDER BY id`, [empresaId]
 )).rows;
 
 beforeAll(async () => {
-    Object.assign(operador, await criarEmpresa('Operador'));
+    operador = await criarOperadorComSessao('identidade');
     Object.assign(comum, await criarEmpresa('Comum'));
     for (const rotulo of ['a', 'b', 'c']) alvo[rotulo] = await criarEmpresa(rotulo.toUpperCase(), { admin: false });
     alvo.inativa = await criarEmpresa('Inativa', { status: 'inativa', admin: false });
-    await db.query('UPDATE usuarios SET plataforma_admin = true WHERE id = $1', [operador.adminId]);
 });
 
 afterAll(async () => {
     try {
+        await removerOperador(operador);
         await registro.limpar();
     } finally {
         await db.end();
@@ -64,23 +65,18 @@ afterAll(async () => {
 
 describe('acesso do operador', () => {
     const rotas = [
-        ['get', '/plataforma/empresas/identidade'],
-        ['get', '/plataforma/empresas/1/identidade/historico'],
-        ['patch', '/plataforma/empresas/1/identidade']
+        ['get', '/painel/empresas/identidade'],
+        ['get', '/painel/empresas/1/identidade/historico'],
+        ['patch', '/painel/empresas/1/identidade']
     ];
 
-    test.each(rotas)('%s %s: sem token 401; admin de empresa comum 403', async (metodo, caminho) => {
+    test.each(rotas)('%s %s: sem token 401; admin de empresa do ERP 401', async (metodo, caminho) => {
         expect((await request(app)[metodo](caminho)).status).toBe(401);
-        expect((await request(app)[metodo](caminho).set(como(comum)).send({ tema_visual: 'cherry' })).status).toBe(403);
-    });
-
-    test('reivindicar plataforma_admin no token não abre o acesso (vem do banco)', async () => {
-        const forjado = makeToken({ id: comum.adminId, role: 'admin', empresa_id: comum.id, tv: 0, plataforma_admin: true });
-        expect((await request(app).get('/plataforma/empresas/identidade').set('Authorization', `Bearer ${forjado}`)).status).toBe(403);
+        expect((await request(app)[metodo](caminho).set(como(comum)).send({ tema_visual: 'cherry' })).status).toBe(401);
     });
 
     test('a lista traz os temas aceitos e as empresas com tema e slug', async () => {
-        const res = await request(app).get('/plataforma/empresas/identidade').set(como(operador));
+        const res = await request(app).get('/painel/empresas/identidade').set(operador.cabecalho);
         expect(res.status).toBe(200);
         expect(res.headers['cache-control']).toContain('no-store');
         expect(res.body.data.temas).toEqual(['vertumno', 'cherry', 'valvazori']);
@@ -97,7 +93,7 @@ describe('alterar tema e slug', () => {
 
         expect(await eventos(alvo.a.id)).toEqual([{
             tema_anterior: 'vertumno', tema_novo: 'valvazori', slug_anterior: null, slug_novo: slugDe('a'),
-            responsavel: `${operador.email} (#${operador.adminId})`
+            responsavel: `painel:${operador.email} (#${operador.id})`
         }]);
     });
 
@@ -108,7 +104,7 @@ describe('alterar tema e slug', () => {
         expect(login.body.data.usuario.empresa.tema).toBe('valvazori');
     });
 
-    test('o responsável vem do usuário autenticado, não do corpo (campo extra é recusado)', async () => {
+    test('o responsável vem do operador autenticado, não do corpo (campo extra é recusado)', async () => {
         const res = await patch(alvo.b, { tema_visual: 'cherry', responsavel: 'outra pessoa' });
         expect(res.status).toBe(400);
         expect(await eventos(alvo.b.id)).toEqual([]);
@@ -140,9 +136,9 @@ describe('alterar tema e slug', () => {
     });
 
     test('empresa inexistente: 404; id inválido: 400', async () => {
-        const res = await request(app).patch('/plataforma/empresas/999999999/identidade').set(como(operador)).send({ tema_visual: 'cherry' });
+        const res = await request(app).patch('/painel/empresas/999999999/identidade').set(operador.cabecalho).send({ tema_visual: 'cherry' });
         expect(res.status).toBe(404);
-        expect((await request(app).patch('/plataforma/empresas/abc/identidade').set(como(operador)).send({ tema_visual: 'cherry' })).status).toBe(400);
+        expect((await request(app).patch('/painel/empresas/abc/identidade').set(operador.cabecalho).send({ tema_visual: 'cherry' })).status).toBe(400);
     });
 
     test('slug já usado por outra empresa: 409 e nada muda', async () => {
@@ -161,7 +157,7 @@ describe('alterar tema e slug', () => {
     });
 
     test('histórico lista as mudanças da mais nova para a mais antiga', async () => {
-        const res = await request(app).get(`/plataforma/empresas/${alvo.a.id}/identidade/historico`).set(como(operador));
+        const res = await request(app).get(`/painel/empresas/${alvo.a.id}/identidade/historico`).set(operador.cabecalho);
         expect(res.status).toBe(200);
         expect(res.body.data[0]).toMatchObject({ tema_novo: 'valvazori', slug_novo: slugDe('a') });
     });

@@ -1,10 +1,10 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 
-// Administração comercial das empresas pelo OPERADOR DA PLATAFORMA (plataforma_admin).
+// Administração comercial das empresas pelo OPERADOR DO PAINEL GIRONEX.
 // Exceção deliberada à regra "empresa_id vem do JWT": aqui a empresa-alvo vem da rota,
-// e só quem passa por requirePlataformaAdmin chega. O responsável pelas mudanças vem do
-// usuário autenticado, nunca do corpo da requisição.
+// e só quem passa por requirePainel (rotas /painel) chega. O responsável pelas mudanças vem do
+// operador autenticado, nunca do corpo da requisição.
 //
 // Transação ad hoc (e não executarComLock): `empresas` não tem coluna empresa_id, que o
 // helper exige. O FOR UPDATE na linha da empresa serializa mudanças concorrentes da mesma
