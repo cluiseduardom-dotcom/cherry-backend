@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Extrato CSV com cabeçalho da conta antes da tabela** (extrato do Santander). O leitor assumia que a primeira linha era o cabeçalho e rejeitava o arquivo; agora procura o cabeçalho nas primeiras 30 linhas e aceita descrição com quebra de linha entre aspas. Mensagens de erro passam a citar a linha física do arquivo.
 - **Bancos: saldo comparava o horário, não o dia.** Lançamento manual/extrato de hoje é gravado ao meio-dia (Brasília) e, antes das 12h, caía em `a_liberar` em vez do saldo. Agora "realizado" = dia do movimento <= hoje (Brasília).
 
 ### Removed

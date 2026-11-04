@@ -96,3 +96,40 @@ describe('CSV', () => {
     expect(lerExtrato('a;b\n1;2').erros[0].erro).toMatch(/Cabeçalho não reconhecido/);
   });
 });
+
+describe('CSV com cabeçalho da conta antes da tabela (estilo Santander)', () => {
+  // Nomes fictícios. Ordem do mais novo para o mais antigo; descrição com quebra de linha dentro de aspas.
+  const SANTANDER = [
+    'Extrato de conta corrente', 'Nome;Fulana de Tal', 'Agência;236', 'Conta;01.000000.0',
+    'Período do extrato;21/10/2026 a 04/11/2026', '', 'Lançamentos:',
+    'Data;Descrição;Valor;Saldo',
+    '04/11/2026;"Pix recebido\nCliente A\nsilva";174,00;490,50',
+    '04/11/2026;Pix enviado Fornecedor B;-70,00;316,50',
+    '23/10/2026;Resg poup - central/internet/app;263,63;578,58',
+    '23/10/2026;Pix enviado Fornecedor C;-578,58;0,00'
+  ].join('\r\n');
+
+  it('acha o cabeçalho depois das linhas de identificação e lê todos os lançamentos', () => {
+    const r = lerExtrato(SANTANDER);
+    expect(r.formato).toBe('CSV');
+    expect(r.erros).toEqual([]);
+    expect(r.linhas.map((l) => [l.data, l.tipo, l.valor])).toEqual([
+      ['2026-11-04', 'ENTRADA', 174], ['2026-11-04', 'SAIDA', 70],
+      ['2026-10-23', 'ENTRADA', 263.63], ['2026-10-23', 'SAIDA', 578.58]
+    ]);
+  });
+  it('descrição com quebra de linha dentro das aspas vira uma linha só', () => {
+    expect(lerExtrato(SANTANDER).linhas[0].descricao).toBe('Pix recebido Cliente A silva');
+  });
+  it('soma dos lançamentos fecha com a variação de saldo do extrato', () => {
+    const total = lerExtrato(SANTANDER).linhas.reduce((s, l) => s + (l.tipo === 'ENTRADA' ? 1 : -1) * Math.round(l.valor * 100), 0);
+    expect(total).toBe(17400 - 7000 + 26363 - 57858);
+  });
+  it('erro de linha usa a linha física do arquivo, mesmo com célula em várias linhas', () => {
+    const r = lerExtrato(`${SANTANDER}\r\nTotal;;;`);
+    expect(r.erros).toEqual([{ linha: 15, erro: 'Data inválida' }]);
+  });
+  it('reimportar o mesmo arquivo gera as mesmas referências', () => {
+    expect(lerExtrato(SANTANDER).linhas.map((l) => l.referencia_externa)).toEqual(lerExtrato(SANTANDER).linhas.map((l) => l.referencia_externa));
+  });
+});
