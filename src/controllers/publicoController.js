@@ -1,4 +1,5 @@
 const repository = require('../repositories/empresasIdentidadeRepository');
+const planosPublicosRepository = require('../repositories/planosPublicosRepository');
 const { SLUG_REGEX, resolverTemaVisual } = require('../constants/temasVisuais');
 
 // Sem login. Devolve SÓ o necessário para desenhar a tela de login da marca: o tema da empresa ativa
@@ -21,4 +22,16 @@ async function marca(req, res, next) {
     }
 }
 
-module.exports = { marca };
+// Sem login. Planos e funcionalidades que o site da GiroNex mostra. Resposta igual para todos, sem dado de empresa;
+// cache curto porque muda só por migration.
+async function planos(req, res, next) {
+    try {
+        const dados = await planosPublicosRepository.listar();
+        res.set('Cache-Control', 'public, max-age=300');
+        return res.json({ success: true, data: dados });
+    } catch (error) {
+        next(error);
+    }
+}
+
+module.exports = { marca, planos };
