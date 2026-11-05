@@ -8,7 +8,7 @@ Slice 2 do desenho de planos (PO, 05/11/2026). O backend é a fronteira; o front
 - Limite efetivo = `planos_comerciais.limite_usuarios` + `empresa_limites_usuarios.usuarios_extras`.
 - `limite_usuarios` NULL no plano, ou `ilimitado = true` na empresa, = sem limite.
 - Plano da empresa resolvido como na sessão (vigente; sem plano vale `sem_mensalidade`).
-- Seed: Cortesia 3, Básico 3, Padrão 7, Pro 15, `sem_mensalidade` e `com_mensalidade` sem limite.
+- Seed: Cortesia 3, Básico 5 (migration 092; era 3), Padrão 7, Pro 15, `sem_mensalidade` e `com_mensalidade` sem limite.
 - Cherry e Valvazori: sem plano com limite hoje (caem em `sem_mensalidade`); ao receberem plano, registrar `ilimitado = true` antes.
 
 ## Onde é aplicado

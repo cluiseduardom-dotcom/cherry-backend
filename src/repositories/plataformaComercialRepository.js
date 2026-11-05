@@ -29,7 +29,7 @@ async function hoje(client) {
 
 async function listarPlanos() {
     const { rows } = await db.query(
-        `SELECT p.id, p.codigo, p.nome, p.tem_mensalidade, p.ativo, pol.percentual::text AS percentual
+        `SELECT p.id, p.codigo, p.nome, p.nome_joias, p.limite_usuarios, p.tem_mensalidade, p.ativo, pol.percentual::text AS percentual
          FROM planos_comerciais p
          LEFT JOIN LATERAL (
              SELECT t.percentual
@@ -49,7 +49,7 @@ async function listarPlanos() {
 async function listarEmpresas() {
     const { rows } = await db.query(
         `SELECT e.id AS empresa_id, e.nome AS empresa_nome, e.status,
-                ep.id AS plano_registro_id, ep.sucessor_automatico, pl.codigo AS plano_codigo, pl.nome AS plano_nome,
+                ep.id AS plano_registro_id, ep.sucessor_automatico, pl.codigo AS plano_codigo, pl.nome AS plano_nome, pl.nome_joias AS plano_nome_joias,
                 pl.tem_mensalidade, ep.vigencia_inicio::text AS plano_inicio, ep.vigencia_fim::text AS plano_fim,
                 c.id AS condicao_id, c.percentual::text AS condicao_percentual,
                 c.vigencia_inicio::text AS condicao_inicio, c.vigencia_fim::text AS condicao_fim,

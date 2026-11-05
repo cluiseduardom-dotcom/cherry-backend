@@ -43,7 +43,7 @@ const ligarCargoVendedor = (E) => db.query(
 let basico; let padrao; let semPlano;
 
 beforeAll(async () => {
-    basico = await criarEmpresa('basico', 'basico');
+    basico = await criarEmpresa('cortesia', 'cortesia');
     padrao = await criarEmpresa('padrao', 'padrao');
     semPlano = await criarEmpresa('semplano', null);
 });
@@ -56,15 +56,15 @@ afterAll(async () => {
     }
 });
 
-test('seed: Cortesia/Básico 3, Padrão 7, Pro 15, legados sem limite', async () => {
+test('seed: Cortesia 3, Básico 5, Padrão 7, Pro 15, legados sem limite', async () => {
     const { rows } = await db.query(`SELECT codigo, limite_usuarios FROM planos_comerciais WHERE codigo = ANY($1) ORDER BY codigo`,
         [['cortesia', 'basico', 'padrao', 'pro', 'sem_mensalidade', 'com_mensalidade']]);
     expect(Object.fromEntries(rows.map((r) => [r.codigo, r.limite_usuarios]))).toEqual({
-        com_mensalidade: null, cortesia: 3, basico: 3, padrao: 7, pro: 15, sem_mensalidade: null
+        com_mensalidade: null, cortesia: 3, basico: 5, padrao: 7, pro: 15, sem_mensalidade: null
     });
 });
 
-describe('plano Básico (limite 3, com o admin contando)', () => {
+describe('plano com limite 3 (Cortesia), com o admin contando', () => {
     const criados = [];
 
     test('cabem mais 2; o terceiro novo é barrado com 409 e nada é criado', async () => {
@@ -126,4 +126,16 @@ test('empresa sem plano (padrão sem_mensalidade) não tem limite', async () => 
 test('limite é por empresa: lotar o Básico não afeta o Padrão', async () => {
     expect(await ativos(padrao)).toBe(7);
     expect((await criarUsuario(basico, 99)).status).toBe(201);
+});
+
+test('nomes comerciais: linha geral e linha de joias; Cortesia e legados sem nome comercial', async () => {
+    const { rows } = await db.query(`SELECT codigo, nome, nome_joias FROM planos_comerciais WHERE codigo = ANY($1) ORDER BY codigo`,
+        [['basico', 'padrao', 'pro', 'cortesia', 'sem_mensalidade']]);
+    expect(Object.fromEntries(rows.map((r) => [r.codigo, [r.nome, r.nome_joias]]))).toEqual({
+        basico: ['Semente', 'Pérola'],
+        padrao: ['Cultivo', 'Esmeralda'],
+        pro: ['Pomar', 'Safira'],
+        cortesia: ['Plano cortesia', null],
+        sem_mensalidade: ['Plano sem mensalidade', null]
+    });
 });

@@ -40,7 +40,7 @@ describe('listarEmpresas', () => {
         const [empresa] = await service.listarEmpresas();
 
         expect(taxasRepo.resolverRegra).toHaveBeenCalledWith(1, expect.anything());
-        expect(empresa.plano).toEqual({ codigo: 'padrao', nome: 'Plano padrão', tem_mensalidade: true, vigencia_inicio: '2026-10-30', vigencia_fim: null });
+        expect(empresa.plano).toEqual({ codigo: 'padrao', nome: 'Plano padrão', nome_joias: null, tem_mensalidade: true, vigencia_inicio: '2026-10-30', vigencia_fim: null });
         expect(empresa.condicao).toMatchObject({ id: 7, percentual: 0.5, responsavel: 'eu (#1)' });
         expect(empresa.regra_efetiva).toEqual({ percentual: 0.5, origem: 'excecao_empresa', erro: null });
     });
