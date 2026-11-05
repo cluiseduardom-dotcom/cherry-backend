@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Painel: limite de usuários por empresa.** `GET|PUT|DELETE /painel/empresas/:id/limite-usuarios` para definir extras ou exceção ilimitada, com justificativa obrigatória e trilha com limite antes/depois. Detalhes em `docs/LIMITE_USUARIOS.md`.
 - **Limite de usuários ativos por plano (migration 090).** `planos_comerciais.limite_usuarios` (Cortesia/Básico 3, Padrão 7, Pro 15; legados sem limite) e `empresa_limites_usuarios` (usuários extras ou exceção ilimitada, com justificativa e responsável). Criar e desbloquear usuário passam a checar o limite sob a trava da empresa; excedido = 409 com mensagem clara. Nenhuma empresa existente é afetada (sem plano = `sem_mensalidade` = sem limite). Doc em `docs/LIMITE_USUARIOS.md`.
 
 ### Fixed

@@ -69,10 +69,22 @@ const definirFuncionalidadeSchema = z.strictObject({
 
 const removerFuncionalidadeSchema = z.strictObject({ justificativa });
 
+// Limite de usuários por empresa: extras sobre o plano ou exceção sem limite.
+const definirLimiteUsuariosSchema = z.strictObject({
+    usuarios_extras: z.number({ error: 'Informe quantos usuários extras' }).int('Usuários extras deve ser inteiro')
+        .min(0, 'Usuários extras não pode ser negativo').max(1000, 'Usuários extras acima do permitido'),
+    ilimitado: z.boolean({ error: 'Informe se a empresa fica sem limite de usuários' }),
+    justificativa
+});
+
+const removerLimiteUsuariosSchema = z.strictObject({ justificativa });
+
 module.exports = {
     empresaFuncionalidadeParamSchema,
     definirFuncionalidadeSchema,
     removerFuncionalidadeSchema,
+    definirLimiteUsuariosSchema,
+    removerLimiteUsuariosSchema,
     identidadeSchema,
     taxasPorEmpresaQuerySchema,
     empresaIdParamSchema,

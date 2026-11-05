@@ -5,6 +5,7 @@ const plataforma = require('../controllers/plataformaController');
 const comercial = require('../controllers/plataformaComercialController');
 const identidade = require('../controllers/plataformaIdentidadeController');
 const funcionalidades = require('../controllers/funcionalidadesPainelController');
+const limiteUsuarios = require('../controllers/limiteUsuariosPainelController');
 const requirePainel = require('../middlewares/requirePainel');
 const registrar = require('../middlewares/registrarEventoPainel');
 const { criarLoginRateLimiter, criarLimiterPorIp } = require('../middlewares/loginRateLimiter');
@@ -45,6 +46,9 @@ router.get('/funcionalidades', op, funcionalidades.catalogo);
 router.get('/empresas/:id/funcionalidades', op, funcionalidades.listarDaEmpresa);
 router.put('/empresas/:id/funcionalidades/:codigo', op, funcionalidades.definir);
 router.delete('/empresas/:id/funcionalidades/:codigo', op, funcionalidades.remover);
+router.get('/empresas/:id/limite-usuarios', op, limiteUsuarios.obter);
+router.put('/empresas/:id/limite-usuarios', op, limiteUsuarios.definir);
+router.delete('/empresas/:id/limite-usuarios', op, limiteUsuarios.remover);
 router.get('/eventos', op, painel.eventos);
 
 module.exports = router;

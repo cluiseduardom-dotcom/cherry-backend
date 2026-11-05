@@ -18,8 +18,14 @@ Slice 2 do desenho de planos (PO, 05/11/2026). O backend é a fronteira; o front
 - Excedido: `409 "Limite de N usuários ativos do seu plano atingido. Fale com a GiroNex para ampliar."`
 - Bloquear usuário nunca é barrado. Quem já excede o limite (plano rebaixado) não perde ninguém; só não entra novo.
 
+## Painel GiroNex
+
+- `GET /painel/empresas/:id/limite-usuarios`: plano, limite do plano, limite efetivo (null = sem limite), usuários ativos e a configuração da empresa.
+- `PUT` (corpo: `usuarios_extras` 0 a 1000, `ilimitado`, `justificativa`): grava a configuração (uma linha por empresa).
+- `DELETE` (corpo: `justificativa`): remove a configuração; a empresa volta a seguir só o plano. 404 se não houver.
+- Só sessão do painel (2FA). Trilha em `plataforma_eventos` na mesma transação: `limite_usuarios_definido` e `limite_usuarios_removido`, com limite antes e depois, justificativa e responsável. O limite do plano continua só por migration.
+
 ## Pendências
 
-- Painel: endpoint e tela para definir extras/ilimitado, com trilha em `plataforma_eventos` (próximo PR).
 - Expiração automática da Cortesia no 3º mês de uso (próximo PR, depende de definir o que acontece no vencimento).
 - Usuário extra hoje é só registro; a cobrança entra com o billing.
