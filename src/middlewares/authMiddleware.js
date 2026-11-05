@@ -77,6 +77,8 @@ module.exports = async (req, res, next) => {
             nivel: permissoes.nivel,
             capacidades: permissoes.capacidades,
             empresa_id: payload.empresa_id,
+            // Códigos ligados para a empresa (plano + avulsas - desligadas); lido por exigirFuncionalidade.
+            funcionalidades: Array.isArray(estado.funcionalidades) ? estado.funcionalidades : [],
             senha_temporaria: estado.senha_temporaria === true
         };
 
