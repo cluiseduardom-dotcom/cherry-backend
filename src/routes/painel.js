@@ -4,6 +4,7 @@ const painel = require('../controllers/painelController');
 const plataforma = require('../controllers/plataformaController');
 const comercial = require('../controllers/plataformaComercialController');
 const identidade = require('../controllers/plataformaIdentidadeController');
+const funcionalidades = require('../controllers/funcionalidadesPainelController');
 const requirePainel = require('../middlewares/requirePainel');
 const registrar = require('../middlewares/registrarEventoPainel');
 const { criarLoginRateLimiter, criarLimiterPorIp } = require('../middlewares/loginRateLimiter');
@@ -38,6 +39,12 @@ router.post('/empresas/:id/plano', op, registrar('plano_trocado'), comercial.tro
 router.post('/empresas/:id/condicao', op, registrar('condicao_definida'), comercial.definirCondicao);
 router.post('/empresas/:id/condicao/encerrar', op, registrar('condicao_encerrada'), comercial.encerrarCondicao);
 router.patch('/empresas/:id/identidade', op, registrar('identidade_alterada'), identidade.atualizar);
+// Funcionalidades: catálogo + o que cada plano inclui (só leitura; muda por migration) e ligações por empresa.
+// A trilha destas mudanças é gravada pelo repository, na mesma transação, com o detalhe (sem registrar()).
+router.get('/funcionalidades', op, funcionalidades.catalogo);
+router.get('/empresas/:id/funcionalidades', op, funcionalidades.listarDaEmpresa);
+router.put('/empresas/:id/funcionalidades/:codigo', op, funcionalidades.definir);
+router.delete('/empresas/:id/funcionalidades/:codigo', op, funcionalidades.remover);
 router.get('/eventos', op, painel.eventos);
 
 module.exports = router;
