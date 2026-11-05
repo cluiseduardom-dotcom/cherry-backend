@@ -53,7 +53,26 @@ const identidadeSchema = z.strictObject({
     slug: slug.nullable().optional()
 }).refine((dados) => dados.tema_visual !== undefined || dados.slug !== undefined, { message: 'Informe o tema e/ou o identificador' });
 
+// Funcionalidades por empresa: liga (ligada=true) avulso ou desliga (false) mesmo que o plano inclua.
+const empresaFuncionalidadeParamSchema = z.strictObject({
+    id: z.coerce.number().int().positive('Empresa inválida'),
+    codigo: z.string().regex(/^[a-z][a-z0-9_]*$/, 'Funcionalidade inválida').max(40)
+});
+
+const definirFuncionalidadeSchema = z.strictObject({
+    ligada: z.boolean({ error: 'Informe se a funcionalidade fica ligada ou desligada' }),
+    vigencia_inicio: dataCivil.optional(),
+    vigencia_fim: dataCivil.optional(),
+    justificativa
+}).refine((d) => !d.vigencia_inicio || !d.vigencia_fim || d.vigencia_fim >= d.vigencia_inicio,
+    { message: 'O fim da vigência não pode ser anterior ao início' });
+
+const removerFuncionalidadeSchema = z.strictObject({ justificativa });
+
 module.exports = {
+    empresaFuncionalidadeParamSchema,
+    definirFuncionalidadeSchema,
+    removerFuncionalidadeSchema,
     identidadeSchema,
     taxasPorEmpresaQuerySchema,
     empresaIdParamSchema,

@@ -70,10 +70,23 @@ tela de identidade.
 `/painel/auth/{login,2fa/iniciar,2fa/confirmar,me,renovar,senha}`, `GET /painel/taxas`, `GET /painel/planos`,
 `GET /painel/empresas/comercial`, `GET /painel/empresas/identidade`, `GET /painel/empresas/:id/{comercial,identidade}/historico`,
 `POST /painel/empresas`, `POST /painel/empresas/:id/{plano,condicao,condicao/encerrar}`,
-`PATCH /painel/empresas/:id/identidade`, `GET /painel/eventos`.
+`PATCH /painel/empresas/:id/identidade`, `GET /painel/eventos`,
+`GET /painel/funcionalidades`, `GET /painel/empresas/:id/funcionalidades`, `PUT|DELETE /painel/empresas/:id/funcionalidades/:codigo`.
 
 As ações de plataforma usam os serviços de planos, taxas e identidade (antes expostos em `/plataforma`); o responsável gravado é
 `painel:<email> (#<id do operador>)`.
+
+## Funcionalidades (ver `docs/FUNCIONALIDADES.md`)
+
+O painel lê o catálogo e o que cada plano inclui (**somente leitura**: a composição dos planos muda por migration, como os
+próprios planos) e liga/desliga funcionalidades **por empresa**:
+
+- `PUT /painel/empresas/:id/funcionalidades/:codigo` `{ ligada, justificativa, vigencia_inicio?, vigencia_fim? }`: liga avulso
+  (`true`) ou desliga mesmo que o plano inclua (`false`). Ligar módulo ainda não vendável → 409.
+- `DELETE /painel/empresas/:id/funcionalidades/:codigo` `{ justificativa }`: remove a ligação; volta a valer só o plano.
+- Cada mudança grava `plataforma_eventos` com o detalhe (funcionalidade, ligada, vigência, justificativa, responsável)
+  **na mesma transação**; o responsável é sempre o operador da sessão, nunca o corpo.
+- O efeito no ERP é imediato (a lista é resolvida a cada requisição, na consulta da sessão).
 
 ## Etapas
 
