@@ -17,5 +17,6 @@ const limiteMarca = rateLimit({
 });
 
 router.get('/marca/:slug', limiteMarca, controller.marca);
+router.get('/planos', limiteMarca, controller.planos);
 
 module.exports = router;

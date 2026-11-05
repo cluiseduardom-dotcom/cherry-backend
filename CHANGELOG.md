@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`GET /publico/planos` (migration 093).** Rota pública, sem login, com os planos Semente/Cultivo/Pomar (e nomes de joias), limite de usuários, percentual vigente sobre o Pix e funcionalidades, para o site da GiroNex. Só planos com `exibir_no_site`. Doc em `docs/PLANOS_PUBLICOS.md`.
 - **Nomes comerciais dos planos e Básico com 5 usuários (migration 092).** Linha geral Semente · Cultivo · Pomar (`nome`) e linha de joias Pérola · Esmeralda · Safira (`nome_joias`), com `codigo` interno inalterado; `nome_joias` e `limite_usuarios` expostos na lista de planos do Painel.
 - **Painel: limite de usuários por empresa.** `GET|PUT|DELETE /painel/empresas/:id/limite-usuarios` para definir extras ou exceção ilimitada, com justificativa obrigatória e trilha com limite antes/depois. Detalhes em `docs/LIMITE_USUARIOS.md`.
 - **Cortesia acaba sozinha no 3º mês (migration 091).** Atribuir a Cortesia pelo Painel grava prazo de 3 meses e o Básico como sucessor automático (`empresa_planos.sucessor_automatico`); a empresa nunca cai no padrão sem limite. O plano negociado substitui o sucessor. Doc em `docs/CORTESIA.md`.
