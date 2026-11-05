@@ -1,6 +1,13 @@
 # Funcionalidades por plano e por empresa
 
-Estado: **PR 1 (encanamento)**. Nenhuma rota usa `exigirFuncionalidade` ainda; o bloqueio entra rota a rota nos PRs seguintes.
+Estado: **PR 2**. O bloqueio entra rota a rota; já bloqueadas: ver tabela abaixo.
+
+| Funcionalidade | Rotas bloqueadas |
+|---|---|
+| `bancos` | todo `/bancos/*` |
+| `analise_financeira` | `GET /financeiro/ponto-equilibrio`, todo `/despesas-fixas/*` |
+
+A barreira de plano vem DEPOIS da de papel/capacidade (quem não tem o papel recebe o 403 de permissão). Pendentes: `maletas` e `comissoes` (PR 3).
 
 ## Regra
 
@@ -27,7 +34,7 @@ Seed: planos `sem_mensalidade`, `com_mensalidade`, `padrao` e `pro` incluem os q
 ## Uso
 
 ```js
-router.use(authMiddleware, exigirFuncionalidade('bancos'));
+app.use('/bancos', authMiddleware, requireCapacidade(...), exigirFuncionalidade('bancos'), bancosRoutes);
 ```
 
 Resposta quando não ligada: `403 "Funcionalidade não incluída no seu plano. Fale com a GiroNex."`, inclusive para admin. Sem usuário ou sem lista, nega.
