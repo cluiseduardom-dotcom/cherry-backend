@@ -149,7 +149,8 @@ app.use('/cargos', authMiddleware, requireCapacidade(CAPACIDADES.GERIR_CARGOS), 
 app.use('/privilegios', authMiddleware, requireCapacidade(CAPACIDADES.CONCEDER_ADMIN), privilegiosRoutes);
 app.use('/usuarios', authMiddleware, requireCapacidade(CAPACIDADES.GERIR_USUARIOS), usuariosRoutes);
 app.use('/cancelamentos', authMiddleware, requireCapacidade(CAPACIDADES.VER_CANCELAMENTOS), cancelamentosRoutes);
-app.use('/comissoes', authMiddleware, comissoesRoutes);
+// Só o uso do módulo é bloqueado; a venda continua acumulando comissão em silêncio (vendasRepository).
+app.use('/comissoes', authMiddleware, exigirFuncionalidade('comissoes'), comissoesRoutes);
 app.use('/estoque', authMiddleware, estoqueRoutes);
 app.use('/canais-venda', authMiddleware, canaisVendaRoutes);
 app.use('/dashboard', authMiddleware, requireAdmin, dashboardRoutes);

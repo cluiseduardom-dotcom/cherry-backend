@@ -13,7 +13,8 @@ const gerenteToken = makeToken({ id: 4, role: 'gerente', empresa_id: 7 });
 const supervisorToken = makeToken({ id: 5, role: 'supervisor', empresa_id: 7 });
 const financeiroToken = makeToken({ id: 6, role: 'financeiro', empresa_id: 7 });
 
-const sessaoBase = { ativo: true, token_version: 0, empresa_status: 'ativa' };
+// A empresa de teste tem a funcionalidade comissoes (o bloqueio por plano tem teste próprio: funcionalidadesGate).
+const sessaoBase = { ativo: true, token_version: 0, empresa_status: 'ativa', funcionalidades: ['comissoes'] };
 
 beforeEach(() => {
   jest.resetAllMocks();
