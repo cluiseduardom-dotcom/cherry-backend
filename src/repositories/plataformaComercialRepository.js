@@ -12,6 +12,12 @@ const AppError = require('../errors/AppError');
 
 const HOJE_SQL = `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date`;
 
+// Cortesia dura 3 meses de calendário a partir do início; depois a empresa segue no Básico até a GiroNex
+// registrar o plano negociado com o cliente (nunca cai em silêncio no padrão sem mensalidade).
+const CODIGO_CORTESIA = 'cortesia';
+const CODIGO_SUCESSOR_CORTESIA = 'basico';
+const MESES_CORTESIA = 3;
+
 const VIGENTE_SQL = (alias) => `${alias}.ativo = true
            AND ${alias}.vigencia_inicio <= ${HOJE_SQL}
            AND (${alias}.vigencia_fim IS NULL OR ${alias}.vigencia_fim >= ${HOJE_SQL})`;
@@ -43,7 +49,7 @@ async function listarPlanos() {
 async function listarEmpresas() {
     const { rows } = await db.query(
         `SELECT e.id AS empresa_id, e.nome AS empresa_nome, e.status,
-                ep.id AS plano_registro_id, pl.codigo AS plano_codigo, pl.nome AS plano_nome,
+                ep.id AS plano_registro_id, ep.sucessor_automatico, pl.codigo AS plano_codigo, pl.nome AS plano_nome,
                 pl.tem_mensalidade, ep.vigencia_inicio::text AS plano_inicio, ep.vigencia_fim::text AS plano_fim,
                 c.id AS condicao_id, c.percentual::text AS condicao_percentual,
                 c.vigencia_inicio::text AS condicao_inicio, c.vigencia_fim::text AS condicao_fim,
@@ -74,7 +80,7 @@ async function historico(empresa_id) {
     const { rows: planos } = await db.query(
         `SELECT ep.id, pl.codigo AS plano_codigo, pl.nome AS plano_nome,
                 ep.vigencia_inicio::text AS vigencia_inicio, ep.vigencia_fim::text AS vigencia_fim, ep.ativo,
-                ep.justificativa, ep.responsavel, ep.criado_em,
+                ep.justificativa, ep.responsavel, ep.criado_em, ep.sucessor_automatico,
                 ep.encerrado_por, ep.encerrado_em, ep.motivo_encerramento
          FROM empresa_planos ep JOIN planos_comerciais pl ON pl.id = ep.plano_id
          WHERE ep.empresa_id = $1
@@ -132,6 +138,43 @@ async function exigirNaoPassado(client, inicio) {
     return dataHoje;
 }
 
+// Registro Básico que começa no dia seguinte ao fim da Cortesia. Exige política de taxa vigente na data.
+async function agendarSucessorDaCortesia(client, { empresa_id, cortesia, responsavel }) {
+    const { rows: plano } = await client.query(
+        'SELECT id, ativo FROM planos_comerciais WHERE codigo = $1', [CODIGO_SUCESSOR_CORTESIA]
+    );
+
+    if (!plano.length || !plano[0].ativo) {
+        throw new AppError('Plano sucessor da Cortesia não está disponível.', 409);
+    }
+
+    const { rows: inicioRows } = await client.query(`SELECT ($1::date + 1)::text AS inicio`, [cortesia.vigencia_fim]);
+    const inicio = inicioRows[0].inicio;
+
+    const { rows: politica } = await client.query(
+        `SELECT 1 FROM politicas_taxa_plataforma
+         WHERE plano_id = $1 AND ativo = true AND vigencia_inicio <= $2::date
+           AND (vigencia_fim IS NULL OR vigencia_fim >= $2::date)
+         LIMIT 1`,
+        [plano[0].id, inicio]
+    );
+
+    if (!politica.length) {
+        throw new AppError('O plano sucessor da Cortesia não tem política de taxa vigente na data de término.', 409);
+    }
+
+    const { rows } = await client.query(
+        `INSERT INTO empresa_planos (empresa_id, plano_id, vigencia_inicio, justificativa, responsavel, sucessor_automatico)
+         VALUES ($1, $2, $3::date, $4, $5, true)
+         RETURNING id, vigencia_inicio::text AS vigencia_inicio`,
+        [empresa_id, plano[0].id, inicio,
+            'Cortesia encerrada automaticamente após 3 meses; segue no Básico até a GiroNex registrar o plano negociado com o cliente.',
+            responsavel]
+    );
+
+    return { id: rows[0].id, plano_codigo: CODIGO_SUCESSOR_CORTESIA, vigencia_inicio: rows[0].vigencia_inicio };
+}
+
 // Troca o plano da empresa: encerra o plano vigente no dia anterior e cria o novo.
 async function trocarPlano({ empresa_id, plano_codigo, vigencia_inicio, justificativa, responsavel }) {
     return emTransacao(empresa_id, async (client) => {
@@ -160,13 +203,26 @@ async function trocarPlano({ empresa_id, plano_codigo, vigencia_inicio, justific
             throw new AppError('O plano não tem política de taxa vigente nessa data.', 409);
         }
 
-        const { rows: abertos } = await client.query(
-            `SELECT id, plano_id, vigencia_inicio::text AS vigencia_inicio
+        const { rows: todosAbertos } = await client.query(
+            `SELECT id, plano_id, vigencia_inicio::text AS vigencia_inicio, sucessor_automatico
              FROM empresa_planos
              WHERE empresa_id = $1 AND ativo = true AND (vigencia_fim IS NULL OR vigencia_fim >= $2::date)
              ORDER BY vigencia_inicio`,
             [empresa_id, inicio]
         );
+
+        // O sucessor automático da Cortesia não conta como plano agendado: o plano negociado o substitui.
+        // É desativado (nunca apagado) com o motivo registrado.
+        const sucessores = todosAbertos.filter((linha) => linha.sucessor_automatico && linha.vigencia_inicio > inicio);
+        for (const sucessor of sucessores) {
+            await client.query(
+                `UPDATE empresa_planos
+                 SET ativo = false, encerrado_por = $2, encerrado_em = NOW(), motivo_encerramento = $3
+                 WHERE id = $1`,
+                [sucessor.id, responsavel, `Sucessor automático da Cortesia substituído: ${justificativa}`]
+            );
+        }
+        const abertos = todosAbertos.filter((linha) => !sucessores.includes(linha));
 
         const futuro = abertos.find((linha) => linha.vigencia_inicio > inicio);
         if (futuro) {
@@ -195,14 +251,27 @@ async function trocarPlano({ empresa_id, plano_codigo, vigencia_inicio, justific
             );
         }
 
+        const ehCortesia = planoRows[0].codigo === CODIGO_CORTESIA;
+
         const { rows } = await client.query(
-            `INSERT INTO empresa_planos (empresa_id, plano_id, vigencia_inicio, justificativa, responsavel)
-             VALUES ($1, $2, $3::date, $4, $5)
-             RETURNING id, empresa_id, plano_id, vigencia_inicio::text AS vigencia_inicio, vigencia_fim, ativo`,
-            [empresa_id, planoRows[0].id, inicio, justificativa, responsavel]
+            `INSERT INTO empresa_planos (empresa_id, plano_id, vigencia_inicio, vigencia_fim, justificativa, responsavel)
+             VALUES ($1, $2, $3::date, CASE WHEN $6::boolean THEN ($3::date + make_interval(months => $7::int))::date - 1 END, $4, $5)
+             RETURNING id, empresa_id, plano_id, vigencia_inicio::text AS vigencia_inicio, vigencia_fim::text AS vigencia_fim, ativo`,
+            [empresa_id, planoRows[0].id, inicio, justificativa, responsavel, ehCortesia, MESES_CORTESIA]
         );
 
-        return { ...rows[0], plano_codigo: planoRows[0].codigo, substituiu_id: atual?.id ?? null };
+        let sucessor = null;
+
+        if (ehCortesia) {
+            sucessor = await agendarSucessorDaCortesia(client, { empresa_id, cortesia: rows[0], responsavel });
+        }
+
+        return {
+            ...rows[0],
+            plano_codigo: planoRows[0].codigo,
+            substituiu_id: atual?.id ?? null,
+            ...(sucessor ? { sucessor_automatico: sucessor } : {})
+        };
     });
 }
 
