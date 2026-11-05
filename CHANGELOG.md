@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Limite de usuários ativos por plano (migration 090).** `planos_comerciais.limite_usuarios` (Cortesia/Básico 3, Padrão 7, Pro 15; legados sem limite) e `empresa_limites_usuarios` (usuários extras ou exceção ilimitada, com justificativa e responsável). Criar e desbloquear usuário passam a checar o limite sob a trava da empresa; excedido = 409 com mensagem clara. Nenhuma empresa existente é afetada (sem plano = `sem_mensalidade` = sem limite). Doc em `docs/LIMITE_USUARIOS.md`.
+
 ### Fixed
 
 - **Extrato CSV com cabeçalho da conta antes da tabela** (extrato do Santander). O leitor assumia que a primeira linha era o cabeçalho e rejeitava o arquivo; agora procura o cabeçalho nas primeiras 30 linhas e aceita descrição com quebra de linha entre aspas. Mensagens de erro passam a citar a linha física do arquivo.

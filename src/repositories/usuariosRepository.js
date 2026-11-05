@@ -2,6 +2,7 @@ const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { executarComLock } = require('./shared/transacoes');
 const cargosRepository = require('./cargosRepository');
+const limiteUsuariosRepository = require('./limiteUsuariosRepository');
 const { resolverCargo } = require('../services/permissoesService');
 const { gerarLoginBase, proximoLoginLivre } = require('../utils/loginUsuario');
 
@@ -72,6 +73,8 @@ async function criarComAuditoria({ nome, email, senhaHash, papel, empresa_id, ex
         if (!cargo || !cargo.ativo) {
             throw new AppError('Cargo não habilitado neste comércio', 409);
         }
+
+        await limiteUsuariosRepository.garantirVaga(client, empresa_id);
 
         const ocupados = await loginsDaEmpresa(empresa_id, client);
         if (login && ocupados.has(login)) {
@@ -144,6 +147,11 @@ async function alterarBloqueio({ empresa_id, usuario_id, bloqueado, motivo, exec
 
         if (alvo.ativo === ativoDesejado) {
             return { id: alvo.id, nome: alvo.nome, email: alvo.email, papel: alvo.papel, ativo: alvo.ativo, alterado: false };
+        }
+
+        // Desbloquear devolve um usuário ativo: precisa caber no limite do plano.
+        if (!bloqueado) {
+            await limiteUsuariosRepository.garantirVaga(client, empresa_id);
         }
 
         const { rows: atualizados } = await client.query(
