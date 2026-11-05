@@ -35,10 +35,11 @@ async function me(req, res, next) {
 
     try {
 
-        const { id, empresa_id, role, cargo, nivel, capacidades, senha_temporaria } = req.usuario;
+        const { id, empresa_id, role, cargo, nivel, capacidades, funcionalidades, senha_temporaria } = req.usuario;
         const foto_url = usuarioFotosService.urlDaChave(await usuariosFotosRepository.buscarChave(id, empresa_id));
 
-        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades, senha_temporaria: senha_temporaria === true, foto_url });
+        // `funcionalidades`: o que o plano da empresa liga (só para o frontend esconder menus; o servidor barra de fato).
+        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades, funcionalidades: funcionalidades ?? [], senha_temporaria: senha_temporaria === true, foto_url });
 
     } catch (error) {
 
