@@ -2,7 +2,7 @@ const db = require('../config/db');
 
 async function buscarPorEmail(email) {
     const { rows } = await db.query(
-        `SELECT u.*, e.status AS empresa_status, e.tema_visual AS empresa_tema
+        `SELECT u.*, e.status AS empresa_status, e.tema_visual AS empresa_tema, e.slug AS empresa_slug
          FROM usuarios u
          JOIN empresas e ON e.id = u.empresa_id
          WHERE u.email = $1
@@ -16,7 +16,7 @@ async function buscarPorEmail(email) {
 // Login por código: único dentro da empresa da loja (slug). Mesma forma de buscarPorEmail.
 async function buscarPorLogin(login, empresaSlug) {
     const { rows } = await db.query(
-        `SELECT u.*, e.status AS empresa_status, e.tema_visual AS empresa_tema
+        `SELECT u.*, e.status AS empresa_status, e.tema_visual AS empresa_tema, e.slug AS empresa_slug
          FROM usuarios u
          JOIN empresas e ON e.id = u.empresa_id
          WHERE e.slug = $1 AND u.login = $2

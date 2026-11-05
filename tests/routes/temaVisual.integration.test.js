@@ -63,10 +63,10 @@ describe('tema visual da empresa no login, com banco real (cherry-frontend#63)',
 
     expect(cherry.status).toBe(200);
     expect(cherry.body.data.usuario).toMatchObject({
-      papel: 'admin', empresa_id: empresaCherry, empresa: { id: empresaCherry, tema: 'cherry' }
+      papel: 'admin', empresa_id: empresaCherry, empresa: { id: empresaCherry, tema: 'cherry', slug: null }
     });
     expect(padrao.body.data.usuario).toMatchObject({
-      empresa_id: empresaPadrao, empresa: { id: empresaPadrao, tema: 'vertumno' }
+      empresa_id: empresaPadrao, empresa: { id: empresaPadrao, tema: 'vertumno', slug: null }
     });
   });
 
@@ -83,7 +83,7 @@ describe('tema visual da empresa no login, com banco real (cherry-frontend#63)',
       .send({ email: emailPadrao, senha, tema: 'cherry', empresa_id: empresaCherry, empresa: { tema: 'cherry' } });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.usuario.empresa).toEqual({ id: empresaPadrao, tema: 'vertumno' });
+    expect(res.body.data.usuario.empresa).toEqual({ id: empresaPadrao, tema: 'vertumno', slug: null });
   });
 
   test('empresa inativa não autentica e a resposta não revela o tema', async () => {

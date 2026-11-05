@@ -56,7 +56,8 @@ async function login(identificador, senha, empresaSlug) {
             senha_temporaria: usuario.senha_temporaria === true,
             foto_url: chaveFoto ? storage.urlPublica(chaveFoto) : null,
             // Identidade visual da empresa do próprio usuário (lida do banco, nunca da requisição).
-            empresa: { id: usuario.empresa_id, tema: resolverTemaVisual(usuario.empresa_tema) }
+            // O slug (endereço público /c/<slug>) deixa o navegador lembrar a loja para o login por código.
+            empresa: { id: usuario.empresa_id, tema: resolverTemaVisual(usuario.empresa_tema), slug: usuario.empresa_slug ?? null }
         }
     };
 }
