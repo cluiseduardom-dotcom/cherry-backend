@@ -91,7 +91,7 @@ test('planos que não são Cortesia seguem sem prazo nem sucessor', async () => 
     expect(await linhas(e)).toHaveLength(1);
 });
 
-test('depois do fim da Cortesia a resolução enxerga o Básico (limite 3), não o padrão sem limite', async () => {
+test('depois do fim da Cortesia a resolução enxerga o Básico (limite 5), não o padrão sem limite', async () => {
     const e = await novaEmpresa('e');
     // Histórico imutável e API sem início no passado: monta direto a situação de 4 meses depois.
     await db.query(
@@ -102,5 +102,5 @@ test('depois do fim da Cortesia a resolução enxerga o Básico (limite 3), não
          SELECT $1, id, ${HOJE} - 29, 'teste', 'teste', true FROM planos_comerciais WHERE codigo = 'basico'`, [e]);
 
     const limiteRepo = require('../../src/repositories/limiteUsuariosRepository');
-    expect(await limiteRepo.buscarLimite(db, e)).toEqual({ plano: 'basico', limite: 3 });
+    expect(await limiteRepo.buscarLimite(db, e)).toEqual({ plano: 'basico', limite: 5 });
 });

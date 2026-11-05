@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Nomes comerciais dos planos e Básico com 5 usuários (migration 092).** Linha geral Semente · Cultivo · Pomar (`nome`) e linha de joias Pérola · Esmeralda · Safira (`nome_joias`), com `codigo` interno inalterado; `nome_joias` e `limite_usuarios` expostos na lista de planos do Painel.
 - **Painel: limite de usuários por empresa.** `GET|PUT|DELETE /painel/empresas/:id/limite-usuarios` para definir extras ou exceção ilimitada, com justificativa obrigatória e trilha com limite antes/depois. Detalhes em `docs/LIMITE_USUARIOS.md`.
 - **Cortesia acaba sozinha no 3º mês (migration 091).** Atribuir a Cortesia pelo Painel grava prazo de 3 meses e o Básico como sucessor automático (`empresa_planos.sucessor_automatico`); a empresa nunca cai no padrão sem limite. O plano negociado substitui o sucessor. Doc em `docs/CORTESIA.md`.
 - **Limite de usuários ativos por plano (migration 090).** `planos_comerciais.limite_usuarios` (Cortesia/Básico 3, Padrão 7, Pro 15; legados sem limite) e `empresa_limites_usuarios` (usuários extras ou exceção ilimitada, com justificativa e responsável). Criar e desbloquear usuário passam a checar o limite sob a trava da empresa; excedido = 409 com mensagem clara. Nenhuma empresa existente é afetada (sem plano = `sem_mensalidade` = sem limite). Doc em `docs/LIMITE_USUARIOS.md`.

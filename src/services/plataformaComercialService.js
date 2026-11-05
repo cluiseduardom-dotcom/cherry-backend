@@ -37,6 +37,7 @@ async function listarEmpresas() {
             ? {
                 codigo: linha.plano_codigo,
                 nome: linha.plano_nome,
+                nome_joias: linha.plano_nome_joias ?? null,
                 tem_mensalidade: linha.tem_mensalidade,
                 vigencia_inicio: linha.plano_inicio,
                 vigencia_fim: linha.plano_fim
