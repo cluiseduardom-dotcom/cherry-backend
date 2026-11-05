@@ -58,7 +58,7 @@ describe('authService.login', () => {
       token: 'signed-token',
       usuario: {
         id: 1, nome: 'Ana', email: 'a@x.com', login: null, papel: 'admin', empresa_id: undefined, senha_temporaria: false, foto_url: null,
-        empresa: { id: undefined, tema: 'vertumno' }
+        empresa: { id: undefined, tema: 'vertumno', slug: null }
       }
     });
   });
@@ -150,7 +150,15 @@ describe('authService.login — identidade visual da empresa', () => {
 
     const { usuario } = await authService.login('a@x.com', 'senha123');
 
-    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry' });
+    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry', slug: null });
+  });
+
+  test('devolve o slug (endereço público) da empresa para o navegador lembrar a loja', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase, empresa_tema: 'cherry', empresa_slug: 'cherry' });
+
+    const { usuario } = await authService.login('a@x.com', 'senha123');
+
+    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry', slug: 'cherry' });
   });
 
   test.each([undefined, null, '', 'desconhecido', 'CHERRY', '__proto__', 42])(
@@ -160,7 +168,7 @@ describe('authService.login — identidade visual da empresa', () => {
       const { token, usuario } = await authService.login('a@x.com', 'senha123');
 
       expect(token).toBe('signed-token');
-      expect(usuario.empresa).toEqual({ id: 7, tema: 'vertumno' });
+      expect(usuario.empresa).toEqual({ id: 7, tema: 'vertumno', slug: null });
     }
   );
 
@@ -194,8 +202,8 @@ describe('authService.login — identidade visual da empresa', () => {
     const a = await authService.login('a@x.com', 'senha123');
     const b = await authService.login('b@x.com', 'senha123');
 
-    expect(a.usuario.empresa).toEqual({ id: 1, tema: 'cherry' });
-    expect(b.usuario.empresa).toEqual({ id: 2, tema: 'vertumno' });
+    expect(a.usuario.empresa).toEqual({ id: 1, tema: 'cherry', slug: null });
+    expect(b.usuario.empresa).toEqual({ id: 2, tema: 'vertumno', slug: null });
   });
 });
 

@@ -57,6 +57,8 @@ describe('login por código de usuário', () => {
     const res = await entrar({ identificador: ' lemcar ', empresa_slug: lojas.A.slug });
     expect(res.status).toBe(200);
     expect(res.body.data.usuario.empresa_id).toBe(lojas.A.id);
+    // O navegador usa o slug devolvido para lembrar a loja (login por código sem digitar o endereço).
+    expect(res.body.data.usuario.empresa.slug).toBe(lojas.A.slug);
   });
 
   test('o mesmo código em duas lojas: cada loja autentica o seu', async () => {
