@@ -52,7 +52,7 @@ describe('authMiddleware', () => {
 
     expect(next).toHaveBeenCalledWith();
     expect(req.usuario).toEqual({
-      id: 42, role: 'vendedor', cargo: 'vendedor', nivel: 30, capacidades: ['cancelar_venda'], empresa_id: 7, funcionalidades: [], senha_temporaria: false
+      id: 42, role: 'vendedor', cargo: 'vendedor', nivel: 30, capacidades: ['cancelar_venda'], empresa_id: 7, funcionalidades: ['analise_financeira', 'bancos', 'comissoes', 'maletas'], senha_temporaria: false
     });
     expect(sessaoRepository.buscarEstado).toHaveBeenCalledWith(42, 7);
   });

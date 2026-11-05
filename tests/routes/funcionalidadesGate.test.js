@@ -1,0 +1,106 @@
+// Bloqueio por funcionalidade (plano + ligações da empresa) nas rotas de Bancos e Análise financeira.
+// A sessão é mockada (setupSessao): o que se prova aqui é a fiação das rotas, não a resolução da lista
+// (essa tem teste de integração próprio em tests/repositories/funcionalidadesSessao.integration.test.js).
+jest.mock('../../src/services/contasBancariasService');
+jest.mock('../../src/services/despesasFixasService');
+jest.mock('../../src/services/pontoEquilibrioService');
+jest.mock('../../src/services/fluxoCaixaService');
+jest.mock('../../src/services/taxasVendaService');
+
+const request = require('supertest');
+const app = require('../../src/app');
+const sessaoRepository = require('../../src/repositories/sessaoRepository');
+const { MENSAGEM } = require('../../src/middlewares/exigirFuncionalidade');
+const { makeToken } = require('../helpers/token');
+
+const admin = makeToken({ id: 1, role: 'admin', empresa_id: 1 });
+const vendedor = makeToken({ id: 2, role: 'vendedor', empresa_id: 1 });
+
+const estado = (funcionalidades) => ({ ativo: true, token_version: 0, empresa_status: 'ativa', funcionalidades });
+const comLista = (lista) => sessaoRepository.buscarEstado.mockResolvedValue(estado(lista));
+
+const BANCOS = [
+    ['get', '/bancos/contas'], ['post', '/bancos/contas'], ['get', '/bancos/contas/1'], ['patch', '/bancos/contas/1'],
+    ['patch', '/bancos/contas/1/status'], ['get', '/bancos/movimentos'], ['post', '/bancos/movimentos'],
+    ['post', '/bancos/movimentos/1/cancelar'], ['get', '/bancos/conciliacoes'], ['post', '/bancos/conciliacoes'],
+    ['post', '/bancos/conciliacoes/1/desfazer'], ['post', '/bancos/mercadopago/sincronizar'],
+    ['post', '/bancos/importacoes/previa'], ['post', '/bancos/importacoes'], ['get', '/bancos/movimentos/1/sugestoes']
+];
+const ANALISE = [
+    ['get', '/financeiro/ponto-equilibrio'], ['get', '/despesas-fixas'], ['post', '/despesas-fixas'],
+    ['put', '/despesas-fixas/1'], ['delete', '/despesas-fixas/1'], ['patch', '/despesas-fixas/1/toggle']
+];
+
+const bloqueado = (res) => res.status === 403 && res.body.message === MENSAGEM;
+
+describe('Bancos exige a funcionalidade `bancos`', () => {
+    test.each(BANCOS)('%s %s → 403 sem a funcionalidade, mesmo para admin', async (metodo, caminho) => {
+        comLista(['analise_financeira', 'comissoes', 'maletas']);
+
+        const res = await request(app)[metodo](caminho).set('Authorization', `Bearer ${admin}`).send({});
+
+        expect(bloqueado(res)).toBe(true);
+    });
+
+    test('com a funcionalidade a rota segue para o controller', async () => {
+        comLista(['bancos']);
+
+        const res = await request(app).get('/bancos/contas').set('Authorization', `Bearer ${admin}`);
+
+        expect(bloqueado(res)).toBe(false);
+        expect(res.status).toBe(200);
+    });
+});
+
+describe('Análise financeira exige a funcionalidade `analise_financeira`', () => {
+    test.each(ANALISE)('%s %s → 403 sem a funcionalidade, mesmo para admin', async (metodo, caminho) => {
+        comLista(['bancos', 'comissoes', 'maletas']);
+
+        const res = await request(app)[metodo](caminho).set('Authorization', `Bearer ${admin}`).send({});
+
+        expect(bloqueado(res)).toBe(true);
+    });
+
+    test.each([['/financeiro/ponto-equilibrio'], ['/despesas-fixas']])('com a funcionalidade %s chega ao controller', async (caminho) => {
+        comLista(['analise_financeira']);
+
+        const res = await request(app).get(caminho).set('Authorization', `Bearer ${admin}`);
+
+        expect(bloqueado(res)).toBe(false);
+    });
+
+    test('fluxo de caixa e taxas de venda continuam no núcleo (sem a funcionalidade, não bloqueiam)', async () => {
+        comLista([]);
+
+        for (const caminho of ['/financeiro/fluxo-caixa', '/financeiro/taxas-venda']) {
+            const res = await request(app).get(caminho).set('Authorization', `Bearer ${admin}`);
+
+            expect(bloqueado(res)).toBe(false);
+        }
+    });
+});
+
+describe('ordem das barreiras', () => {
+    test('quem não tem o papel continua recebendo o 403 de permissão, não o de plano', async () => {
+        comLista(['bancos', 'analise_financeira']);
+
+        const res = await request(app).get('/despesas-fixas').set('Authorization', `Bearer ${vendedor}`);
+
+        expect(res.status).toBe(403);
+        expect(bloqueado(res)).toBe(false);
+    });
+
+    test('sem token continua 401', async () => {
+        const res = await request(app).get('/bancos/contas');
+
+        expect(res.status).toBe(401);
+    });
+
+    test('lista ausente na sessão bloqueia (fail-closed)', async () => {
+        sessaoRepository.buscarEstado.mockResolvedValue({ ativo: true, token_version: 0, empresa_status: 'ativa' });
+
+        const res = await request(app).get('/bancos/contas').set('Authorization', `Bearer ${admin}`);
+
+        expect(bloqueado(res)).toBe(true);
+    });
+});
