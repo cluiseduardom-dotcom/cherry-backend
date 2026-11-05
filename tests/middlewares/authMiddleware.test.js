@@ -52,9 +52,20 @@ describe('authMiddleware', () => {
 
     expect(next).toHaveBeenCalledWith();
     expect(req.usuario).toEqual({
-      id: 42, role: 'vendedor', cargo: 'vendedor', nivel: 30, capacidades: ['cancelar_venda'], empresa_id: 7, senha_temporaria: false
+      id: 42, role: 'vendedor', cargo: 'vendedor', nivel: 30, capacidades: ['cancelar_venda'], empresa_id: 7, funcionalidades: [], senha_temporaria: false
     });
     expect(sessaoRepository.buscarEstado).toHaveBeenCalledWith(42, 7);
+  });
+
+  test('repassa as funcionalidades ligadas vindas do banco e trata ausência como lista vazia', async () => {
+    sessaoRepository.buscarEstado.mockResolvedValueOnce({
+      ativo: true, token_version: 0, papel: 'vendedor', empresa_status: 'ativa', senha_temporaria: false,
+      cargo_configurado: false, funcionalidades: ['bancos', 'maletas']
+    });
+    const req = mockReq({ authorization: `Bearer ${token()}` });
+    await executar(req);
+
+    expect(req.usuario.funcionalidades).toEqual(['bancos', 'maletas']);
   });
 
   describe('segurança do JWT', () => {
