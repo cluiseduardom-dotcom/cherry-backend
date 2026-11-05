@@ -78,6 +78,24 @@ describe('plano Básico (sem funcionalidades incluídas)', () => {
     });
 });
 
+describe('Maletas e Comissões no plano Básico', () => {
+    test('bloqueadas sem a funcionalidade; ler locais e saldos segue no núcleo', async () => {
+        await db.query('DELETE FROM empresa_funcionalidades WHERE empresa_id = $1', [E.id]);
+
+        expect(bloqueado(await get('/estoque/transferencias'))).toBe(true);
+        expect(bloqueado(await get('/comissoes/minhas'))).toBe(true);
+        expect(bloqueado(await get('/estoque/locais'))).toBe(false);
+    });
+
+    test('ligar `maletas` e `comissoes` abre cada uma', async () => {
+        await ligar('maletas', true);
+        await ligar('comissoes', true);
+
+        expect(bloqueado(await get('/estoque/transferencias'))).toBe(false);
+        expect(bloqueado(await get('/comissoes/minhas'))).toBe(false);
+    });
+});
+
 describe('empresa sem plano (padrão sem_mensalidade, como Cherry e Valvazori hoje)', () => {
     test('mantém acesso a tudo', async () => {
         const empresa = registro.registrar(await inserir(`INSERT INTO empresas (nome, status) VALUES ($1, 'ativa') RETURNING id`, [`Teste Gate Sem Plano ${sufixo}`]));

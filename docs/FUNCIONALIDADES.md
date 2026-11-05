@@ -1,13 +1,15 @@
 # Funcionalidades por plano e por empresa
 
-Estado: **PR 2**. O bloqueio entra rota a rota; já bloqueadas: ver tabela abaixo.
+Estado: **PR 3**. O bloqueio entra rota a rota; já bloqueadas: ver tabela abaixo.
 
 | Funcionalidade | Rotas bloqueadas |
 |---|---|
 | `bancos` | todo `/bancos/*` |
 | `analise_financeira` | `GET /financeiro/ponto-equilibrio`, todo `/despesas-fixas/*` |
+| `maletas` | `POST /estoque/locais`, `/estoque/transferencias*`, `/estoque/locais/:id/conferencias`, `/estoque/locais/:id/acerto` (ler locais e saldos segue no núcleo) |
+| `comissoes` | todo `/comissoes/*` (a venda continua apurando comissão; a devolução de Pix em `/pagamentos-gateway` não é de Comissões) |
 
-A barreira de plano vem DEPOIS da de papel/capacidade (quem não tem o papel recebe o 403 de permissão). Pendentes: `maletas` e `comissoes` (PR 3).
+A barreira de plano vem DEPOIS da de papel/capacidade (quem não tem o papel recebe o 403 de permissão). Em `/comissoes` o plano é checado logo após a autenticação (antes do papel); nas demais, depois.
 
 ## Regra
 
