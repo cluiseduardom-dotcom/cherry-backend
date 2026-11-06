@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`SITE_CORS_ORIGINS`: origens do site público no CORS.** Variável nova, somada a `CORS_ORIGINS` e `PAINEL_CORS_ORIGINS` (que não mudam), para o site do Vertumno ler `GET /publico/planos` sem editar a allowlist do ERP. Comparação exata de origem; sem a variável, nada muda
 - **`GET /publico/planos` (migration 093).** Rota pública, sem login, com os planos Semente/Cultivo/Pomar (e nomes de joias), limite de usuários, percentual vigente sobre o Pix e funcionalidades, para o site da GiroNex. Só planos com `exibir_no_site`. Doc em `docs/PLANOS_PUBLICOS.md`.
 - **Nomes comerciais dos planos e Básico com 5 usuários (migration 092).** Linha geral Semente · Cultivo · Pomar (`nome`) e linha de joias Pérola · Esmeralda · Safira (`nome_joias`), com `codigo` interno inalterado; `nome_joias` e `limite_usuarios` expostos na lista de planos do Painel.
 - **Painel: limite de usuários por empresa.** `GET|PUT|DELETE /painel/empresas/:id/limite-usuarios` para definir extras ou exceção ilimitada, com justificativa obrigatória e trilha com limite antes/depois. Detalhes em `docs/LIMITE_USUARIOS.md`.

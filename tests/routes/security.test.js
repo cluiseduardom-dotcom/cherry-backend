@@ -66,6 +66,33 @@ describe('segurança HTTP', () => {
     }
   });
 
+  test('aceita também as origens do site público (SITE_CORS_ORIGINS, várias separadas por vírgula) sem tirar as demais', async () => {
+    const original = { NODE_ENV: process.env.NODE_ENV, CORS_ORIGINS: process.env.CORS_ORIGINS, PAINEL_CORS_ORIGINS: process.env.PAINEL_CORS_ORIGINS, SITE_CORS_ORIGINS: process.env.SITE_CORS_ORIGINS };
+
+    process.env.NODE_ENV = 'production';
+    process.env.CORS_ORIGINS = 'https://app.cherry.com.br';
+    process.env.PAINEL_CORS_ORIGINS = 'https://painel.gironex.com.br';
+    process.env.SITE_CORS_ORIGINS = 'https://www.vertumno.com.br, https://vertumno.com.br';
+
+    jest.resetModules();
+    const secureApp = require('../../src/app');
+
+    for (const origem of ['https://app.cherry.com.br', 'https://painel.gironex.com.br', 'https://www.vertumno.com.br', 'https://vertumno.com.br']) {
+      const res = await request(secureApp).get('/health').set('Origin', origem);
+      expect(res.status).toBe(200);
+      expect(res.headers['access-control-allow-origin']).toBe(origem);
+    }
+    // a comparação é exata: outro subdomínio, outro esquema ou outro domínio continuam bloqueados
+    for (const origem of ['https://outra.com', 'http://www.vertumno.com.br', 'https://evil.vertumno.com.br']) {
+      const res = await request(secureApp).get('/health').set('Origin', origem);
+      expect(res.status).toBe(403);
+    }
+
+    for (const [k, v] of Object.entries(original)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  });
+
   test('não usa o bypass permissivo em staging quando CORS_ORIGINS não está configurado (mesmo hardening de produção)', async () => {
     const originalNodeEnv = process.env.NODE_ENV;
     const originalCorsOrigins = process.env.CORS_ORIGINS;
