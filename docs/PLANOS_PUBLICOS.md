@@ -14,5 +14,5 @@
 
 ## Operação
 
-- CORS: a origem do site precisa estar em `CORS_ORIGINS` do backend (variável no Render, passo do Eduardo) antes de o navegador consumir a rota.
+- CORS: as origens do site vão na variável `SITE_CORS_ORIGINS` do backend (Render, passo do Eduardo), separadas por vírgula e sem barra no final, ex.: `https://www.vertumno.com.br,https://vertumno.com.br`. Somam-se a `CORS_ORIGINS` (ERP) e `PAINEL_CORS_ORIGINS`, que não mudam. A comparação é exata: esquema, host e `www` contam. Sem a origem na lista, o navegador não consegue ler a rota.
 - Os dados mudam só por migration; o cache curto basta.
