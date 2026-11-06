@@ -55,7 +55,8 @@ function base(p, tipo, prioridade, titulo, mensagem, acao, dados) {
 }
 
 // pendencias: uma linha por insumo com falta em vendas finalizadas ({ produto_id, sku, nome, quantidade_pendente, vendas }).
-function montarNotificacoes(produtos, perfil, pendencias = []) {
+// extras: avisos já montados por outras regras (ex.: maletas), que entram na mesma ordenação e no mesmo teto.
+function montarNotificacoes(produtos, perfil, pendencias = [], extras = []) {
     const permitidos = tiposPermitidos(perfil);
     const veInsumo = Boolean(perfil.administrador || perfil.estoquista);
     const itens = [];
@@ -154,7 +155,13 @@ function montarNotificacoes(produtos, perfil, pendencias = []) {
             });
     }
 
-    itens.sort((a, b) => PRIORIDADE[a.prioridade] - PRIORIDADE[b.prioridade] || a.produto_id - b.produto_id);
+    itens.push(...extras);
+
+    // Mesma ordem de sempre para produtos (prioridade e produto_id); avisos sem produto vêm depois, por id.
+    const chave = (i) => (i.produto_id === null || i.produto_id === undefined ? Number.MAX_SAFE_INTEGER : i.produto_id);
+    itens.sort((a, b) => PRIORIDADE[a.prioridade] - PRIORIDADE[b.prioridade]
+        || (chave(a) < chave(b) ? -1 : chave(a) > chave(b) ? 1 : 0)
+        || String(a.id).localeCompare(String(b.id)));
 
     return itens.slice(0, LIMITES.MAXIMO_ITENS);
 }
