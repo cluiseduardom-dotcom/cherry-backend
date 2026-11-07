@@ -20,6 +20,7 @@ describe('getVendasEstoquePorProduto', () => {
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain("v.status = 'finalizada'");
     expect(sql).toContain('p.ativo = true');
+    expect(sql).toContain("p.tipo = 'acabado'");
     expect(sql).toContain('p.empresa_id = $2');
     expect(sql).toContain('p.sku');
     expect(sql).not.toMatch(/giro|cobertura/i);

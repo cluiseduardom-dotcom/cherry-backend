@@ -79,7 +79,7 @@ const CATALOGO = Object.freeze({
     supervisor: {
         cargo: 'supervisor', rotulo: 'Supervisor', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 50,
         sempre_ativo: false, imutavel: false, ativo_padrao: true,
-        capacidades: [VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, VER_TODOS_CLIENTES]
+        capacidades: [VER_DASHBOARD, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, VER_TODOS_CLIENTES]
     },
     analista: {
         cargo: 'analista', rotulo: 'Analista', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 40,
