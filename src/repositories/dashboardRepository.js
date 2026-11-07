@@ -2,7 +2,9 @@ const db = require('../config/db');
 
 // Curva ABC por faturamento (Pareto): produtos ordenados por faturamento
 // decrescente, classificados pelo percentual acumulado de faturamento total —
-// A até 80%, B até 95%, C o restante. Só considera itens de vendas
+// A até 80%, B até 95%, C o restante. O produto que CRUZA o limite fica na classe que o limite
+// fecha (regra clássica): a classe sai do acumulado ANTES dele (acumulado - faturamento), então o
+// primeiro produto é sempre A e um catálogo de poucos itens não fica sem Curva A. Só considera itens de vendas
 // 'finalizada' (vendas canceladas não contam como faturamento).
 async function getCurvaABC(empresa_id) {
     const { rows } = await db.query(`
@@ -36,8 +38,8 @@ async function getCurvaABC(empresa_id) {
             CASE WHEN faturamento_total > 0 THEN ROUND((faturamento_acumulado / faturamento_total) * 100, 2) ELSE 0 END AS percentual_acumulado,
             CASE
                 WHEN faturamento_total = 0 THEN 'C'
-                WHEN (faturamento_acumulado / faturamento_total) <= 0.8 THEN 'A'
-                WHEN (faturamento_acumulado / faturamento_total) <= 0.95 THEN 'B'
+                WHEN ((faturamento_acumulado - faturamento) / faturamento_total) < 0.8 THEN 'A'
+                WHEN ((faturamento_acumulado - faturamento) / faturamento_total) < 0.95 THEN 'B'
                 ELSE 'C'
             END AS curva
         FROM com_acumulado
