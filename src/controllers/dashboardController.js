@@ -1,5 +1,7 @@
 const dashboardService = require('../services/dashboardService');
 const response = require('../utils/response');
+const { temCapacidade } = require('../services/permissoesService');
+const { CAPACIDADES } = require('../constants/cargos');
 
 const DIAS_PADRAO = 90;
 const DIAS_MAXIMO = 365;
@@ -16,7 +18,9 @@ function parseDias(query) {
 async function resumo(req, res, next) {
     try {
         const dias = parseDias(req.query);
-        const dados = await dashboardService.resumo(dias, req.usuario.empresa_id);
+        const dados = await dashboardService.resumo(dias, req.usuario.empresa_id, {
+            incluirMargem: temCapacidade(req.usuario, CAPACIDADES.VER_CUSTOS)
+        });
         return response.success(res, dados);
     } catch (error) {
         next(error);

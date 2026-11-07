@@ -27,15 +27,32 @@ async function margem(empresaId) {
     return precosRepository.listarMargemPorProdutoECanal(empresaId);
 }
 
-async function resumo(dias, empresaId) {
+// `incluirMargem`: a margem é dado de custo (capacidade `ver_custos`); quem vê o Dashboard só por
+// `ver_dashboard` recebe o resumo sem ela (e sem a consulta).
+//
+// `totais`: giro e cobertura do conjunto de produtos ativos, SOMA/SOMA (nunca a média dos giros
+// individuais; ver utils/agregacaoGiroCobertura.js). É a mesma regra e o mesmo número do `total` de
+// GET /dashboard/giro-cobertura.
+async function resumo(dias, empresaId, { incluirMargem = true } = {}) {
     const [curva_abc, giroRows, coberturaRows, margemRows] = await Promise.all([
         curvaABC(empresaId),
         giro(dias, empresaId),
         cobertura(dias, empresaId),
-        margem(empresaId)
+        incluirMargem ? margem(empresaId) : Promise.resolve(undefined)
     ]);
 
-    return { curva_abc, giro: giroRows, cobertura: coberturaRows, margem: margemRows };
+    const totais = agregarGrupo(
+        giroRows.map((p) => ({
+            estoque_atual: Number(p.estoque_atual),
+            quantidade_vendida_periodo: Number(p.quantidade_vendida_periodo)
+        })),
+        dias
+    );
+
+    const dados = { curva_abc, giro: giroRows, cobertura: coberturaRows, totais };
+    if (incluirMargem) dados.margem = margemRows;
+
+    return dados;
 }
 
 // Relatório agregado de giro/cobertura: total da empresa, quebra por nível

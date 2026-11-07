@@ -72,8 +72,34 @@ describe('resumo', () => {
       curva_abc: [{ id: 1, curva: 'A' }],
       giro: [{ id: 1, nome: 'X', estoque_atual: 10, quantidade_vendida_periodo: 5, giro: 0.5 }],
       cobertura: [{ id: 1, nome: 'X', estoque_atual: 10, quantidade_vendida_periodo: 5, cobertura_dias: 60 }],
-      margem: [{ produto_id: 1, canal: 'loja_fisica' }]
+      margem: [{ produto_id: 1, canal: 'loja_fisica' }],
+      totais: { estoque_atual: 10, quantidade_vendida_periodo: 5, giro: 0.5, cobertura: 90 }
     });
+  });
+
+  test('totais: giro e cobertura são soma/soma, não a média dos giros por produto', async () => {
+    dashboardRepository.getCurvaABC.mockResolvedValue([]);
+    // A: 10 vendidos / 2 estoque = giro 5 ; B: 10 vendidos / 98 estoque = giro 0,10 ; média simples = 2,55
+    dashboardRepository.getGiroECobertura.mockResolvedValue([
+      { id: 1, nome: 'A', estoque_atual: 2, quantidade_vendida_periodo: '10', giro: 5, cobertura_dias: 18 },
+      { id: 2, nome: 'B', estoque_atual: 98, quantidade_vendida_periodo: '10', giro: 0.1, cobertura_dias: 882 }
+    ]);
+    precosRepository.listarMargemPorProdutoECanal.mockResolvedValue([]);
+
+    const { totais } = await dashboardService.resumo(90, 9);
+
+    expect(totais).toEqual({ estoque_atual: 100, quantidade_vendida_periodo: 20, giro: 0.2, cobertura: 450 });
+  });
+
+  test('sem incluirMargem: não consulta nem devolve a margem', async () => {
+    dashboardRepository.getCurvaABC.mockResolvedValue([]);
+    dashboardRepository.getGiroECobertura.mockResolvedValue([]);
+
+    const result = await dashboardService.resumo(90, 9, { incluirMargem: false });
+
+    expect(precosRepository.listarMargemPorProdutoECanal).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty('margem');
+    expect(result.totais).toEqual({ estoque_atual: 0, quantidade_vendida_periodo: 0, giro: null, cobertura: null });
   });
 });
 

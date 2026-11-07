@@ -80,7 +80,7 @@ describe('dias query param (giro, cobertura, resumo)', () => {
 
     await request(app).get('/dashboard?dias=9999').set('Authorization', `Bearer ${adminToken}`);
 
-    expect(dashboardService.resumo).toHaveBeenCalledWith(365, 1);
+    expect(dashboardService.resumo).toHaveBeenCalledWith(365, 1, { incluirMargem: true });
   });
 
   test('giro-cobertura também respeita o parseDias (padrão 90)', async () => {
