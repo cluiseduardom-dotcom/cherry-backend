@@ -31,7 +31,7 @@ traz a explicação quando for `false`.
 ## GET /usuarios/cargos — cargos que o ator pode atribuir
 
 Use para montar o seletor de cargo do formulário de criação. Devolve só o que `POST /usuarios`
-aceitaria: cargos **ativos** na empresa, nunca Admin e, para quem não é Admin, só de nível
+aceitaria: cargos **ativos** na empresa (todos nascem ativos; a empresa desliga o que não usa, exceto os básicos), nunca Admin e, para quem não é Admin, só de nível
 estritamente menor que o do ator. Não use um catálogo fixo no cliente.
 
 ```json

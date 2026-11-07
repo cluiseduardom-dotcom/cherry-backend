@@ -3,10 +3,10 @@ const { resolverCargo, temCapacidade, podeVerCustos, podeVerCustosOperacionais, 
 const { CARGOS, CATALOGO, TODAS_CAPACIDADES } = require('../../src/constants/cargos');
 
 describe('resolverCargo — padrão do catálogo (comércio sem linha em cargos_empresa)', () => {
-    test('só os cargos básicos estão ligados por padrão', () => {
+    test('todos os cargos do catálogo estão ligados por padrão (a empresa desliga o que não usa)', () => {
         const ativos = CARGOS.filter((cargo) => resolverCargo(cargo, null).ativo).sort();
 
-        expect(ativos).toEqual(['admin', 'estoquista', 'vendedor']);
+        expect(ativos).toEqual([...CARGOS].sort());
     });
 
     test('Admin: nível máximo, todas as capacidades, perfil admin', () => {
@@ -53,7 +53,7 @@ describe('resolverCargo — padrão do catálogo (comércio sem linha em cargos_
 
     test('Estoquista e Faturista ficam fora da escada (sem nível)', () => {
         expect(resolverCargo('estoquista', null)).toMatchObject({ nivel: null, escada: false });
-        expect(resolverCargo('faturista', null)).toMatchObject({ nivel: null, escada: false, role: 'faturista', ativo: false });
+        expect(resolverCargo('faturista', null)).toMatchObject({ nivel: null, escada: false, role: 'faturista', ativo: true });
     });
 
     test('cargo desconhecido não resolve (quem chama nega o acesso)', () => {

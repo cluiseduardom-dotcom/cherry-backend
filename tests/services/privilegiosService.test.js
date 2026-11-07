@@ -191,7 +191,9 @@ describe('concederACargo', () => {
         }), client);
     });
 
-    test('cargo sem linha usa o padrão do catálogo como base (cargo desligado por padrão → 409)', async () => {
+    test('cargo desligado pela empresa (linha com ativo = false) → 409', async () => {
+        cargosRepository.buscar.mockResolvedValue({ nivel: 70, ativo: false, capacidades: [] });
+
         await expect(service.concederACargo(ator, 'gerente', confirmacao)).rejects.toMatchObject({
             statusCode: 409, message: 'Cargo desabilitado neste comércio'
         });
