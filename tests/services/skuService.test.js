@@ -104,7 +104,7 @@ describe('gerar', () => {
 
     const resultado = await skuService.gerar(categorias, 9, {});
 
-    expect(configuracoesSkuRepository.buscarParaCategorias).toHaveBeenCalledWith([11, 22], 9, {});
+    expect(configuracoesSkuRepository.buscarParaCategorias).toHaveBeenCalledWith([11, 22], 9, {}, 'produto');
     expect(sequenciasSkuRepository.incrementarContador).toHaveBeenCalledWith(
       'COL-BO',
       9,

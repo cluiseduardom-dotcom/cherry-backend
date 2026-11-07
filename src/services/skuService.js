@@ -26,12 +26,12 @@ function normalizarCodigo(codigo) {
     return valor;
 }
 
-async function obterConfiguracao(categorias, empresaId, client) {
+async function obterConfiguracao(categorias, empresaId, client, escopo = 'produto') {
     const categoriaIds = categorias.map((categoria) => Number(categoria.id)).filter(Number.isInteger);
     const resolver = configuracoesSkuRepository.buscarParaCategorias || configuracoesSkuRepository.buscarAtiva;
     const config = categoriaIds.length
-        ? await resolver(categoriaIds, empresaId, client)
-        : await configuracoesSkuRepository.buscarAtiva(empresaId, client);
+        ? await resolver(categoriaIds, empresaId, client, escopo)
+        : await configuracoesSkuRepository.buscarAtiva(empresaId, client, escopo);
 
     if (!config) {
         throw new AppError('Configuração de SKU não encontrada para esta empresa', 409);
@@ -103,8 +103,9 @@ function formatarSku(codigos, contador, configuracao) {
     ].filter(Boolean).join(separador);
 }
 
-async function gerar(categorias, empresaId, client) {
-    const configuracao = await obterConfiguracao(categorias, empresaId, client);
+// `escopo`: 'produto' (padrão) ou 'insumo'; escolhe o padrão de SKU e, portanto, a sequência (cada padrão tem a sua).
+async function gerar(categorias, empresaId, client, escopo = 'produto') {
+    const configuracao = await obterConfiguracao(categorias, empresaId, client, escopo);
     const codigos = montarSegmentos(categorias, configuracao);
 
     if (!codigos.length && !configuracao.prefixo && !configuracao.sufixo) {

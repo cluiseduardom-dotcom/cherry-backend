@@ -1,9 +1,9 @@
 const db = require('../config/db');
 
-async function listar(empresa_id) {
+async function listar(empresa_id, escopo = 'produto') {
     const { rows } = await db.query(
-        `SELECT * FROM niveis_categoria WHERE empresa_id = $1 ORDER BY nivel ASC`,
-        [empresa_id]
+        `SELECT * FROM niveis_categoria WHERE empresa_id = $1 AND escopo = $2 ORDER BY nivel ASC`,
+        [empresa_id, escopo]
     );
     return rows;
 }
@@ -16,18 +16,18 @@ async function buscarPorId(id, empresa_id) {
     return rows.length ? rows[0] : null;
 }
 
-async function buscarPorNivel(nivel, empresa_id) {
+async function buscarPorNivel(nivel, empresa_id, escopo = 'produto') {
     const { rows } = await db.query(
-        `SELECT * FROM niveis_categoria WHERE nivel = $1 AND empresa_id = $2`,
-        [nivel, empresa_id]
+        `SELECT * FROM niveis_categoria WHERE nivel = $1 AND empresa_id = $2 AND escopo = $3`,
+        [nivel, empresa_id, escopo]
     );
     return rows.length ? rows[0] : null;
 }
 
-async function criar({ nivel, nome, empresa_id }) {
+async function criar({ nivel, nome, empresa_id, escopo = 'produto' }) {
     const { rows } = await db.query(
-        `INSERT INTO niveis_categoria (nivel, nome, empresa_id) VALUES ($1, $2, $3) RETURNING *`,
-        [nivel, nome, empresa_id]
+        `INSERT INTO niveis_categoria (nivel, nome, empresa_id, escopo) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [nivel, nome, empresa_id, escopo]
     );
     return rows[0];
 }

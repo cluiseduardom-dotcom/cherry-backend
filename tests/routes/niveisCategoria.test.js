@@ -42,7 +42,7 @@ describe('GET /niveis-categoria', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, data: [{ id: 1, nivel: 1, nome: 'Família' }] });
-    expect(niveisCategoriaService.listar).toHaveBeenCalledWith(1);
+    expect(niveisCategoriaService.listar).toHaveBeenCalledWith(1, 'produto');
   });
 
   test('returns 200 for an estoquista', async () => {
@@ -57,7 +57,7 @@ describe('GET /niveis-categoria', () => {
 
     await request(app).get('/niveis-categoria').set('Authorization', `Bearer ${outraEmpresaAdminToken}`);
 
-    expect(niveisCategoriaService.listar).toHaveBeenCalledWith(2);
+    expect(niveisCategoriaService.listar).toHaveBeenCalledWith(2, 'produto');
   });
 });
 

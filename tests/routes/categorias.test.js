@@ -57,7 +57,7 @@ describe('GET /categorias', () => {
 
     await request(app).get('/categorias?page=abc&pageSize=-1').set('Authorization', `Bearer ${adminToken}`);
 
-    expect(categoriasService.listar).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 20 }), 1);
+    expect(categoriasService.listar).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 20 }), 1, 'produto');
   });
 
   test('caps pageSize at 100', async () => {
@@ -65,7 +65,7 @@ describe('GET /categorias', () => {
 
     await request(app).get('/categorias?pageSize=500').set('Authorization', `Bearer ${adminToken}`);
 
-    expect(categoriasService.listar).toHaveBeenCalledWith(expect.objectContaining({ pageSize: 100 }), 1);
+    expect(categoriasService.listar).toHaveBeenCalledWith(expect.objectContaining({ pageSize: 100 }), 1, 'produto');
   });
 
   test('returns 200 even for an empresa with nothing registered in niveis_categoria', async () => {

@@ -18,7 +18,7 @@ describe('listar', () => {
     expect(sql).toContain('empresa_id = $1');
     expect(sql).toContain('ORDER BY nivel ASC');
     expect(sql).not.toContain('categorias_produto');
-    expect(params).toEqual([9]);
+    expect(params).toEqual([9, 'produto']);
   });
 });
 
@@ -49,7 +49,7 @@ describe('buscarPorNivel', () => {
     expect(resultado).toEqual({ id: 1, nivel: 2 });
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain('nivel = $1 AND empresa_id = $2');
-    expect(params).toEqual([2, 9]);
+    expect(params).toEqual([2, 9, 'produto']);
   });
 
   test('returns null when nothing matches', async () => {
@@ -67,7 +67,7 @@ describe('criar', () => {
     expect(resultado.empresa_id).toBe(9);
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain('INSERT INTO niveis_categoria');
-    expect(params).toEqual([1, 'Família', 9]);
+    expect(params).toEqual([1, 'Família', 9, 'produto']);
   });
 });
 

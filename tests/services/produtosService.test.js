@@ -206,7 +206,7 @@ describe('categorizar', () => {
     const result = await produtosService.categorizar(1, [1], 9);
 
     expect(produtosRepository.substituirCategorias).toHaveBeenCalledWith(1, [1], 9, client);
-    expect(skuService.gerar).toHaveBeenCalledWith([{ id: 1, nivel: 1, codigo: 'BR' }], 9, client);
+    expect(skuService.gerar).toHaveBeenCalledWith([{ id: 1, nivel: 1, codigo: 'BR' }], 9, client, 'produto');
     expect(produtosRepository.definirSkuSeNulo).toHaveBeenCalledWith(1, 'BR001', 9, client);
     expect(historicoSkuRepository.registrar).toHaveBeenCalledWith(expect.objectContaining({ produto_id: 1, sku: 'BR001', configuracao_id: 10, acao: 'gerado' }), client);
     expect(result.sku).toBe('BR001');

@@ -14,7 +14,7 @@ describe('listar', () => {
 
     const result = await niveisCategoriaService.listar(9);
 
-    expect(niveisCategoriaRepository.listar).toHaveBeenCalledWith(9);
+    expect(niveisCategoriaRepository.listar).toHaveBeenCalledWith(9, 'produto');
     expect(result).toEqual([{ id: 1, nivel: 1, nome: 'Família' }]);
   });
 });
@@ -26,8 +26,8 @@ describe('criar', () => {
 
     const result = await niveisCategoriaService.criar({ nivel: 1, nome: 'Família' }, 9);
 
-    expect(niveisCategoriaRepository.buscarPorNivel).toHaveBeenCalledWith(1, 9);
-    expect(niveisCategoriaRepository.criar).toHaveBeenCalledWith({ nivel: 1, nome: 'Família', empresa_id: 9 });
+    expect(niveisCategoriaRepository.buscarPorNivel).toHaveBeenCalledWith(1, 9, 'produto');
+    expect(niveisCategoriaRepository.criar).toHaveBeenCalledWith({ nivel: 1, nome: 'Família', empresa_id: 9, escopo: 'produto' });
     expect(result.nivel).toBe(1);
   });
 

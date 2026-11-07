@@ -1,6 +1,7 @@
 const niveisCategoriaService = require('../services/niveisCategoriaService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
+const { parseEscopo } = require('../utils/escopoCategoria');
 const { criarNivelCategoriaSchema, atualizarNivelCategoriaSchema } = require('../validations/niveisCategoriaValidation');
 
 function parseId(value) {
@@ -15,7 +16,7 @@ function parseId(value) {
 
 async function listar(req, res, next) {
     try {
-        const niveis = await niveisCategoriaService.listar(req.usuario.empresa_id);
+        const niveis = await niveisCategoriaService.listar(req.usuario.empresa_id, parseEscopo(req.query.escopo));
         return response.success(res, niveis);
     } catch (error) {
         next(error);

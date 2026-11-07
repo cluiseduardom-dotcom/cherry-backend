@@ -14,7 +14,7 @@ describe('listar', () => {
 
     const result = await categoriasService.listar({ page: 1, pageSize: 20 }, 9);
 
-    expect(categoriasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, empresa_id: 9 });
+    expect(categoriasRepository.listarPaginado).toHaveBeenCalledWith({ limit: 20, offset: 0, empresa_id: 9, escopo: 'produto' });
     expect(result).toMatchObject({ page: 1, pageSize: 20, total: 1, totalPages: 1 });
   });
 
@@ -36,8 +36,8 @@ describe('criar', () => {
 
     const result = await categoriasService.criar({ nivel: 1, codigo: 'br', nome: 'Brinco' }, 9);
 
-    expect(categoriasRepository.buscarPorCodigoNivel).toHaveBeenCalledWith(1, 'BR', 9);
-    expect(categoriasRepository.criar).toHaveBeenCalledWith({ nivel: 1, codigo: 'BR', nome: 'Brinco', empresa_id: 9 });
+    expect(categoriasRepository.buscarPorCodigoNivel).toHaveBeenCalledWith(1, 'BR', 9, 'produto');
+    expect(categoriasRepository.criar).toHaveBeenCalledWith({ nivel: 1, codigo: 'BR', nome: 'Brinco', empresa_id: 9, escopo: 'produto' });
     expect(result.codigo).toBe('BR');
   });
 
