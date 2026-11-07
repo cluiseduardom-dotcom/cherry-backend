@@ -81,12 +81,12 @@ describe('migration 050', () => {
 });
 
 describe('cargos por comércio com banco real', () => {
-    test('comércio sem configuração: Admin lista o catálogo padrão (só básicos ligados)', async () => {
+    test('comércio sem configuração: Admin lista o catálogo padrão (todos ligados)', async () => {
         const res = await request(app).get('/cargos').set(auth(tokenDe(A, A.adminId)));
 
         expect(res.status).toBe(200);
         const ativos = res.body.data.filter((c) => c.ativo).map((c) => c.cargo).sort();
-        expect(ativos).toEqual(['admin', 'estoquista', 'vendedor']);
+        expect(ativos).toEqual(res.body.data.map((c) => c.cargo).sort());
         expect(res.body.data.map((c) => c.cargo)).toHaveLength(12);
     });
 
@@ -98,6 +98,9 @@ describe('cargos por comércio com banco real', () => {
 
     test('cadastro de usuário em cargo desligado é recusado até o Admin ligar o cargo', async () => {
         const corpo = { nome: 'Gerente Novo', email: `gerente-novo-${sufixo}@teste.invalid`, senha: crypto.randomBytes(8).toString('hex'), papel: 'gerente' };
+
+        const desligar = await request(app).put('/cargos/gerente').set(auth(tokenDe(A, A.adminId))).send({ ativo: false });
+        expect(desligar.status).toBe(200);
 
         const antes = await request(app).post('/auth/register').set(auth(tokenDe(A, A.adminId))).send(corpo);
         expect(antes.status).toBe(409);
@@ -117,7 +120,7 @@ describe('cargos por comércio com banco real', () => {
         const res = await request(app).get('/cargos').set(auth(tokenDe(B, B.adminId)));
         const gerente = res.body.data.find((c) => c.cargo === 'gerente');
 
-        expect(gerente).toMatchObject({ ativo: false, personalizado: false });
+        expect(gerente).toMatchObject({ ativo: true, personalizado: false });
 
         const linhasB = await db.query('SELECT 1 FROM cargos_empresa WHERE empresa_id = $1', [B.empresaId]);
         expect(linhasB.rows).toHaveLength(0);
@@ -205,7 +208,8 @@ describe('cargo e capacidades valem na hora, sem novo login', () => {
     });
 
     test('a mesma configuração em outro comércio não afeta o usuário daqui', async () => {
-        // B nunca ligou "gerente": um usuário gerente de B fica barrado, enquanto o de A segue ativo.
+        // B desligou "gerente": um usuário gerente de B fica barrado, enquanto o de A segue ativo.
+        expect((await request(app).put('/cargos/gerente').set(auth(tokenDe(B, B.adminId))).send({ ativo: false })).status).toBe(200);
         const gerenteB = (await db.query(
             `INSERT INTO usuarios (empresa_id, nome, email, senha, papel) VALUES ($1, 'g', $2, $3, 'gerente') RETURNING id`,
             [B.empresaId, `gerente-b-${sufixo}@teste.invalid`, senhaHash]
