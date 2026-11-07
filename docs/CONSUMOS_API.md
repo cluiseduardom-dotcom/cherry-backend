@@ -41,3 +41,15 @@ Datas pelo fuso America/Sao_Paulo. **A compra do insumo não entra** (compra = c
 ## Banco (migration 070)
 `venda_consumos`: `origem` aceita `brinde|substituicao|outro`; novas colunas `observacao`, `criado_por`, `devolucao_tipo` (`cancelamento|retirada`),
 `devolvido_por`. Nova `consumos_avulsos` (FKs compostas com `empresa_id`).
+
+## Indicadores de insumos (consumo, cobertura, reposição)
+`GET /consumos/indicadores?dias=90` (1 a 365; padrão 90). Admin e estoquista. Só insumos **ativos**, saldo do **Central**.
+
+Por insumo: `{ id, sku, nome, unidade, saldo, estoque_minimo, consumo_periodo, consumo_medio_diario, cobertura_dias, pendente, repor, motivos_reposicao, para_atingir_minimo, custo_consumo_periodo? }`.
+- `consumo_periodo`: venda baixada e não devolvida + consumo avulso, nos últimos `dias` (mesmas fontes do relatório).
+- `consumo_medio_diario = consumo_periodo / dias`; `cobertura_dias = saldo / consumo_medio_diario` (nula sem consumo no período).
+- `repor` = `esgotado` (saldo 0) ou `abaixo_minimo` (mínimo > 0 e saldo <= mínimo) ou `pendencia` (previsto > baixado em linha não devolvida).
+- `para_atingir_minimo = max(0, mínimo - saldo) + pendente`.
+
+`totais`: `insumos_ativos, esgotados, abaixo_minimo, com_pendencia, a_repor, sem_consumo_no_periodo, consumo_total_periodo, custo_consumo_periodo?`.
+`custo_consumo_periodo` (por insumo e no total, pelo custo da época) só existe para quem tem `ver_custos`.
