@@ -50,6 +50,7 @@ describe('Dashboard conta só produtos acabados', () => {
 
         expect(curva.map((p) => p.id)).toEqual([E.acabado]);
         expect(Number(curva[0].faturamento)).toBe(100);
+        expect(curva[0].curva).toBe('A');
     });
 
     test('giro e cobertura: o insumo não aparece', async () => {
