@@ -28,7 +28,7 @@ beforeEach(() => {
 });
 
 describe('Dashboard por capacidade (ver_dashboard ou ver_custos)', () => {
-  test.each(['diretor', 'gerente', 'coordenador', 'analista', 'financeiro'])('200 para %s', async (cargo) => {
+  test.each(['diretor', 'gerente', 'coordenador', 'supervisor', 'analista', 'financeiro'])('200 para %s', async (cargo) => {
     dashboardService.resumo.mockResolvedValue({ ok: true });
 
     const res = await request(app).get('/dashboard').set('Authorization', `Bearer ${tokens[cargo]}`);
@@ -36,7 +36,7 @@ describe('Dashboard por capacidade (ver_dashboard ou ver_custos)', () => {
     expect(res.status).toBe(200);
   });
 
-  test.each(['supervisor', 'vendedor'])('403 para %s (sem ver_dashboard nem ver_custos)', async (cargo) => {
+  test.each(['vendedor'])('403 para %s (sem ver_dashboard nem ver_custos)', async (cargo) => {
     const res = await request(app).get('/dashboard').set('Authorization', `Bearer ${tokens[cargo]}`);
 
     expect(res.status).toBe(403);

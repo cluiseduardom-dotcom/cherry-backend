@@ -19,7 +19,7 @@ async function getCurvaABC(empresa_id) {
                 COALESCE(SUM(vv.quantidade * vv.preco_unitario), 0) AS faturamento
             FROM produtos p
             LEFT JOIN vendas_validas vv ON vv.produto_id = p.id
-            WHERE p.ativo = true AND p.empresa_id = $1
+            WHERE p.ativo = true AND p.tipo = 'acabado' AND p.empresa_id = $1
             GROUP BY p.id, p.nome
         ),
         com_acumulado AS (
@@ -74,7 +74,7 @@ async function getGiroECobertura(dias, empresa_id) {
             END AS cobertura_dias
         FROM produtos p
         LEFT JOIN vendidos_periodo vp ON vp.produto_id = p.id
-        WHERE p.ativo = true AND p.empresa_id = $2
+        WHERE p.ativo = true AND p.tipo = 'acabado' AND p.empresa_id = $2
         ORDER BY p.id`,
         [dias, empresa_id]
     );
@@ -107,7 +107,7 @@ async function getVendasEstoquePorProduto(dias, empresa_id) {
             COALESCE(vp.quantidade_vendida, 0) AS quantidade_vendida_periodo
         FROM produtos p
         LEFT JOIN vendidos_periodo vp ON vp.produto_id = p.id
-        WHERE p.ativo = true AND p.empresa_id = $2
+        WHERE p.ativo = true AND p.tipo = 'acabado' AND p.empresa_id = $2
         ORDER BY p.id`,
         [dias, empresa_id]
     );
