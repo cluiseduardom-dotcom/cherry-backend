@@ -5,6 +5,7 @@ const controller = require('../controllers/consumosController');
 // Montado em /consumos com authMiddleware + requireEstoquista (admin e estoquista). Vendedor = 403.
 router.get('/insumos', controller.listarInsumos);
 router.get('/relatorio', controller.relatorio);
+router.get('/indicadores', controller.indicadores);
 
 router.get('/avulsos', controller.listarAvulsos);
 router.post('/avulsos', controller.registrarAvulso);

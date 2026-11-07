@@ -297,7 +297,52 @@ async function relatorio({ empresa_id, de, ate, produto_id, motivo }) {
     return rows;
 }
 
+// Base dos indicadores de insumos: por insumo ativo, saldo do Central, estoque mínimo, consumo dos últimos
+// `dias` (venda baixada e NÃO devolvida + avulso, as mesmas fontes do relatório), custo desse consumo pelo custo da
+// época e pendência (previsto - baixado em linhas não devolvidas). Tudo filtrado por empresa_id.
+async function indicadoresInsumos({ empresa_id, dias }) {
+    const { rows } = await db.query(
+        `WITH consumo AS (
+            SELECT c.produto_id, c.quantidade_baixada AS quantidade, c.custo_unitario, c.criado_em
+            FROM venda_consumos c
+            WHERE c.empresa_id = $2 AND c.devolvido_em IS NULL AND c.quantidade_baixada > 0
+            UNION ALL
+            SELECT a.produto_id, a.quantidade, a.custo_unitario, a.criado_em
+            FROM consumos_avulsos a
+            WHERE a.empresa_id = $2
+        ),
+        periodo AS (
+            SELECT produto_id, SUM(quantidade)::int AS consumo, SUM(quantidade * custo_unitario) AS custo
+            FROM consumo
+            WHERE criado_em >= NOW() - ($1::text || ' days')::interval
+            GROUP BY produto_id
+        ),
+        pendencia AS (
+            SELECT produto_id, SUM(quantidade_prevista - quantidade_baixada)::int AS pendente
+            FROM venda_consumos
+            WHERE empresa_id = $2 AND devolvido_em IS NULL AND quantidade_prevista > quantidade_baixada
+            GROUP BY produto_id
+        )
+        SELECT p.id, p.sku, p.nome, p.unidade, p.estoque_minimo,
+               COALESCE(el.saldo, 0)::int AS saldo,
+               COALESCE(pe.consumo, 0) AS consumo_periodo,
+               ROUND(COALESCE(pe.custo, 0), 2) AS custo_consumo_periodo,
+               COALESCE(pd.pendente, 0) AS pendente
+        FROM produtos p
+        LEFT JOIN locais_estoque l ON l.empresa_id = p.empresa_id AND l.tipo = 'central'
+        LEFT JOIN estoque_locais el ON el.produto_id = p.id AND el.local_id = l.id AND el.empresa_id = p.empresa_id
+        LEFT JOIN periodo pe ON pe.produto_id = p.id
+        LEFT JOIN pendencia pd ON pd.produto_id = p.id
+        WHERE p.empresa_id = $2 AND p.tipo = 'insumo' AND p.ativo = true
+        ORDER BY p.nome, p.id`,
+        [dias, empresa_id]
+    );
+
+    return rows;
+}
+
 module.exports = {
+    indicadoresInsumos,
     listarInsumos,
     registrarAvulso,
     listarAvulsos,

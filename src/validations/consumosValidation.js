@@ -52,7 +52,12 @@ const filtrosPeriodoQuerySchema = z.object({
     motivo: z.enum(MOTIVOS_RELATORIO, { error: 'Motivo inválido' }).optional()
 }).refine((d) => !d.de || !d.ate || d.de <= d.ate, { message: 'Data inicial maior que a final', path: ['de'] });
 
+const indicadoresQuerySchema = z.object({
+    dias: z.coerce.number({ error: 'Período inválido' }).int('Período inválido').min(1, 'Período inválido').max(365, 'Período máximo: 365 dias').default(90)
+});
+
 module.exports = {
+    indicadoresQuerySchema,
     MOTIVOS_AVULSO,
     MOTIVOS_VENDA,
     consumoAvulsoSchema,

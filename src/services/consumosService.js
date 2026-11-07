@@ -1,4 +1,5 @@
 const consumosRepository = require('../repositories/consumosRepository');
+const { montarIndicadoresInsumos } = require('../utils/indicadoresInsumos');
 const fichasVendaRepository = require('../repositories/fichasVendaRepository');
 
 const listarInsumos = (empresaId) => consumosRepository.listarInsumos(empresaId);
@@ -60,7 +61,22 @@ async function relatorio(filtros, empresaId) {
     };
 }
 
+// `custo_consumo_periodo` por insumo e no total só sai do controller para quem tem `ver_custos`.
+async function indicadores({ dias }, empresaId) {
+    const linhas = await consumosRepository.indicadoresInsumos({ empresa_id: empresaId, dias });
+    const resultado = montarIndicadoresInsumos(linhas, dias);
+
+    const custoPorId = new Map(linhas.map((l) => [l.id, Number(l.custo_consumo_periodo)]));
+    resultado.insumos = resultado.insumos.map((i) => ({ ...i, custo_consumo_periodo: custoPorId.get(i.id) ?? 0 }));
+    resultado.totais.custo_consumo_periodo = Math.round(
+        resultado.insumos.reduce((soma, i) => soma + Math.round(i.custo_consumo_periodo * 100), 0)
+    ) / 100;
+
+    return resultado;
+}
+
 module.exports = {
+    indicadores,
     listarInsumos, registrarAvulso, listarAvulsos, linhasDaVenda, acrescentarNaVenda, retirarLinha,
     regularizarLinha, previaSubstituicao, substituirInsumo, relatorio, totalizar
 };

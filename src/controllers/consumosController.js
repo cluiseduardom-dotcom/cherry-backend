@@ -3,7 +3,7 @@ const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { podeVerCustos } = require('../services/permissoesService');
 const {
-    consumoAvulsoSchema, acrescentarNaVendaSchema, substituicaoSchema, previaSubstituicaoQuerySchema, filtrosPeriodoQuerySchema
+    consumoAvulsoSchema, acrescentarNaVendaSchema, substituicaoSchema, previaSubstituicaoQuerySchema, filtrosPeriodoQuerySchema, indicadoresQuerySchema
 } = require('../validations/consumosValidation');
 
 function parseId(value) {
@@ -115,7 +115,21 @@ const relatorio = envolver(async (req, res) => {
     });
 });
 
+const indicadores = envolver(async (req, res) => {
+    const filtros = parseCorpo(indicadoresQuerySchema, req.query);
+    const resultado = await consumosService.indicadores(filtros, req.usuario.empresa_id);
+
+    if (podeVerCustos(req.usuario)) return response.success(res, resultado);
+
+    return response.success(res, {
+        ...resultado,
+        insumos: resultado.insumos.map((i) => semCusto(i, ['custo_consumo_periodo'])),
+        totais: semCusto(resultado.totais, ['custo_consumo_periodo'])
+    });
+});
+
 module.exports = {
+    indicadores,
     listarInsumos, registrarAvulso, listarAvulsos, linhasDaVenda, acrescentarNaVenda, retirarLinha,
     regularizarLinha, previaSubstituicao, substituirInsumo, relatorio
 };
