@@ -16,29 +16,51 @@ const tokens = {
   gerente: makeToken({ id: 11, role: 'gerente', empresa_id: 7 }),
   coordenador: makeToken({ id: 12, role: 'coordenador', empresa_id: 7 }),
   supervisor: makeToken({ id: 13, role: 'supervisor', empresa_id: 7 }),
-  analista: makeToken({ id: 14, role: 'analista', empresa_id: 7 })
+  analista: makeToken({ id: 14, role: 'analista', empresa_id: 7 }),
+  financeiro: makeToken({ id: 15, role: 'financeiro', empresa_id: 7 }),
+  vendedor: makeToken({ id: 16, role: 'vendedor', empresa_id: 7 })
 };
-const papelPorId = { 10: 'diretor', 11: 'gerente', 12: 'coordenador', 13: 'supervisor', 14: 'analista' };
+const papelPorId = { 10: 'diretor', 11: 'gerente', 12: 'coordenador', 13: 'supervisor', 14: 'analista', 15: 'financeiro', 16: 'vendedor' };
 
 beforeEach(() => {
   jest.resetAllMocks();
   sessaoRepository.buscarEstado.mockImplementation(async (id) => sessaoDoCargo(papelPorId[id]));
 });
 
-describe('Dashboard por capacidade ver_custos', () => {
-  test.each(['diretor', 'gerente', 'coordenador'])('200 para %s (tem ver_custos)', async (cargo) => {
+describe('Dashboard por capacidade (ver_dashboard ou ver_custos)', () => {
+  test.each(['diretor', 'gerente', 'coordenador', 'analista', 'financeiro'])('200 para %s', async (cargo) => {
     dashboardService.resumo.mockResolvedValue({ ok: true });
 
     const res = await request(app).get('/dashboard').set('Authorization', `Bearer ${tokens[cargo]}`);
 
     expect(res.status).toBe(200);
-    expect(dashboardService.resumo).toHaveBeenCalledWith(90, 7);
   });
 
-  test.each(['supervisor', 'analista'])('403 para %s (sem ver_custos: o resumo traz margem)', async (cargo) => {
+  test.each(['supervisor', 'vendedor'])('403 para %s (sem ver_dashboard nem ver_custos)', async (cargo) => {
     const res = await request(app).get('/dashboard').set('Authorization', `Bearer ${tokens[cargo]}`);
 
     expect(res.status).toBe(403);
     expect(dashboardService.resumo).not.toHaveBeenCalled();
+  });
+
+  test('quem tem ver_custos recebe a margem; quem só tem ver_dashboard, não', async () => {
+    dashboardService.resumo.mockResolvedValue({});
+
+    await request(app).get('/dashboard').set('Authorization', `Bearer ${tokens.gerente}`);
+    await request(app).get('/dashboard').set('Authorization', `Bearer ${tokens.analista}`);
+
+    expect(dashboardService.resumo).toHaveBeenNthCalledWith(1, 90, 7, { incluirMargem: true });
+    expect(dashboardService.resumo).toHaveBeenNthCalledWith(2, 90, 7, { incluirMargem: false });
+  });
+
+  test('/dashboard/margem exige ver_custos: analista leva 403, gerente 200', async () => {
+    dashboardService.margem.mockResolvedValue([]);
+
+    const negado = await request(app).get('/dashboard/margem').set('Authorization', `Bearer ${tokens.analista}`);
+    const ok = await request(app).get('/dashboard/margem').set('Authorization', `Bearer ${tokens.gerente}`);
+
+    expect(negado.status).toBe(403);
+    expect(ok.status).toBe(200);
+    expect(dashboardService.margem).toHaveBeenCalledTimes(1);
   });
 });
