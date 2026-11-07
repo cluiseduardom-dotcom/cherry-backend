@@ -2,15 +2,15 @@ const db = require('../config/db');
 const configuracoesSkuRepository = require('../repositories/configuracoesSkuRepository');
 const AppError = require('../errors/AppError');
 
-async function listar(empresaId) {
-    return configuracoesSkuRepository.buscarAtiva(empresaId);
+async function listar(empresaId, escopo = 'produto') {
+    return configuracoesSkuRepository.buscarAtiva(empresaId, undefined, escopo);
 }
 
-async function listarTodos(empresaId) {
-    return configuracoesSkuRepository.listar(empresaId);
+async function listarTodos(empresaId, escopo = 'produto') {
+    return configuracoesSkuRepository.listar(empresaId, undefined, escopo);
 }
 
-async function validarSegmentos(segmentos, empresaId, client) {
+async function validarSegmentos(segmentos, empresaId, client, escopo = 'produto') {
     const niveis = new Set();
     const ordens = new Set();
 
@@ -32,12 +32,12 @@ async function validarSegmentos(segmentos, empresaId, client) {
     const { rows } = await client.query(
         `SELECT DISTINCT nivel
          FROM (
-             SELECT nivel FROM niveis_categoria WHERE empresa_id = $1
+             SELECT nivel FROM niveis_categoria WHERE empresa_id = $1 AND escopo = $2
              UNION
-             SELECT nivel FROM categorias_produto WHERE empresa_id = $1 AND deletado_em IS NULL
+             SELECT nivel FROM categorias_produto WHERE empresa_id = $1 AND escopo = $2 AND deletado_em IS NULL
          ) niveis
          ORDER BY nivel`,
-        [empresaId]
+        [empresaId, escopo]
     );
 
     const permitidos = new Set(rows.map((item) => Number(item.nivel)));
@@ -54,13 +54,15 @@ async function salvar(dados, empresaId) {
     try {
         await client.query('BEGIN');
 
-        await validarSegmentos(dados.segmentos, empresaId, client);
+        const escopo = dados.escopo ?? 'produto';
+
+        await validarSegmentos(dados.segmentos, empresaId, client, escopo);
 
         if (dados.padrao !== false) {
             await client.query(
                 `UPDATE configuracoes_sku SET padrao = false, atualizado_em = NOW()
-                 WHERE empresa_id = $1 AND ativo = true`,
-                [empresaId]
+                 WHERE empresa_id = $1 AND ativo = true AND escopo = $2`,
+                [empresaId, escopo]
             );
         }
 
@@ -91,7 +93,7 @@ async function salvar(dados, empresaId) {
 
         await client.query('COMMIT');
 
-        return configuracoesSkuRepository.listar(empresaId);
+        return configuracoesSkuRepository.listar(empresaId, undefined, escopo);
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;

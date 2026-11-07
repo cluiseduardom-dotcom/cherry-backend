@@ -1,19 +1,20 @@
 const niveisCategoriaRepository = require('../repositories/niveisCategoriaRepository');
 const AppError = require('../errors/AppError');
 
-async function listar(empresaId) {
-    return niveisCategoriaRepository.listar(empresaId);
+async function listar(empresaId, escopo = 'produto') {
+    return niveisCategoriaRepository.listar(empresaId, escopo);
 }
 
 async function criar(dados, empresaId) {
-    const existente = await niveisCategoriaRepository.buscarPorNivel(dados.nivel, empresaId);
+    const escopo = dados.escopo ?? 'produto';
+    const existente = await niveisCategoriaRepository.buscarPorNivel(dados.nivel, empresaId, escopo);
 
     if (existente) {
         throw new AppError('Já existe um rótulo para este nível', 409);
     }
 
     try {
-        return await niveisCategoriaRepository.criar({ nivel: dados.nivel, nome: dados.nome, empresa_id: empresaId });
+        return await niveisCategoriaRepository.criar({ nivel: dados.nivel, nome: dados.nome, empresa_id: empresaId, escopo });
     } catch (error) {
         if (error.code === '23505') {
             throw new AppError('Já existe um rótulo para este nível', 409);

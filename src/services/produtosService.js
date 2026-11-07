@@ -8,6 +8,7 @@ const skuService = require('./skuService');
 const historicoSkuRepository = require('../repositories/historicoSkuRepository');
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
+const { escopoDoTipo } = require('../utils/escopoCategoria');
 
 function comMargem(produto) {
     const precoVenda = produto.preco_venda == null ? null : Number(produto.preco_venda);
@@ -149,12 +150,23 @@ async function categorizar(id, categoriaIds, empresaId, usuarioId) {
     }
 
     let categorias = [];
+    const escopo = escopoDoTipo(produto.tipo);
 
     if (categoriaIds.length > 0) {
         categorias = await categoriasRepository.buscarPorIds(categoriaIds, empresaId);
 
         if (categorias.length !== categoriaIds.length) {
             throw new AppError('Categoria inválida', 400);
+        }
+
+        // Insumo só usa categorias de insumo; produto acabado só as de produto.
+        if (categorias.some((c) => (c.escopo ?? 'produto') !== escopo)) {
+            throw new AppError(
+                escopo === 'insumo'
+                    ? 'Insumos só aceitam categorias de insumo'
+                    : 'Produtos só aceitam categorias de produto',
+                400
+            );
         }
 
         const niveis = categorias.map((c) => c.nivel);
@@ -172,7 +184,7 @@ async function categorizar(id, categoriaIds, empresaId, usuarioId) {
         await produtosRepository.substituirCategorias(id, categoriaIds, empresaId, client);
 
         if (!produto.sku && categorias.length > 0) {
-            const resultadoSku = await skuService.gerar(categorias, empresaId, client);
+            const resultadoSku = await skuService.gerar(categorias, empresaId, client, escopo);
 
             try {
                 const atualizado = await produtosRepository.definirSkuSeNulo(id, resultadoSku.sku, empresaId, client);

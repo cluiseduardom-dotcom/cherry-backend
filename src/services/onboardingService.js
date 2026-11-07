@@ -35,6 +35,33 @@ async function criarEmpresaComAdmin(client, { empresa_nome, cnpj, nome_admin, em
         [empresa.id]
     );
 
+    // Insumos têm categorização e padrão de SKU próprios: Família (obrigatória) + Tamanho (opcional) e as
+    // famílias iniciais EMB, ETQ e MAT, que a empresa edita depois (mesma carga da migration 094).
+    const { rows: [configInsumo] } = await client.query(
+        `INSERT INTO configuracoes_sku
+         (empresa_id, nome, tipo_sku, separador, prefixo, sufixo, tamanho_sequencia, inicio_sequencia, ativo, padrao, escopo)
+         VALUES ($1, 'Insumos', 'numerico', '-', '', '', 3, 1, true, true, 'insumo')
+         RETURNING id`,
+        [empresa.id]
+    );
+    await client.query(
+        `INSERT INTO configuracoes_sku_segmentos (configuracao_id, nivel, ordem, nome, obrigatorio, participa_sku)
+         VALUES ($1, 1, 1, 'Família', true, true), ($1, 2, 2, 'Tamanho', false, true)`,
+        [configInsumo.id]
+    );
+    await client.query(
+        `INSERT INTO niveis_categoria (empresa_id, nivel, nome, escopo)
+         VALUES ($1, 1, 'Família', 'insumo'), ($1, 2, 'Tamanho', 'insumo')`,
+        [empresa.id]
+    );
+    await client.query(
+        `INSERT INTO categorias_produto (empresa_id, nivel, codigo, nome, configuracao_sku_id, escopo)
+         VALUES ($1, 1, 'EMB', 'Embalagem', $2, 'insumo'),
+                ($1, 1, 'ETQ', 'Etiqueta / Tag', $2, 'insumo'),
+                ($1, 1, 'MAT', 'Material', $2, 'insumo')`,
+        [empresa.id, configInsumo.id]
+    );
+
     // A senha só é processada depois dos padrões: uma falha antes não paga o bcrypt.
     const senhaHash = await bcrypt.hash(senha, 10);
 

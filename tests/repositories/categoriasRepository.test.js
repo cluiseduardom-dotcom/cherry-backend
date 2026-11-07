@@ -19,7 +19,7 @@ describe('listarPaginado', () => {
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain('empresa_id = $1');
     expect(sql).toContain('deletado_em IS NULL');
-    expect(params).toEqual([9, 20, 0]);
+    expect(params).toEqual([9, 20, 0, 'produto']);
   });
 });
 
@@ -52,7 +52,7 @@ describe('buscarPorCodigoNivel', () => {
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain('UPPER(codigo)');
     expect(sql).toContain('deletado_em IS NULL');
-    expect(params).toEqual([1, 'BR', 9]);
+    expect(params).toEqual([1, 'BR', 9, 'produto']);
   });
 
   test('returns null when nothing matches', async () => {
@@ -89,7 +89,7 @@ describe('criar', () => {
     expect(resultado.empresa_id).toBe(9);
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain('INSERT INTO categorias_produto');
-    expect(params).toEqual([1, 'BR', 'Brinco', null, 9]);
+    expect(params).toEqual([1, 'BR', 'Brinco', null, 9, 'produto']);
   });
 });
 

@@ -31,6 +31,9 @@ describe('onboardingService.criarTenant transaction', () => {
             if (sql.includes('INSERT INTO empresas')) {
                 return { rows: [{ id: 77, nome: 'Empresa de teste', cnpj: null, status: 'ativa' }] };
             }
+            if (sql.includes('INSERT INTO configuracoes_sku') && sql.includes('RETURNING id')) {
+                return { rows: [{ id: 55 }] };
+            }
             if (sql.includes('INSERT INTO usuarios')) {
                 return { rows: [{ id: 88, nome: 'Admin teste', email: 'admin@teste.invalid', papel: 'admin', empresa_id: 77 }] };
             }
@@ -97,6 +100,9 @@ describe('onboardingService.criarTenant transaction', () => {
         client.query.mockImplementation(async (sql) => {
             if (sql.includes('INSERT INTO empresas')) {
                 return { rows: [{ id: 77, nome: 'Empresa de teste', cnpj: null, status: 'ativa' }] };
+            }
+            if (sql.includes('INSERT INTO configuracoes_sku') && sql.includes('RETURNING id')) {
+                return { rows: [{ id: 55 }] };
             }
             if (sql.includes('INSERT INTO usuarios')) throw duplicate;
             return { rows: [] };

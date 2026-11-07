@@ -1,6 +1,7 @@
 const categoriasService = require('../services/categoriasService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
+const { parseEscopo } = require('../utils/escopoCategoria');
 const { criarCategoriaSchema, atualizarCategoriaSchema } = require('../validations/categoriasValidation');
 
 function parseId(value) {
@@ -27,7 +28,7 @@ function parsePaginacao(query) {
 async function listar(req, res, next) {
     try {
         const paginacao = parsePaginacao(req.query);
-        const resultado = await categoriasService.listar(paginacao, req.usuario.empresa_id);
+        const resultado = await categoriasService.listar(paginacao, req.usuario.empresa_id, parseEscopo(req.query.escopo));
 
         return response.success(res, resultado);
     } catch (error) {

@@ -1,17 +1,17 @@
 const db = require('../config/db');
 
-async function listarPaginado({ limit, offset, empresa_id }) {
+async function listarPaginado({ limit, offset, empresa_id, escopo = 'produto' }) {
     const { rows } = await db.query(
         `SELECT * FROM categorias_produto
-         WHERE empresa_id = $1 AND deletado_em IS NULL
+         WHERE empresa_id = $1 AND escopo = $4 AND deletado_em IS NULL
          ORDER BY nivel ASC, codigo ASC
          LIMIT $2 OFFSET $3`,
-        [empresa_id, limit, offset]
+        [empresa_id, limit, offset, escopo]
     );
 
     const { rows: countRows } = await db.query(
-        `SELECT COUNT(*) FROM categorias_produto WHERE empresa_id = $1 AND deletado_em IS NULL`,
-        [empresa_id]
+        `SELECT COUNT(*) FROM categorias_produto WHERE empresa_id = $1 AND escopo = $2 AND deletado_em IS NULL`,
+        [empresa_id, escopo]
     );
 
     return { items: rows, total: Number(countRows[0].count) };
@@ -25,11 +25,11 @@ async function buscarPorId(id, empresa_id) {
     return rows.length ? rows[0] : null;
 }
 
-async function buscarPorCodigoNivel(nivel, codigo, empresa_id) {
+async function buscarPorCodigoNivel(nivel, codigo, empresa_id, escopo = 'produto') {
     const { rows } = await db.query(
         `SELECT * FROM categorias_produto
-         WHERE nivel = $1 AND UPPER(codigo) = $2 AND empresa_id = $3 AND deletado_em IS NULL`,
-        [nivel, codigo, empresa_id]
+         WHERE nivel = $1 AND UPPER(codigo) = $2 AND empresa_id = $3 AND escopo = $4 AND deletado_em IS NULL`,
+        [nivel, codigo, empresa_id, escopo]
     );
     return rows.length ? rows[0] : null;
 }
@@ -44,10 +44,10 @@ async function buscarPorIds(ids, empresa_id) {
     return rows;
 }
 
-async function criar({ nivel, codigo, nome, configuracao_sku_id, empresa_id }) {
+async function criar({ nivel, codigo, nome, configuracao_sku_id, empresa_id, escopo = 'produto' }) {
     const { rows } = await db.query(
-        `INSERT INTO categorias_produto (nivel, codigo, nome, configuracao_sku_id, empresa_id) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [nivel, codigo, nome, configuracao_sku_id ?? null, empresa_id]
+        `INSERT INTO categorias_produto (nivel, codigo, nome, configuracao_sku_id, empresa_id, escopo) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [nivel, codigo, nome, configuracao_sku_id ?? null, empresa_id, escopo]
     );
     return rows[0];
 }

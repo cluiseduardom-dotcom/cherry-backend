@@ -20,7 +20,8 @@ const salvarConfiguracaoSkuSchema = z.object({
     sufixo: z.string().max(30),
     tamanho_sequencia: z.coerce.number().int().min(1).max(18),
     inicio_sequencia: z.coerce.bigint().min(0n),
-    segmentos: z.array(segmentoSchema)
+    segmentos: z.array(segmentoSchema),
+    escopo: z.enum(['produto', 'insumo'], { error: 'Escopo inválido (use produto ou insumo)' }).optional()
 }).strict();
 
 module.exports = { salvarConfiguracaoSkuSchema };

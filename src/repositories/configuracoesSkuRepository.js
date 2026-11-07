@@ -1,17 +1,17 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 
-async function listar(empresa_id, client = db) {
-    const { rows } = await client.query(
+async function listar(empresa_id, client = db, escopo = 'produto') {
+    const { rows } = await (client || db).query(
         `SELECT * FROM configuracoes_sku
-         WHERE empresa_id = $1 AND ativo = true
+         WHERE empresa_id = $1 AND ativo = true AND escopo = $2
          ORDER BY padrao DESC, id ASC`,
-        [empresa_id]
+        [empresa_id, escopo]
     );
 
     const resultado = [];
     for (const config of rows) {
-        const { rows: segmentos } = await client.query(
+        const { rows: segmentos } = await (client || db).query(
             `SELECT * FROM configuracoes_sku_segmentos
              WHERE configuracao_id = $1
              ORDER BY ordem ASC`,
@@ -22,12 +22,12 @@ async function listar(empresa_id, client = db) {
     return resultado;
 }
 
-async function buscarAtiva(empresa_id, client = db) {
+async function buscarAtiva(empresa_id, client = db, escopo = 'produto') {
     const { rows } = await client.query(
         `SELECT * FROM configuracoes_sku
-         WHERE empresa_id = $1 AND ativo = true AND padrao = true
+         WHERE empresa_id = $1 AND ativo = true AND padrao = true AND escopo = $2
          LIMIT 1`,
-        [empresa_id]
+        [empresa_id, escopo]
     );
 
     if (!rows.length) return null;
@@ -44,8 +44,8 @@ async function buscarAtiva(empresa_id, client = db) {
     return { ...config, segmentos };
 }
 
-async function buscarParaCategorias(categoriaIds, empresa_id, client = db) {
-    if (!categoriaIds.length) return buscarAtiva(empresa_id, client);
+async function buscarParaCategorias(categoriaIds, empresa_id, client = db, escopo = 'produto') {
+    if (!categoriaIds.length) return buscarAtiva(empresa_id, client, escopo);
 
     const { rows } = await client.query(
         `SELECT DISTINCT configuracao_sku_id
@@ -61,7 +61,7 @@ async function buscarParaCategorias(categoriaIds, empresa_id, client = db) {
         throw new AppError('As categorias selecionadas pertencem a padrões de SKU diferentes', 409);
     }
 
-    if (!rows.length) return buscarAtiva(empresa_id, client);
+    if (!rows.length) return buscarAtiva(empresa_id, client, escopo);
 
     const { rows: configs } = await client.query(
         `SELECT * FROM configuracoes_sku
@@ -70,7 +70,7 @@ async function buscarParaCategorias(categoriaIds, empresa_id, client = db) {
         [rows[0].configuracao_sku_id, empresa_id]
     );
 
-    if (!configs.length) return buscarAtiva(empresa_id, client);
+    if (!configs.length) return buscarAtiva(empresa_id, client, escopo);
 
     const config = configs[0];
     const { rows: segmentos } = await client.query(
@@ -87,8 +87,8 @@ async function criar(dados, client = db) {
     const { rows } = await client.query(
         `INSERT INTO configuracoes_sku
          (empresa_id, nome, tipo_sku, separador, prefixo, sufixo,
-          tamanho_sequencia, inicio_sequencia, ativo, padrao)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9)
+          tamanho_sequencia, inicio_sequencia, ativo, padrao, escopo)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10)
          RETURNING *`,
         [
             dados.empresa_id,
@@ -99,7 +99,8 @@ async function criar(dados, client = db) {
             dados.sufixo,
             dados.tamanho_sequencia,
             dados.inicio_sequencia,
-            dados.padrao !== false
+            dados.padrao !== false,
+            dados.escopo ?? 'produto'
         ]
     );
 
@@ -118,7 +119,7 @@ async function atualizar(id, empresa_id, dados, client = db) {
              inicio_sequencia = $7,
              padrao = $8,
              atualizado_em = NOW()
-         WHERE id = $9 AND empresa_id = $10 AND ativo = true
+         WHERE id = $9 AND empresa_id = $10 AND escopo = $11 AND ativo = true
          RETURNING *`,
         [
             dados.nome,
@@ -130,7 +131,8 @@ async function atualizar(id, empresa_id, dados, client = db) {
             dados.inicio_sequencia,
             dados.padrao !== false,
             id,
-            empresa_id
+            empresa_id,
+            dados.escopo ?? 'produto'
         ]
     );
 
