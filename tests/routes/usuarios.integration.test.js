@@ -191,14 +191,14 @@ describe('autorização', () => {
 });
 
 describe('cargos atribuíveis', () => {
-    test('Admin vê só cargos ligados e nunca Admin; analista desligado não aparece', async () => {
+    test('Admin vê os cargos ligados (todos por padrão) e nunca Admin', async () => {
         const res = await como(A, A.adminId, 'get', '/usuarios/cargos');
 
         expect(res.status).toBe(200);
         const cargos = res.body.data.map((c) => c.cargo);
         expect(cargos).toEqual(expect.arrayContaining(['diretor', 'gerente', 'vendedor', 'estoquista']));
         expect(cargos).not.toContain('admin');
-        expect(cargos).not.toContain('analista');
+        expect(cargos).toContain('analista');
     });
 
     test('Gerente só vê cargos de nível menor que o seu (e só da própria empresa)', async () => {
@@ -253,6 +253,7 @@ describe('criar', () => {
     });
 
     test('cargo desligado na empresa é recusado', async () => {
+        expect((await como(A, A.adminId, 'put', '/cargos/operador', { ativo: false })).status).toBe(200);
         expect((await como(A, A.gerenteId, 'post', '/usuarios', novo({ papel: 'operador' }))).status).toBeGreaterThanOrEqual(400);
     });
 

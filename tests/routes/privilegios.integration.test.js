@@ -313,6 +313,7 @@ describe('Admin anexado a um CARGO', () => {
     test('conceder ao cargo que já tem, ao Admin e a cargo desligado: 409', async () => {
         expect((await concederCargo(A, A.adminId, 'coordenador')).status).toBe(409);
         expect((await concederCargo(A, A.adminId, 'admin')).status).toBe(409);
+        await request(app).put('/cargos/diretor').set(auth(tokenDe(A, A.adminId))).send({ ativo: false });
         expect((await concederCargo(A, A.adminId, 'diretor')).status).toBe(409);
     });
 

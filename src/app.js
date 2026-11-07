@@ -155,7 +155,7 @@ app.use('/cancelamentos', authMiddleware, requireCapacidade(CAPACIDADES.VER_CANC
 app.use('/comissoes', authMiddleware, exigirFuncionalidade('comissoes'), comissoesRoutes);
 app.use('/estoque', authMiddleware, estoqueRoutes);
 app.use('/canais-venda', authMiddleware, canaisVendaRoutes);
-app.use('/dashboard', authMiddleware, requireAdmin, dashboardRoutes);
+app.use('/dashboard', authMiddleware, requireCapacidade(CAPACIDADES.VER_CUSTOS), dashboardRoutes);
 app.use('/notificacoes', authMiddleware, notificacoesRoutes);
 app.use('/empresa', authMiddleware, requireAdmin, empresaRoutes);
 // Painel GiroNex: operadores separados dos usuários das lojas, com sessão própria (PAINEL_JWT_SECRET) e 2FA.

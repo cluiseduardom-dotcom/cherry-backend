@@ -60,27 +60,27 @@ const CATALOGO = Object.freeze({
     },
     diretor: {
         cargo: 'diretor', rotulo: 'Diretor', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 80,
-        sempre_ativo: false, imutavel: false, ativo_padrao: false,
+        sempre_ativo: false, imutavel: false, ativo_padrao: true,
         capacidades: [VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, GERIR_FINANCEIRO, VER_TODOS_CLIENTES]
     },
     gerente: {
         cargo: 'gerente', rotulo: 'Gerente', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 70,
-        sempre_ativo: false, imutavel: false, ativo_padrao: false,
+        sempre_ativo: false, imutavel: false, ativo_padrao: true,
         capacidades: [VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, GERIR_FINANCEIRO, VER_TODOS_CLIENTES]
     },
     coordenador: {
         cargo: 'coordenador', rotulo: 'Coordenador', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 60,
-        sempre_ativo: false, imutavel: false, ativo_padrao: false,
+        sempre_ativo: false, imutavel: false, ativo_padrao: true,
         capacidades: [VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, VER_TODOS_CLIENTES]
     },
     supervisor: {
         cargo: 'supervisor', rotulo: 'Supervisor', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 50,
-        sempre_ativo: false, imutavel: false, ativo_padrao: false,
+        sempre_ativo: false, imutavel: false, ativo_padrao: true,
         capacidades: [VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, VER_TODOS_CLIENTES]
     },
     analista: {
         cargo: 'analista', rotulo: 'Analista', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 40,
-        sempre_ativo: false, imutavel: false, ativo_padrao: false,
+        sempre_ativo: false, imutavel: false, ativo_padrao: true,
         capacidades: [CANCELAR_VENDA, VER_TODOS_CLIENTES]
     },
     vendedor: {
@@ -90,12 +90,12 @@ const CATALOGO = Object.freeze({
     },
     operador: {
         cargo: 'operador', rotulo: 'Operador', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 20,
-        sempre_ativo: false, imutavel: false, ativo_padrao: false,
+        sempre_ativo: false, imutavel: false, ativo_padrao: true,
         capacidades: [CANCELAR_VENDA]
     },
     auxiliar: {
         cargo: 'auxiliar', rotulo: 'Auxiliar', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 10,
-        sempre_ativo: false, imutavel: false, ativo_padrao: false,
+        sempre_ativo: false, imutavel: false, ativo_padrao: true,
         capacidades: [CANCELAR_VENDA]
     },
     estoquista: {
@@ -104,14 +104,14 @@ const CATALOGO = Object.freeze({
     },
     faturista: {
         cargo: 'faturista', rotulo: 'Faturista', perfil_base: PERFIL_FATURISTA, escada: false, nivel: null,
-        sempre_ativo: false, imutavel: false, ativo_padrao: false, capacidades: []
+        sempre_ativo: false, imutavel: false, ativo_padrao: true, capacidades: []
     },
     // Funcional (fora da escada, como Estoquista/Faturista). Desligado por padrão: a empresa que
     // não desenha o cargo mantém o financeiro com Diretor, Gerente e Admin. Acesso de Vendedor
     // (perfil_base) + ver o dinheiro da equipe + a capacidade financeira; sem custo e sem margem.
     financeiro: {
         cargo: 'financeiro', rotulo: 'Analista financeiro', perfil_base: PERFIL_VENDEDOR, escada: false, nivel: null,
-        sempre_ativo: false, imutavel: false, ativo_padrao: false,
+        sempre_ativo: false, imutavel: false, ativo_padrao: true,
         capacidades: [VER_VENDAS_DE_TODOS, GERIR_FINANCEIRO, VER_TODOS_CLIENTES]
     }
 });

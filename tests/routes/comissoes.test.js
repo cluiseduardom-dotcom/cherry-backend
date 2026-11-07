@@ -18,7 +18,7 @@ const sessaoBase = { ativo: true, token_version: 0, empresa_status: 'ativa', fun
 
 beforeEach(() => {
   jest.resetAllMocks();
-  // Gerente é um cargo ligado pelo admin do comércio (ativo_padrao = false no catálogo).
+  // Gerente é um cargo ligado pelo admin do comércio (a empresa pode desligá-lo).
   const cargoLigado = (papel, nivel, capacidades) => ({
     ...sessaoBase,
     papel,

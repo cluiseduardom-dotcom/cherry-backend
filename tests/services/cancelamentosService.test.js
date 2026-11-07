@@ -151,16 +151,6 @@ describe('cancelar — faixas com autorização', () => {
         expect(vendasRepository.cancelar).toHaveBeenCalled();
     });
 
-    test('cargo opcional que o comércio nunca ligou (sem linha) não autoriza', async () => {
-        venda(10);
-        cancelamentosRepository.buscarAutorizador.mockResolvedValue(candidato('gerente', {
-            cargo_configurado: false, cargo_nivel: null, cargo_ativo: null, cargo_capacidades: null
-        }));
-
-        await expect(cancelamentosService.cancelar(1, vendedor, { motivo: 'Cliente desistiu', autorizacao: autorizacao('a@b.c') }))
-            .rejects.toMatchObject({ statusCode: 403 });
-    });
-
     test('cargo do autorizador desligado no comércio: não autoriza', async () => {
         venda(10);
         cancelamentosRepository.buscarAutorizador.mockResolvedValue(candidato('gerente', {

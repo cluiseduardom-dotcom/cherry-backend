@@ -58,8 +58,10 @@ describe('authMiddleware — cargo e capacidades vindos do banco', () => {
         expect(req.usuario.role).toBe('admin');
     });
 
-    test('cargo novo ainda não ligado no comércio: 403, e a rota não é chamada', async () => {
-        sessaoRepository.buscarEstado.mockResolvedValue(estado({ papel: 'gerente', cargo_configurado: false }));
+    test('cargo desligado pela empresa: 403, e a rota não é chamada', async () => {
+        sessaoRepository.buscarEstado.mockResolvedValue(estado({
+            papel: 'gerente', cargo_configurado: true, cargo_nivel: 70, cargo_ativo: false, cargo_capacidades: []
+        }));
 
         const { req, next } = await executar(token());
 
