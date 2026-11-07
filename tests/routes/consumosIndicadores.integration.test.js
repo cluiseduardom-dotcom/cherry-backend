@@ -25,7 +25,7 @@ async function criarEmpresa(alvo, rotulo) {
     alvo.centralId = (await db.query(
         `INSERT INTO locais_estoque (empresa_id, tipo, nome) VALUES ($1, 'central', 'Central') ON CONFLICT DO NOTHING RETURNING id`, [alvo.empresaId]
     )).rows[0]?.id ?? (await db.query(`SELECT id FROM locais_estoque WHERE empresa_id = $1 AND tipo = 'central'`, [alvo.empresaId])).rows[0].id;
-    for (const papel of ['admin', 'vendedor', 'estoquista']) {
+    for (const papel of ['admin', 'vendedor', 'estoquista', 'gerente', 'analista', 'supervisor']) {
         const { rows: u } = await db.query(
             `INSERT INTO usuarios (empresa_id, nome, email, senha, papel, ativo) VALUES ($1, $2, $3, $4, $5, true) RETURNING id`,
             [alvo.empresaId, `${papel} ${sufixo}`, `${papel}-${alvo.empresaId}-${sufixo}@teste.invalid`, SENHA_HASH, papel]
@@ -71,7 +71,7 @@ afterAll(async () => {
 });
 
 describe('GET /consumos/indicadores', () => {
-    test('vendedor 403; estoquista e admin 200', async () => {
+    test('vendedor 403; estoquista e admin 200; outras rotas de /consumos seguem só admin/estoquista', async () => {
         expect((await get(A, 'vendedor', '/consumos/indicadores')).status).toBe(403);
         expect((await get(A, 'estoquista', '/consumos/indicadores')).status).toBe(200);
         expect((await get(A, 'admin', '/consumos/indicadores')).status).toBe(200);
@@ -93,6 +93,20 @@ describe('GET /consumos/indicadores', () => {
         expect(res.body.data.totais).toMatchObject({
             insumos_ativos: 4, esgotados: 1, abaixo_minimo: 1, a_repor: 2, sem_consumo_no_periodo: 3, consumo_total_periodo: 30
         });
+    });
+
+    test('gerente, analista e supervisor (ver_dashboard/ver_custos) leem os indicadores, mas não o resto de /consumos', async () => {
+        for (const papel of ['gerente', 'analista', 'supervisor']) {
+            expect((await get(A, papel, '/consumos/indicadores')).status).toBe(200);
+            expect((await get(A, papel, '/consumos/insumos')).status).toBe(403);
+            expect((await get(A, papel, '/consumos/relatorio')).status).toBe(403);
+        }
+    });
+
+    test('custo: gerente (ver_custos) vê; analista e supervisor (só ver_dashboard) não', async () => {
+        expect((await get(A, 'gerente', '/consumos/indicadores')).body.data.totais.custo_consumo_periodo).toBe(60);
+        expect((await get(A, 'analista', '/consumos/indicadores')).body.data.totais).not.toHaveProperty('custo_consumo_periodo');
+        expect((await get(A, 'supervisor', '/consumos/indicadores')).body.data.totais).not.toHaveProperty('custo_consumo_periodo');
     });
 
     test('custo do consumo só aparece com ver_custos (admin sim, estoquista não)', async () => {

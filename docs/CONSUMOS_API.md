@@ -43,7 +43,7 @@ Datas pelo fuso America/Sao_Paulo. **A compra do insumo não entra** (compra = c
 `devolvido_por`. Nova `consumos_avulsos` (FKs compostas com `empresa_id`).
 
 ## Indicadores de insumos (consumo, cobertura, reposição)
-`GET /consumos/indicadores?dias=90` (1 a 365; padrão 90). Admin e estoquista. Só insumos **ativos**, saldo do **Central**.
+`GET /consumos/indicadores?dias=90` (1 a 365; padrão 90). Admin, estoquista e quem tem `ver_dashboard` ou `ver_custos` (Diretor, Gerente, Coordenador, Supervisor, Analista, Analista financeiro); é a única rota de `/consumos` aberta por capacidade. Só insumos **ativos**, saldo do **Central**.
 
 Por insumo: `{ id, sku, nome, unidade, saldo, estoque_minimo, consumo_periodo, consumo_medio_diario, cobertura_dias, pendente, repor, motivos_reposicao, para_atingir_minimo, custo_consumo_periodo? }`.
 - `consumo_periodo`: venda baixada e não devolvida + consumo avulso, nos últimos `dias` (mesmas fontes do relatório).

@@ -165,7 +165,8 @@ app.use('/painel', painelRoutes);
 app.use('/integracoes/mercadopago', integracoesMercadoPagoRoutes);
 app.use('/pagamentos-gateway', authMiddleware, requireVendedor, pagamentosGatewayRoutes);
 app.use('/webhooks/mercadopago', webhooksMercadoPagoRoutes);
-app.use('/consumos', authMiddleware, requireEstoquista, consumosRoutes);
+// Admin e estoquista; só GET /consumos/indicadores abre também por capacidade (ver routes/consumos.js).
+app.use('/consumos', authMiddleware, consumosRoutes);
 app.use('/contas-pagar', authMiddleware, requireAdmin, contasPagarRoutes);
 app.use('/contas-receber', authMiddleware, requireAdmin, contasReceberRoutes);
 app.use('/fornecedores', authMiddleware, requireEstoquista, fornecedoresRoutes);
