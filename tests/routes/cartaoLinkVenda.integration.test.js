@@ -12,6 +12,7 @@ const db = require('../../src/config/db');
 const app = require('../../src/app');
 const plataformaService = require('../../src/services/plataformaService');
 const { criarRegistroDeEmpresas, removerEmpresasPorNome, removerCancelamentosDeTeste } = require('../helpers/limpezaEmpresasTeste');
+const { darEstoqueInicial } = require('../helpers/estoqueInicial');
 
 const registro = criarRegistroDeEmpresas(db);
 const SUFIXO = crypto.randomBytes(4).toString('hex');
@@ -33,9 +34,10 @@ async function criarUsuario(empresaId, papel, rotulo) {
 
 async function criarProduto(token, canalId, nome, preco) {
     const prod = await request(app).post('/produtos').set('Authorization', `Bearer ${token}`)
-        .send({ nome, preco_venda: preco, custo: 0.5, estoque_atual: 50, estoque_minimo: 1 });
+        .send({ nome, preco_venda: preco, custo: 0.5, estoque_minimo: 1 });
     if (prod.status !== 201) throw new Error(`produto ${nome}: ${prod.status} ${JSON.stringify(prod.body)}`);
     const id = prod.body.data.id;
+    await darEstoqueInicial(app, token, id, 50);
     const precoRes = await request(app).put(`/produtos/${id}/precos/${canalId}`).set('Authorization', `Bearer ${token}`).send({ preco_venda: preco });
     if (precoRes.status !== 201) throw new Error(`preço ${nome}: ${precoRes.status} ${JSON.stringify(precoRes.body)}`);
     return id;

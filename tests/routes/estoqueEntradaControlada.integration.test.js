@@ -33,9 +33,13 @@ const chamar = (usuario, metodo, url, corpo) =>
 
 const criarProduto = async (estoque = 0) => {
     const res = await chamar(E.admin, 'post', '/produtos', {
-        nome: `Prod ${crypto.randomBytes(3).toString('hex')}`, preco_venda: 100, custo: 10, estoque_atual: estoque
+        nome: `Prod ${crypto.randomBytes(3).toString('hex')}`, preco_venda: 100, custo: 10
     });
     expect(res.status).toBe(201);
+    if (estoque > 0) {
+        const ini = await chamar(E.admin, 'post', `/produtos/${res.body.data.id}/movimentacoes`, { tipo: 'entrada', quantidade: estoque, motivo_codigo: 'estoque_inicial' });
+        expect(ini.status).toBe(201);
+    }
     return res.body.data.id;
 };
 
@@ -114,6 +118,37 @@ describe('sem concessão (padrão do catálogo)', () => {
     });
 });
 
+describe('cadastro não lança estoque (regra do PO, 06/11/2026)', () => {
+    const cadastrar = (extra = {}) => chamar(E.admin, 'post', '/produtos', {
+        nome: `Prod ${crypto.randomBytes(3).toString('hex')}`, preco_venda: 100, custo: 10, ...extra
+    });
+
+    test('cadastro com saldo é recusado (400) e nenhum produto é criado', async () => {
+        const nome = `Recusado ${crypto.randomBytes(3).toString('hex')}`;
+        const res = await cadastrar({ nome, estoque_atual: 5 });
+        expect(res.status).toBe(400);
+        expect(JSON.stringify(res.body)).toMatch(/não lança estoque/);
+        const { rows } = await db.query('SELECT 1 FROM produtos WHERE empresa_id = $1 AND nome = $2', [E.empresaId, nome]);
+        expect(rows).toHaveLength(0);
+    });
+
+    test('cadastro sem saldo (ou com 0) nasce com estoque 0 e sem nenhuma movimentação', async () => {
+        for (const extra of [{}, { estoque_atual: 0 }]) {
+            const res = await cadastrar(extra);
+            expect(res.status).toBe(201);
+            expect(await total(res.body.data.id)).toBe(0);
+            expect(await movimentos(res.body.data.id)).toEqual([]);
+        }
+    });
+
+    test('a entrada é um ato à parte: estoque inicial depois do cadastro vale uma vez', async () => {
+        const produto = (await cadastrar()).body.data.id;
+        expect((await mov(E.admin, produto, { tipo: 'entrada', quantidade: 7, motivo_codigo: 'estoque_inicial' })).status).toBe(201);
+        expect(await total(produto)).toBe(7);
+        expect((await mov(E.admin, produto, { tipo: 'entrada', quantidade: 7, motivo_codigo: 'estoque_inicial' })).status).toBe(409);
+    });
+});
+
 describe('estoque inicial (só admin, só produto sem movimentação)', () => {
     test('admin lança uma vez; a segunda é 409 e o histórico mostra a origem', async () => {
         const produto = await criarProduto(0);
@@ -129,7 +164,7 @@ describe('estoque inicial (só admin, só produto sem movimentação)', () => {
         expect(await movimentos(produto)).toEqual([{ tipo: 'entrada', quantidade: 12, motivo: 'Estoque inicial', origem: 'estoque_inicial' }]);
     });
 
-    test('produto cadastrado já com estoque conta como inicial feito: não dá para somar de novo', async () => {
+    test('produto que já recebeu estoque inicial não recebe de novo', async () => {
         const produto = await criarProduto(5);
         expect((await mov(E.admin, produto, { tipo: 'entrada', quantidade: 5, motivo_codigo: 'estoque_inicial' })).status).toBe(409);
         expect(await total(produto)).toBe(5);

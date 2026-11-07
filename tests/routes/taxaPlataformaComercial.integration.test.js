@@ -25,6 +25,7 @@ const app = require('../../src/app');
 const taxasPlataformaRepository = require('../../src/repositories/taxasPlataformaRepository');
 const { executarArquivoSql } = require('../../src/database/migrate');
 const { criarRegistroDeEmpresas, removerEmpresasPorNome, removerCancelamentosDeTeste } = require('../helpers/limpezaEmpresasTeste');
+const { darEstoqueInicial } = require('../helpers/estoqueInicial');
 
 // Cada empresa é registrada LOGO APÓS o INSERT (antes de login/produto/preço): se a
 // preparação falhar no meio, o afterAll ainda remove o que foi criado.
@@ -72,9 +73,10 @@ async function criarEmpresa(rotulo) {
     const prod = await request(app)
         .post('/produtos')
         .set('Authorization', `Bearer ${token}`)
-        .send({ nome: `Joia ${rotulo}`, preco_venda: 1000, custo: 10, estoque_atual: 200, estoque_minimo: 1 });
+        .send({ nome: `Joia ${rotulo}`, preco_venda: 1000, custo: 10, estoque_minimo: 1 });
     if (prod.status !== 201) throw new Error(`produto ${rotulo}: ${prod.status} ${JSON.stringify(prod.body)}`);
     const produto = prod.body.data.id;
+    await darEstoqueInicial(app, token, produto, 200);
 
     const preco = await request(app)
         .put(`/produtos/${produto}/precos/${canalId}`)

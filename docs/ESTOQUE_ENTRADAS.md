@@ -4,11 +4,13 @@ Regra do PO (31/10/2026): estoque só aumenta por um fato lógico e rastreável.
 
 ## Como o estoque aumenta
 
+Cadastrar produto e dar entrada no estoque são atos diferentes. O cadastro cria só o produto (saldo 0); a entrada acontece pelos caminhos abaixo.
+
 | Caminho | Quem pode | Observação |
 |---|---|---|
 | **Compra** (`POST /compras`) | admin, estoquista | Vários itens, uma transação, grava `compra_id` e `origem = compra`, gera contas a pagar. |
 | **Recebimento aprovado** (`POST /recebimentos/:id/aprovar`) | admin, estoquista | `origem = recebimento`. |
-| **Estoque inicial** (`POST /produtos/:id/movimentacoes`, `tipo = entrada`, `motivo_codigo = estoque_inicial`) | **só admin** (não delegável) | Só em produto **sem nenhuma movimentação**; vale uma vez (cadastrar o produto já com `estoque_atual` também conta). A checagem roda na transação, com o produto travado: lançamentos simultâneos, só um vale. |
+| **Estoque inicial** (`POST /produtos/:id/movimentacoes`, `tipo = entrada`, `motivo_codigo = estoque_inicial`) | **só admin** (não delegável) | Só em produto **sem nenhuma movimentação**; vale uma vez. **O cadastro de produto não lança estoque** (regra do PO, 06/11/2026): `POST /produtos` com `estoque_atual` > 0 responde 400; o produto nasce com saldo 0 e a entrada é um ato à parte. A checagem roda na transação, com o produto travado: lançamentos simultâneos, só um vale. |
 | **Recebimento sem compra** (`motivo_codigo = recebimento_sem_compra`) | admin ou cargo com a capacidade `receber_sem_compra` | Bonificação, devolução de cliente etc. Observação obrigatória (mín. 3 caracteres). |
 | **Ajuste para mais** (`tipo = ajuste`, saldo do local maior que o atual) | admin ou cargo com a capacidade `ajustar_estoque` | A comparação é feita na transação, sem corrida. |
 

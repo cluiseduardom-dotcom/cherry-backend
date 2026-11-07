@@ -7,7 +7,10 @@ const criarProdutoSchema = z.object({
     // Opcional: o preço de venda é definido por canal (Precificar por canal). Se vier, precisa ser > 0.
     preco_venda: z.coerce.number({ error: 'Preço de venda inválido' }).positive('Preço de venda deve ser maior que zero').optional(),
     custo: z.coerce.number({ error: 'Custo é obrigatório' }).positive('Custo é obrigatório'),
-    estoque_atual: z.coerce.number({ error: 'Estoque atual inválido' }).int('Estoque atual inválido').nonnegative('Estoque atual inválido').optional(),
+    // Cadastro não lança estoque (regra do PO, 06/11/2026): produto nasce com saldo 0. A entrada é um ato à parte
+    // (Estoque inicial, Compra ou Recebimento). Aceita 0 só por compatibilidade com telas antigas.
+    estoque_atual: z.coerce.number({ error: 'Estoque atual inválido' }).int('Estoque atual inválido').nonnegative('Estoque atual inválido')
+        .max(0, 'O cadastro não lança estoque. Dê a entrada em Estoque (estoque inicial), Compra ou Recebimento.').optional(),
     estoque_minimo: z.coerce.number({ error: 'Estoque mínimo inválido' }).int('Estoque mínimo inválido').nonnegative('Estoque mínimo inválido').optional(),
     ativo: z.boolean().optional(),
     tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional(),

@@ -19,6 +19,7 @@ const request = require('supertest');
 const app = require('../../src/app');
 const db = require('../../src/config/db');
 const { criarRegistroDeEmpresas } = require('../helpers/limpezaEmpresasTeste');
+const { darEstoqueInicial } = require('../helpers/estoqueInicial');
 
 // A empresa 2 é registrada LOGO APÓS o INSERT: se a preparação falhar depois disso, ou se
 // a limpeza explícita abaixo falhar (ex.: uma tabela nova com FK), o afterAll ainda remove
@@ -87,9 +88,10 @@ beforeAll(async () => {
     const produtoE1Res = await request(app)
         .post('/produtos')
         .set('Authorization', `Bearer ${empresa1AdminToken}`)
-        .send({ nome: 'Produto Isolamento E1', preco_venda: 100, custo: 50, estoque_atual: 20, estoque_minimo: 2 });
+        .send({ nome: 'Produto Isolamento E1', preco_venda: 100, custo: 50, estoque_minimo: 2 });
     if (produtoE1Res.status !== 201) throw new Error(`Falha ao criar produto e1: ${produtoE1Res.status}`);
     produtoE1Id = produtoE1Res.body.data.id;
+    await darEstoqueInicial(app, empresa1AdminToken, produtoE1Id, 20);
 
     const precoE1Res = await request(app)
         .put(`/produtos/${produtoE1Id}/precos/${tenant1.canalId}`)
@@ -163,12 +165,12 @@ beforeAll(async () => {
                 nome: `Produto Isolamento ${i + 1}`,
                 preco_venda: 100 + i,
                 custo: 50 + i,
-                estoque_atual: 20,
                 estoque_minimo: 2
             });
 
         if (res.status !== 201) throw new Error(`Falha ao criar produto e2: ${res.status} ${JSON.stringify(res.body)}`);
         produtosE2.push(res.body.data.id);
+        await darEstoqueInicial(app, empresa2AdminToken, res.body.data.id, 20);
     }
 
     const precoRes = await request(app)

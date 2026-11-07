@@ -31,7 +31,6 @@ describe('criarProdutoSchema', () => {
       ...valid,
       descricao: 'Camiseta básica',
       categoria: 'Vestuário',
-      estoque_atual: 10,
       estoque_minimo: 2,
       ativo: false
     });
@@ -68,6 +67,16 @@ describe('criarProdutoSchema', () => {
     const result = criarProdutoSchema.safeParse({ ...valid, custo });
     expect(result.success).toBe(false);
     expect(result.error.issues[0].message).toBe('Custo é obrigatório');
+  });
+
+  test('rejects estoque_atual > 0: cadastro não lança estoque', () => {
+    const result = criarProdutoSchema.safeParse({ ...valid, estoque_atual: 10 });
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toMatch(/não lança estoque/);
+  });
+
+  test('accepts estoque_atual 0 (compatibilidade com telas antigas)', () => {
+    expect(criarProdutoSchema.safeParse({ ...valid, estoque_atual: 0 }).success).toBe(true);
   });
 
   test('rejects a negative estoque_atual', () => {
