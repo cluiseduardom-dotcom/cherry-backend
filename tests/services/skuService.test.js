@@ -115,4 +115,27 @@ describe('gerar', () => {
     expect(resultado.sku).toBe('COL-BO-002');
     expect(resultado.configuracao.id).toBe(10);
   });
+
+  test('skips SKUs already in use (counter behind existing products)', async () => {
+    sequenciasSkuRepository.incrementarContador
+      .mockResolvedValueOnce(2).mockResolvedValueOnce(3).mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(5).mockResolvedValueOnce(6);
+    sequenciasSkuRepository.skuEmUso.mockImplementation(async (sku) => /-00[2-5]$/.test(sku));
+
+    const resultado = await skuService.gerar([{ id: 11, nivel: 1, codigo: 'ANE' }], 9, {});
+
+    expect(resultado.sku).toBe('ANE-006');
+    expect(sequenciasSkuRepository.incrementarContador).toHaveBeenCalledTimes(5);
+    expect(sequenciasSkuRepository.skuEmUso).toHaveBeenCalledWith('ANE-002', 9, {});
+  });
+
+  test('gives up with a clear error after 100 occupied numbers in a row', async () => {
+    let n = 1;
+    sequenciasSkuRepository.incrementarContador.mockImplementation(async () => n++);
+    sequenciasSkuRepository.skuEmUso.mockResolvedValue(true);
+
+    await expect(skuService.gerar([{ id: 11, nivel: 1, codigo: 'ANE' }], 9, {}))
+      .rejects.toMatchObject({ statusCode: 409 });
+    expect(sequenciasSkuRepository.incrementarContador).toHaveBeenCalledTimes(100);
+  });
 });
