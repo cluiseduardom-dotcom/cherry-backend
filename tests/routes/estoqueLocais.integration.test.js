@@ -38,9 +38,13 @@ const api = (alvo, usuario, role, metodo, url, corpo) =>
 
 const criarProduto = async (alvo, estoque = 0) => {
     const res = await api(alvo, alvo.admin, 'admin', 'post', '/produtos', {
-        nome: `Prod ${crypto.randomBytes(3).toString('hex')}`, preco_venda: 100, custo: 10, estoque_atual: estoque
+        nome: `Prod ${crypto.randomBytes(3).toString('hex')}`, preco_venda: 100, custo: 10
     });
     expect(res.status).toBe(201);
+    if (estoque > 0) {
+        const ini = await api(alvo, alvo.admin, 'admin', 'post', `/produtos/${res.body.data.id}/movimentacoes`, { tipo: 'entrada', quantidade: estoque, motivo_codigo: 'estoque_inicial' });
+        expect(ini.status).toBe(201);
+    }
     return res.body.data.id;
 };
 
