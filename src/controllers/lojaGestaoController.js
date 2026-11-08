@@ -1,7 +1,7 @@
 const repository = require('../repositories/lojaGestaoRepository');
 const AppError = require('../errors/AppError');
 const response = require('../utils/response');
-const { gestaoQuerySchema, entregaCombinadaSchema, UUID } = require('../validations/lojaValidation');
+const { gestaoQuerySchema, produtosGestaoQuerySchema, entregaCombinadaSchema, UUID } = require('../validations/lojaValidation');
 
 async function listar(req, res, next) {
     try {
@@ -36,4 +36,20 @@ async function marcarEntregaCombinada(req, res, next) {
     } catch (error) { next(error); }
 }
 
-module.exports = { listar, marcarEntregaCombinada };
+async function listarProdutos(req, res, next) {
+    try {
+        const q = produtosGestaoQuerySchema.safeParse(req.query);
+
+        if (!q.success) throw new AppError(q.error.issues[0].message, 400);
+
+        const { itens, total } = await repository.listarProdutosDaLoja({
+            empresa_id: req.usuario.empresa_id, situacao: q.data.situacao, busca: q.data.busca,
+            limit: q.data.limite, offset: (q.data.pagina - 1) * q.data.limite
+        });
+
+        res.set('Cache-Control', 'no-store');
+        return response.success(res, { itens, total, pagina: q.data.pagina, limite: q.data.limite });
+    } catch (error) { next(error); }
+}
+
+module.exports = { listar, marcarEntregaCombinada, listarProdutos };
