@@ -9,7 +9,7 @@ async function listarVisiveis({ empresa_id, usuario_id }) {
          FROM locais_estoque l
          LEFT JOIN usuarios u ON u.id = l.usuario_id AND u.empresa_id = l.empresa_id
          LEFT JOIN clientes c ON c.id = l.cliente_id AND c.empresa_id = l.empresa_id
-         WHERE l.empresa_id = $1 AND l.ativo = true AND l.tipo <> 'transito'
+         WHERE l.empresa_id = $1 AND l.ativo = true AND l.tipo NOT IN ('transito', 'reserva')
            AND ($2::int IS NULL OR l.tipo = 'central' OR (l.tipo = 'maleta' AND l.usuario_id = $2))
          ORDER BY CASE l.tipo WHEN 'central' THEN 0 WHEN 'maleta' THEN 1 ELSE 2 END, l.nome, l.id`,
         [empresa_id, usuario_id ?? null]

@@ -74,6 +74,11 @@ async function criar({ empresa_id, usuario_id, origem_local_id, destino_local_id
         if (origem.tipo === 'transito' || destino.tipo === 'transito') {
             throw new AppError('Em trânsito não pode ser origem nem destino de uma transferência', 400);
         }
+        // A Reserva online (migration 096) é controlada só pelos pedidos da loja. Recusar já aqui evita deixar a
+        // mercadoria parada em trânsito rumo a um destino que nunca vai aceitá-la.
+        if (origem.tipo === 'reserva' || destino.tipo === 'reserva') {
+            throw new AppError('A Reserva online é controlada pelos pedidos da loja e não participa de transferências', 400);
+        }
         autorizar(origem, destino);
 
         const ordenados = [...itens].sort((a, b) => a.produto_id - b.produto_id);

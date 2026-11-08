@@ -1,6 +1,6 @@
-# Loja online — catálogo público e marcação de produto (fatia 1)
+# Loja online — catálogo, marcação de produto, reserva de estoque e pedidos (fatias 1 e 2)
 
-Canal e-commerce da Cherry. **Esta fatia entrega só o catálogo público e a marcação de produto.** Reserva de estoque, pedido, pagamento, webhook e frete entram nas fatias seguintes; nada disso existe ainda.
+Canal e-commerce da Cherry. **Entregue até aqui:** catálogo público, marcação de produto, reserva de estoque e pedido do visitante (fatias 1 e 2). **Ainda não existem:** pagamento, webhook, conversão do pedido em venda, cancelamento pela cliente, endereço de entrega e frete.
 
 O Vertumno continua sendo a única fonte de preço e estoque. A tabela `produtos_loja` guarda apenas *quais produtos aparecem* e o texto editorial; não tem preço, saldo nem custo (a migration 095 tem teste que garante isso).
 
@@ -54,6 +54,67 @@ Lista fixa de campos. **Nunca saem:** custo, margem, markup, fornecedor, estoque
 - **Promoções:** fora da Fase 1 (o Vertumno não tem preço promocional).
 - **Revalidar no checkout:** estes dados podem ficar até 15 s defasados; o pedido (fatia seguinte) sempre revalida preço e estoque no servidor.
 
+## Pedido do visitante (fatia 2)
+
+| Rota | Efeito |
+|---|---|
+| `POST /loja/:slug/pedidos` | cria o pedido e **reserva** o estoque |
+| `GET /loja/:slug/pedidos/:codigo` | acompanha o pedido pelo código (UUID) |
+
+### `POST /pedidos`
+Cabeçalho obrigatório `Idempotency-Key` (8 a 80 caracteres: letras, números, `-`, `_`). Limite de 10 pedidos por minuto por IP. Corpo **estrito** (qualquer campo extra, como `empresa_id`, `total`, `frete` ou `desconto`, é 400):
+```json
+{
+  "cliente": { "nome": "Maria", "email": "maria@exemplo.com", "telefone": "(11) 91234-5678" },
+  "itens": [ { "slug": "anel-solitario-5", "quantidade": 2, "preco_exibido": 63.00 } ],
+  "captcha_token": "token do Turnstile"
+}
+```
+- Até 20 itens, 1 a 10 unidades por item, sem item repetido. `telefone` é opcional.
+- **`preco_exibido` não é o preço cobrado.** O servidor grava o preço vigente do canal `online`; o campo só serve para detectar que o preço mudou desde que a cliente viu.
+- **201** com o pedido (abaixo). **200** com `Idempotent-Replayed: true` se a mesma chave com o mesmo conteúdo já criou o pedido (nada é reservado de novo).
+
+| Status | `codigo` | Quando |
+|---|---|---|
+| 400 | (sem) ou `CAPTCHA_OBRIGATORIO` | corpo ou cabeçalho inválido; falta o token anti-robô |
+| 403 | `CAPTCHA_INVALIDO` | token anti-robô recusado ou vencido |
+| 503 | `CAPTCHA_INDISPONIVEL` | não deu para validar o token (Cloudflare fora do ar) ou o segredo não está configurado em produção |
+| 404 | (sem) | loja inexistente, inativa ou sem `loja_online` |
+| 409 | `ITENS_ALTERADOS` | algum item mudou; `detalhes` lista `{slug, problema}` com `indisponivel`, `estoque_insuficiente` (+`disponivel`) ou `preco_alterado` (+`preco_atual`). **Nada é reservado** (tudo ou nada) |
+| 409 | `CHAVE_REUTILIZADA` | mesma chave com conteúdo diferente |
+| 409 | `LIMITE_PEDIDOS_ABERTOS` | 3 pedidos aguardando pagamento para o mesmo e-mail |
+| 429 | (sem) | limite por IP |
+
+### Pedido (`data`)
+```json
+{
+  "codigo": "6f1c...-uuid", "status": "aguardando_pagamento",
+  "itens": [ { "slug": "...", "nome": "...", "quantidade": 2, "preco_unitario": 63.0, "subtotal": 126.0 } ],
+  "subtotal": 126.0, "desconto": 0, "frete": null, "total": 126.0,
+  "reserva_expira_em": "2026-11-08T14:30:00.000Z", "criado_em": "...", "pago_em": null
+}
+```
+`frete: null` significa **a combinar** (decisão provisória do PO). A resposta nunca traz e-mail, telefone, nome da cliente, chave de idempotência, hash nem id interno. Estados: `aguardando_pagamento`, `pago`, `cancelado`, `expirado` (hoje só os dois primeiros e `expirado` são alcançáveis).
+
+### Reserva de estoque
+- A reserva é um **local de estoque novo**, `Reserva online` (tipo `reserva`, migration 096). Ao criar o pedido, cada peça **sai do Central e entra na Reserva** (duas movimentações comuns no livro, `Reserva online #<id>`); o total `produtos.estoque_atual` não muda.
+- O PDV só vende do Central e da própria maleta, então a peça reservada **não pode ser vendida duas vezes**, sem alterar o PDV.
+- Concorrência: os produtos são travados em ordem de id (a mesma ordem do PDV, sem deadlock), e preço e saldo são lidos **depois** do travamento. Última unidade disputada por N clientes: exatamente uma leva.
+- A Reserva **não aceita** movimentação avulsa, transferência nem venda do PDV (todas recusadas); não aparece nas listas de locais; o saldo por produto continua visível na tela de saldos.
+- **Prazo:** 30 minutos (`RESERVA_MINUTOS`, a confirmar com o PO). Vencido, o pedido vira `expirado`, a peça volta ao Central e o pedido continua no histórico, com trilha em `pedidos_loja_eventos` (só de inserção).
+- **Quem libera as reservas vencidas:** (1) o próprio `POST`/`GET` do pedido varre as da loja, e (2) o script `scripts/expirar-reservas-loja.js`, para rodar a cada minuto como **Cron Job do Render** (`node scripts/expirar-reservas-loja.js`, mesmas variáveis da API). Sem o cron, uma reserva vencida de uma loja sem movimento só volta ao Central quando alguém acessar o pedido ou criar outro; **o cron é obrigatório no go-live**.
+
+### Idempotência
+`(empresa, Idempotency-Key)` é único. Requisições simultâneas com a mesma chave são serializadas: uma cria, as outras recebem o mesmo pedido. A chave guarda uma impressão digital do conteúdo; a mesma chave com outro conteúdo é recusada.
+
+### Freios contra reserva sem pagamento
+- **Verificação anti-robô (Cloudflare Turnstile)** no `POST /pedidos`, **antes** de reservar qualquer peça. O navegador envia `captcha_token` no corpo; o servidor confere com a Cloudflare usando `TURNSTILE_SECRET_KEY` (o segredo nunca vai ao frontend nem a log).
+  - Em `production` e `staging` é **obrigatória**: sem o segredo configurado, o pedido responde `503 CAPTCHA_INDISPONIVEL` e o erro vai ao log (falha fechada). Em `development` e `test` só roda se o segredo existir.
+  - `400 CAPTCHA_OBRIGATORIO` (sem token), `403 CAPTCHA_INVALIDO` (token recusado ou vencido), `503 CAPTCHA_INDISPONIVEL` (Cloudflare fora do ar ou lenta: limite de 5 s, e nunca deixa passar).
+  - **Retry não é barrado:** se a mesma chave de idempotência já criou o pedido com o mesmo conteúdo, ele é devolvido sem nova verificação (o token é de uso único). O token não faz parte do conteúdo do pedido.
+- 10 pedidos por minuto por IP, 3 pedidos abertos por e-mail, no máximo 10 unidades por item e 20 itens por pedido.
+- **Risco residual:** uma pessoa real que passe pela verificação ainda segura estoque por 30 minutos, até 3 pedidos por e-mail. Isso é o custo de reservar antes de pagar.
+
 ## Rotas de gestão (autenticadas)
 | Rota | Quem | Efeito |
 |---|---|---|
@@ -67,6 +128,9 @@ Lista fixa de campos. **Nunca saem:** custo, margem, markup, fornecedor, estoque
 
 ## Aplicar em produção
 1. Migration `095_loja_online.sql` (só acrescenta; reversão manual no rodapé do arquivo).
-2. Definir `LOJA_CORS_ORIGINS` com o endereço da loja, quando ela existir.
-3. Ligar `loja_online` para a Cherry no Painel.
+2. Migration `096_loja_pedidos_reserva.sql`: acrescenta tabelas e **recria as duas constraints de `locais_estoque`** aceitando o tipo `reserva` (relaxamento: nada que valia deixa de valer; trava a tabela por instantes). Reversão manual no rodapé.
+3. **Turnstile:** criar o widget no painel da Cloudflare (Turnstile), guardar a *secret key* em `TURNSTILE_SECRET_KEY` no serviço da API e a *site key* na loja. Sem isso a loja responde 503 em produção, por desenho.
+4. Criar o **Cron Job do Render** `node scripts/expirar-reservas-loja.js` a cada minuto.
+5. Definir `LOJA_CORS_ORIGINS` com o endereço da loja, quando ela existir.
+6. Ligar `loja_online` para a Cherry no Painel.
 Aplicar só pelo responsável; nada disto foi aplicado em produção.

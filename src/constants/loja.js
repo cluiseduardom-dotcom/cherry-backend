@@ -10,6 +10,13 @@ module.exports = {
     MAX_FOTOS_PUBLICAS: 5,
     // Estoque exibido é limitado: acima disso a loja só sabe que "há estoque". Não expõe o saldo real.
     QUANTIDADE_MAXIMA_EXIBIDA: 10,
+    // Pedido: quanto tempo a peça fica separada esperando o pagamento (o QR do Pix vale 30 min). Decisão
+    // provisória a confirmar com o PO; vencido o prazo, a peça volta ao Central.
+    RESERVA_MINUTOS: 30,
+    MAX_ITENS_POR_PEDIDO: 20,
+    MAX_QUANTIDADE_POR_ITEM: 10,
+    // Freio contra quem reserva o estoque sem pagar: pedidos abertos por e-mail.
+    MAX_PEDIDOS_ABERTOS_POR_EMAIL: 3,
     LIMITE_PADRAO: 24,
     LIMITE_MAXIMO: 48
 };
