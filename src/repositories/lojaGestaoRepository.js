@@ -106,4 +106,76 @@ async function listarParaAvisos(empresa_id) {
     return { aCombinar, semVenda };
 }
 
-module.exports = { listarPedidos, marcarEntregaCombinada, listarParaAvisos, SITUACOES };
+// ---- Produtos da loja (gestão da marcação "mostrar na loja") ----
+// Lista os produtos ACABADOS e ATIVOS da empresa com a marcação da loja e o que decide se a peça aparece de fato:
+// preço no canal `online`, saldo no Central e fotos. Só admin chega aqui (ver app.js). Nunca traz custo nem margem.
+const FILTROS_PRODUTOS = {
+    todos: 'TRUE',
+    publicados: 'COALESCE(pl.visivel, false)',
+    nao_publicados: 'NOT COALESCE(pl.visivel, false)'
+};
+
+// Escapa os curingas do LIKE (barra, % e _): a busca da pessoa é texto literal.
+const textoLiteral = (v) => String(v).replace(/[\\%_]/g, (c) => '\\' + c);
+
+async function listarProdutosDaLoja({ empresa_id, situacao, busca, limit, offset }) {
+    const filtro = FILTROS_PRODUTOS[situacao];
+
+    if (!filtro) throw new AppError('Situação inválida', 400);
+
+    const params = [empresa_id];
+    let filtroBusca = '';
+
+    if (busca) {
+        params.push(`%${textoLiteral(busca)}%`);
+        filtroBusca = `AND p.nome ILIKE $${params.length}`;
+    }
+
+    const base = `
+        FROM produtos p
+        LEFT JOIN produtos_loja pl ON pl.produto_id = p.id AND pl.empresa_id = p.empresa_id
+        LEFT JOIN canais_venda cv ON cv.empresa_id = p.empresa_id AND cv.nome = 'online' AND cv.ativo = true
+        LEFT JOIN LATERAL (
+            SELECT pp.preco_venda FROM precos_produto pp
+            WHERE pp.produto_id = p.id AND pp.empresa_id = p.empresa_id AND pp.canal_id = cv.id
+            ORDER BY pp.criado_em DESC, pp.id DESC LIMIT 1
+        ) preco ON true
+        LEFT JOIN locais_estoque lc ON lc.empresa_id = p.empresa_id AND lc.tipo = 'central'
+        LEFT JOIN estoque_locais el ON el.produto_id = p.id AND el.local_id = lc.id AND el.empresa_id = p.empresa_id
+        WHERE p.empresa_id = $1 AND p.ativo = true AND p.tipo = 'acabado' AND ${filtro} ${filtroBusca}`;
+
+    const { rows } = await db.query(
+        `SELECT p.id AS produto_id, p.nome, COALESCE(pl.visivel, false) AS visivel, pl.slug, pl.titulo, COALESCE(pl.ordem, 0) AS ordem,
+                preco.preco_venda AS preco_online, COALESCE(el.saldo, 0) AS saldo_central,
+                (SELECT COUNT(*)::int FROM produto_imagens i WHERE i.produto_id = p.id AND i.empresa_id = p.empresa_id) AS fotos
+         ${base}
+         ORDER BY COALESCE(pl.visivel, false) DESC, COALESCE(pl.ordem, 0), p.nome, p.id
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+    );
+    const { rows: [{ total }] } = await db.query(`SELECT COUNT(*)::int AS total ${base}`, params);
+
+    return {
+        itens: rows.map((r) => {
+            const preco = r.preco_online === null ? null : Number(r.preco_online);
+            const temPreco = preco !== null && preco > 0;
+
+            return {
+                produto_id: r.produto_id,
+                nome: r.nome,
+                visivel: r.visivel,
+                slug: r.slug,
+                titulo: r.titulo,
+                ordem: r.ordem,
+                preco_online: temPreco ? preco : null,
+                saldo_central: Number(r.saldo_central),
+                fotos: r.fotos,
+                // A loja só mostra a peça marcada que tem preço no canal online; sem saldo aparece como indisponível.
+                aparece_na_loja: r.visivel && temPreco
+            };
+        }),
+        total
+    };
+}
+
+module.exports = { listarPedidos, marcarEntregaCombinada, listarParaAvisos, listarProdutosDaLoja, SITUACOES };

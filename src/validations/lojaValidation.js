@@ -89,5 +89,13 @@ const entregaCombinadaSchema = z.object({
     observacao: z.string().trim().max(500, 'Observação deve ter no máximo 500 caracteres').transform((v) => v || null).nullable().optional()
 }).strict();
 
+const produtosGestaoQuerySchema = z.object({
+    situacao: z.enum(['todos', 'publicados', 'nao_publicados'], { error: 'Situação inválida' }).default('todos'),
+    busca: z.string().trim().max(80, 'Busca deve ter no máximo 80 caracteres').transform((v) => v || undefined).optional(),
+    limite: z.coerce.number().int().min(1, 'Limite inválido').max(50, 'Limite inválido').default(20),
+    pagina: z.coerce.number().int().min(1, 'Página inválida').max(1000, 'Página inválida').default(1)
+});
+
+module.exports.produtosGestaoQuerySchema = produtosGestaoQuerySchema;
 module.exports.gestaoQuerySchema = gestaoQuerySchema;
 module.exports.entregaCombinadaSchema = entregaCombinadaSchema;
