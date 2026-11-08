@@ -58,6 +58,11 @@ const pedidoSchema = z.object({
     captcha_token: z.string().trim().min(1).max(2048, 'Verificação de segurança inválida').optional()
 }).strict();
 
+// Pagamento do pedido: só o método. Valor, pedido e loja vêm do servidor.
+const pagamentoSchema = z.object({
+    metodo: z.enum(['pix', 'cartao'], { error: 'Escolha Pix ou cartão' })
+}).strict();
+
 const CHAVE_IDEMPOTENCIA = /^[A-Za-z0-9_-]{8,80}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -71,4 +76,4 @@ function hashDoPedido({ cliente, itens }) {
     return crypto.createHash('sha256').update(JSON.stringify(canonico)).digest('hex');
 }
 
-module.exports = { catalogoQuerySchema, marcacaoSchema, pedidoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID, ORDENS };
+module.exports = { catalogoQuerySchema, marcacaoSchema, pedidoSchema, pagamentoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID, ORDENS };

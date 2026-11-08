@@ -13,6 +13,12 @@ module.exports = {
     // Pedido: quanto tempo a peça fica separada esperando o pagamento (o QR do Pix vale 30 min). Decisão
     // provisória a confirmar com o PO; vencido o prazo, a peça volta ao Central.
     RESERVA_MINUTOS: 30,
+    // Pagamento iniciado: folga sobre o prazo para a cliente concluir, e teto absoluto de vida da reserva (contado da
+    // criação do pedido) para ninguém segurar a peça indefinidamente criando cobrança atrás de cobrança.
+    RESERVA_GRACA_MINUTOS: 2,
+    RESERVA_TETO_MINUTOS: 120,
+    // Quanto tempo o código de uma cobrança "em preparo" vale antes de ser considerado abandonado.
+    PREPARO_PAGAMENTO_SEGUNDOS: 60,
     MAX_ITENS_POR_PEDIDO: 20,
     MAX_QUANTIDADE_POR_ITEM: 10,
     // Freio contra quem reserva o estoque sem pagar: pedidos abertos por e-mail.

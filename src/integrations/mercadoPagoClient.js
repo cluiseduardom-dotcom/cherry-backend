@@ -195,7 +195,9 @@ function descritivoDeFatura(nome) {
 // default_installments=1 ofereceu apenas pagamento à vista, enquanto o link nativo da mesma conta e do mesmo cartão
 // ofereceu 2x, 3x, 4x… (causa provável, a confirmar no teste real depois desta mudança).
 // [CONFIRMAR NO TESTE REAL] criação com o token OAuth da loja, installments como teto de parcelas e init_point.
-async function criarPreferenciaCartao(config, { accessToken, codigo, valor, descricao, nomeLoja, taxaPlataforma, parcelasMaximas, expiraDe, expiraAte }) {
+// `urlsRetorno` (opcional): { sucesso, pendente, falha } para onde o Mercado Pago devolve a cliente. Ausente = o retorno
+// legado para o frontend do ERP (PDV); `null` = sem retorno automático. A loja online passa o endereço da própria loja.
+async function criarPreferenciaCartao(config, { accessToken, codigo, valor, descricao, nomeLoja, taxaPlataforma, parcelasMaximas, expiraDe, expiraAte, urlsRetorno }) {
     const corpo = {
         items: [{ id: codigo, title: descricao, quantity: 1, currency_id: 'BRL', unit_price: valor }],
         external_reference: codigo,
@@ -209,7 +211,10 @@ async function criarPreferenciaCartao(config, { accessToken, codigo, valor, desc
         expiration_date_to: expiraAte
     };
 
-    if (config.frontendUrl) {
+    if (urlsRetorno) {
+        corpo.back_urls = { success: urlsRetorno.sucesso, pending: urlsRetorno.pendente, failure: urlsRetorno.falha };
+        corpo.auto_return = 'approved';
+    } else if (urlsRetorno === undefined && config.frontendUrl) {
         const retorno = (resultado) => `${config.frontendUrl}/pagamento-recebido?resultado=${resultado}`;
 
         corpo.back_urls = { success: retorno('sucesso'), pending: retorno('pendente'), failure: retorno('falha') };

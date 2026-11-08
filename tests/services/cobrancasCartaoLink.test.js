@@ -6,6 +6,8 @@ jest.mock('../../src/repositories/cobrancaDevolucoesRepository');
 jest.mock('../../src/repositories/taxasPlataformaRepository');
 jest.mock('../../src/repositories/mercadoPagoRepository');
 jest.mock('../../src/repositories/empresaRepository');
+// O serviço agora também converte pedido pago da loja online; aqui o repositório de pedidos é simulado (sem banco).
+jest.mock('../../src/repositories/lojaPedidosRepository');
 
 const client = require('../../src/integrations/mercadoPagoClient');
 const mercadoPagoService = require('../../src/services/mercadoPagoService');

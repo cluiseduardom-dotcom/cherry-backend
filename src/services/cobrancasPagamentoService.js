@@ -8,6 +8,7 @@ const cobrancasRepository = require('../repositories/cobrancasPagamentoRepositor
 const devolucoesRepository = require('../repositories/cobrancaDevolucoesRepository');
 const taxasPlataformaRepository = require('../repositories/taxasPlataformaRepository');
 const empresaRepository = require('../repositories/empresaRepository');
+const lojaPedidosRepository = require('../repositories/lojaPedidosRepository');
 const db = require('../config/db');
 const { reaisParaCentavos, calcularTaxaPlataformaCentavos, centavosParaReais } = require('../utils/taxaPlataforma');
 
@@ -101,7 +102,9 @@ function paraResposta(cobranca) {
     return resposta;
 }
 
-async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }) {
+// `opcoes` (todas opcionais; o PDV não passa nenhuma): `codigo` fixo (a loja online o grava no pedido ANTES de chamar
+// o provedor, para nunca haver duas cobranças por pedido) e `descricao`. `usuario_id` pode ser null: cobrança da loja.
+async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }, opcoes = {}) {
     const config = mercadoPagoService.exigirConfig();
     const valorCentavos = reaisParaCentavos(valor);
 
@@ -127,13 +130,13 @@ async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }) {
         throw new AppError('Regra de taxa inválida para esta cobrança.', 409);
     }
 
-    const codigo = crypto.randomUUID();
+    const codigo = opcoes.codigo ?? crypto.randomUUID();
     const cobranca = await cobrancasRepository.criar({
         codigo,
         empresa_id,
         valor: centavosParaReais(valorCentavos),
         taxa_plataforma: centavosParaReais(taxaCentavos),
-        criado_por: usuario_id
+        criado_por: usuario_id ?? null
     });
 
     const expiraEm = new Date(Date.now() + VALIDADE_PIX_MS);
@@ -145,7 +148,7 @@ async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }) {
             accessToken,
             codigo,
             valor: Number(centavosParaReais(valorCentavos)),
-            descricao: 'Venda no PDV',
+            descricao: opcoes.descricao ?? 'Venda no PDV',
             emailPagador,
             taxaPlataforma: Number(centavosParaReais(taxaCentavos)),
             expiraEm: formatarExpiracao(expiraEm)
@@ -171,7 +174,8 @@ async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }) {
 
 // Link de pagamento de cartão (crédito/débito, até 12x). O cliente paga na página do Mercado Pago; a
 // venda só nasce depois, com o pagamento já confirmado (mesmo modelo do Pix).
-async function criarLinkCartao({ empresa_id, usuario_id }, { valor, parcelas_maximas }) {
+// `opcoes` (opcionais): `codigo` fixo e `urlsRetorno` ({ sucesso, pendente, falha }; null = sem retorno automático).
+async function criarLinkCartao({ empresa_id, usuario_id }, { valor, parcelas_maximas }, opcoes = {}) {
     const config = mercadoPagoService.exigirConfig();
     const valorCentavos = reaisParaCentavos(valor);
     // Teto de parcelas do link: o menor entre o pedido na venda e a variável MP_LINK_PARCELAS_MAXIMAS (padrão 12).
@@ -186,13 +190,13 @@ async function criarLinkCartao({ empresa_id, usuario_id }, { valor, parcelas_max
     const empresa = await empresaRepository.obterDados(empresa_id);
     const nomeLoja = String(empresa?.nome ?? '').trim();
 
-    const codigo = crypto.randomUUID();
+    const codigo = opcoes.codigo ?? crypto.randomUUID();
     const cobranca = await cobrancasRepository.criar({
         codigo,
         empresa_id,
         valor: centavosParaReais(valorCentavos),
         taxa_plataforma: 0,
-        criado_por: usuario_id,
+        criado_por: usuario_id ?? null,
         metodo: 'cartao_link',
         parcelas_maximas: parcelasMaximas
     });
@@ -212,7 +216,8 @@ async function criarLinkCartao({ empresa_id, usuario_id }, { valor, parcelas_max
             taxaPlataforma: 0,
             parcelasMaximas,
             expiraDe: formatarExpiracao(agora),
-            expiraAte: formatarExpiracao(expiraEm)
+            expiraAte: formatarExpiracao(expiraEm),
+            urlsRetorno: opcoes.urlsRetorno
         });
     } catch (error) {
         await cobrancasRepository.marcarFalhou(cobranca.id, empresa_id);
@@ -320,6 +325,15 @@ async function sincronizar(cobrancaInicial) {
     return atualizada ?? await cobrancasRepository.buscarPorCodigo(cobranca.codigo, cobranca.empresa_id);
 }
 
+// Pagamento confirmado: se a cobrança é de um PEDIDO DA LOJA ONLINE, converte o pedido em venda (idempotente: webhook
+// repetido ou consulta repetida não vende de novo). Cobrança do PDV não tem pedido e passa direto. Só roda para
+// cobrança paga e ainda sem venda; falha sobe para quem chamou (o webhook responde 500 e o Mercado Pago repete).
+async function aposSincronizar(cobranca) {
+    if (cobranca?.status !== 'pago' || cobranca.venda_id) return null;
+
+    return lojaPedidosRepository.converterPedidoPago(cobranca);
+}
+
 async function consultar(empresa_id, codigo) {
     let cobranca = await cobrancasRepository.buscarPorCodigo(codigo, empresa_id);
 
@@ -333,6 +347,7 @@ async function consultar(empresa_id, codigo) {
     if (cobranca.status === 'pendente' && (cobranca.id_externo || cobranca.metodo === 'cartao_link') && vencida) {
         try {
             cobranca = await sincronizar(cobranca);
+            await aposSincronizar(cobranca);
         } catch (error) {
             // Leitura não falha por instabilidade do provedor: devolve o último estado conhecido.
             console.error(`Mercado Pago: falha ao consultar a cobrança ${cobranca.codigo} (${error.message})`);
@@ -346,7 +361,7 @@ async function processarNotificacao(dataId, { mpUserId } = {}) {
     const cobranca = await cobrancasRepository.buscarPorIdExterno(dataId);
 
     if (cobranca) {
-        await sincronizar(cobranca);
+        await aposSincronizar(await sincronizar(cobranca));
         return { processada: true };
     }
 
@@ -378,7 +393,7 @@ async function processarNotificacao(dataId, { mpUserId } = {}) {
         return { processada: false };
     }
 
-    await sincronizar(doLink);
+    await aposSincronizar(await sincronizar(doLink));
 
     return { processada: true };
 }
@@ -443,4 +458,4 @@ async function listarDevolucoes(empresa_id, paginacao) {
     return devolucoesRepository.listarDevolucoes({ empresa_id, ...paginacao });
 }
 
-module.exports = { criarPix, criarLinkCartao, escolherPagamentoCartao, consultar, processarNotificacao, devolver, listarADevolver, listarDevolucoes, mapearStatusProvedor, formatarExpiracao, extrairTotalPago, TRANSICOES };
+module.exports = { criarPix, criarLinkCartao, aposSincronizar, escolherPagamentoCartao, consultar, processarNotificacao, devolver, listarADevolver, listarDevolucoes, mapearStatusProvedor, formatarExpiracao, extrairTotalPago, TRANSICOES };

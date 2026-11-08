@@ -180,13 +180,19 @@ function criarResolvedorDeLocal(client, { empresa_id, usuario_id }) {
     };
 }
 
-async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null, somente_clientes_do_usuario }) {
+// Opcionais, usados só pelo fluxo da loja online (pedido pago -> venda):
+//  * `clienteExterno`: participa da transação de quem chamou (que reserva e libera o estoque na mesma transação).
+//    Com ele, esta função não abre, confirma, desfaz nem libera a conexão: quem abriu é quem fecha.
+//  * `precosFixos`: { [produto_id]: preco_venda }. Vale o preço CONGELADO no pedido, não o vigente de hoje (a cliente
+//    pagou aquele valor). Produto sem preço no mapa é recusado como "sem preço definido".
+async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null, somente_clientes_do_usuario, clienteExterno = null, precosFixos = null }) {
     validarLimitesDeParcelamento(pagamentos, meses_prazo);
 
-    const client = await db.connect();
+    const client = clienteExterno || await db.connect();
+    const gerenciaTransacao = !clienteExterno;
 
     try {
-        await client.query('BEGIN');
+        if (gerenciaTransacao) await client.query('BEGIN');
 
         if (idempotencyKey) {
             const endpoint = 'POST /vendas';
@@ -211,7 +217,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                     throw new AppError('Operação idempotente já está em processamento ou não possui resposta disponível', 409);
                 }
 
-                await client.query('COMMIT');
+                if (gerenciaTransacao) await client.query('COMMIT');
                 return existenteRows[0].resposta;
             }
         }
@@ -266,7 +272,9 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             if (!produtoRows.length) throw new AppError('Produto não encontrado', 404);
             if (!produtoRows[0].ativo) throw new AppError('Produto inativo não pode ser vendido', 400);
 
-            const precoVigente = await precosRepository.buscarPrecoVigente(item.produto_id, canal_id, empresa_id, client);
+            const precoVigente = precosFixos
+                ? (precosFixos[item.produto_id] == null ? null : { preco_venda: precosFixos[item.produto_id] })
+                : await precosRepository.buscarPrecoVigente(item.produto_id, canal_id, empresa_id, client);
             if (!precoVigente) throw new AppError('Produto sem preço definido para o canal informado', 409);
 
             const preco_unitario = Number(precoVigente.preco_venda);
@@ -401,7 +409,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 venda_id: venda.id, empresa_id, origem: 'venda', executado_por: usuario_id
             }, client);
 
-            await client.query('COMMIT');
+            if (gerenciaTransacao) await client.query('COMMIT');
             return {
                 ...venda,
                 subtotal,
@@ -532,13 +540,13 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             );
         }
 
-        await client.query('COMMIT');
+        if (gerenciaTransacao) await client.query('COMMIT');
         return resposta;
     } catch (error) {
-        await client.query('ROLLBACK');
+        if (gerenciaTransacao) await client.query('ROLLBACK');
         throw error;
     } finally {
-        client.release();
+        if (gerenciaTransacao) client.release();
     }
 }
 

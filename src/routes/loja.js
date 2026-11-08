@@ -33,5 +33,7 @@ router.get('/:slug/vitrines', limiteLoja, controller.vitrines);
 router.get('/:slug/produtos/:produtoSlug', limiteLoja, controller.produto);
 router.post('/:slug/pedidos', limitePedido, controller.criarPedido);
 router.get('/:slug/pedidos/:codigo', limiteLoja, controller.buscarPedido);
+// Cria (ou devolve) o Pix/link de cartão do pedido. Mesmo teto do pedido: cada chamada pode ir ao Mercado Pago.
+router.post('/:slug/pedidos/:codigo/pagamento', limitePedido, controller.criarPagamento);
 
 module.exports = router;

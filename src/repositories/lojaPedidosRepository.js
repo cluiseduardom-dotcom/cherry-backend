@@ -2,7 +2,8 @@ const crypto = require('node:crypto');
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const estoqueRepository = require('./estoqueRepository');
-const { RESERVA_MINUTOS, MAX_PEDIDOS_ABERTOS_POR_EMAIL, QUANTIDADE_MAXIMA_EXIBIDA } = require('../constants/loja');
+const vendasRepository = require('./vendasRepository');
+const { RESERVA_MINUTOS, MAX_PEDIDOS_ABERTOS_POR_EMAIL, QUANTIDADE_MAXIMA_EXIBIDA, RESERVA_TETO_MINUTOS, RESERVA_GRACA_MINUTOS, PREPARO_PAGAMENTO_SEGUNDOS } = require('../constants/loja');
 
 // Pedidos da loja online (visitante): criação com reserva de estoque, idempotência e expiração.
 //
@@ -48,6 +49,15 @@ async function visao(client, empresa_id, filtro) {
     if (!rows.length) return null;
 
     const p = rows[0];
+
+    // Pagamento em aberto (para a cliente voltar à tela e ainda ver o QR do Pix ou o link do cartão). Só enquanto o
+    // pedido aguarda pagamento e a cobrança está pendente; nunca traz taxa, id do provedor nem dado do pagador.
+    const { rows: cobrancas } = p.status === 'aguardando_pagamento' ? await client.query(
+        `SELECT c.metodo, c.status, c.qr_code, c.qr_code_base64, c.link_url, c.parcelas_maximas, c.expira_em
+           FROM pedidos_loja p JOIN cobrancas_pagamento c ON c.codigo = p.cobranca_codigo AND c.empresa_id = p.empresa_id
+          WHERE p.id = $1 AND p.empresa_id = $2`,
+        [p.id, empresa_id]
+    ) : { rows: [] };
     const { rows: itens } = await client.query(
         `SELECT pl.slug, i.nome, i.quantidade, i.preco_unitario
            FROM itens_pedido_loja i
@@ -73,8 +83,24 @@ async function visao(client, empresa_id, filtro) {
         total: Number(p.total),
         reserva_expira_em: p.reserva_expira_em,
         criado_em: p.criado_em,
-        pago_em: p.pago_em
+        pago_em: p.pago_em,
+        pagamento: cobrancas.length && cobrancas[0].status === 'pendente' ? resumoDoPagamento(cobrancas[0]) : null
     };
+}
+
+// O que a cliente vê de um pagamento em aberto. Pix: copia-e-cola e QR. Cartão: o link da página do Mercado Pago.
+function resumoDoPagamento(c) {
+    const alvo = c.expira_em ? new Date(c.expira_em).getTime() : null;
+    const base = {
+        metodo: c.metodo === 'cartao_link' ? 'cartao' : 'pix',
+        status: c.status,
+        expira_em: c.expira_em ?? null,
+        expira_em_segundos: alvo === null ? null : Math.max(0, Math.floor((alvo - Date.now()) / 1000))
+    };
+
+    return c.metodo === 'cartao_link'
+        ? { ...base, link_url: c.link_url, parcelas_maximas: c.parcelas_maximas }
+        : { ...base, qr_code: c.qr_code, qr_code_base64: c.qr_code_base64 };
 }
 
 // Dados de venda lidos com os produtos JÁ TRAVADOS. Preço = o mais recente do canal `online` (regra do PDV).
@@ -276,6 +302,9 @@ async function expirarVencidos({ empresa_id = null, codigo = null, limite = 20 }
                 `SELECT id, empresa_id FROM pedidos_loja
                   WHERE status = 'aguardando_pagamento' AND reserva_expira_em < NOW()
                     AND ($1::int IS NULL OR empresa_id = $1) AND ($2::uuid IS NULL OR codigo = $2::uuid)
+                    -- Pedido cuja cobrança já foi PAGA mas ainda não virou venda nunca expira: espera a conversão.
+                    AND NOT EXISTS (SELECT 1 FROM cobrancas_pagamento c
+                                     WHERE c.codigo = pedidos_loja.cobranca_codigo AND c.empresa_id = pedidos_loja.empresa_id AND c.status = 'pago')
                   ORDER BY reserva_expira_em
                   LIMIT 1 FOR UPDATE SKIP LOCKED`,
                 [empresa_id, codigo]
@@ -315,4 +344,342 @@ async function buscarPedidoPublico(empresa_id, codigo) {
     return visao(db, empresa_id, { coluna: 'codigo', valor: codigo });
 }
 
-module.exports = { criarPedido, expirarVencidos, buscarPedidoPublico, buscarReaproveitavel, encerrarSemPagamento };
+
+// ---------------------------------------------------------------------------------------------------------------
+// Pagamento
+// ---------------------------------------------------------------------------------------------------------------
+
+const METODO_DA_COBRANCA = { pix: 'pix', cartao: 'cartao_link' };
+
+// Decide, sob a trava da linha do pedido, o que fazer com o pedido de pagamento da cliente:
+//  * 'reutilizar': já existe cobrança em aberto do mesmo método (a cliente voltou à tela ou clicou duas vezes);
+//  * 'criar': grava no pedido o código da cobrança NOVA antes de chamar o provedor. Duas requisições simultâneas
+//    nunca criam duas cobranças: a segunda vê o código já gravado e espera ("em preparo").
+// Recusas: pedido de outra loja/inexistente (404); pedido pago, expirado, cancelado ou sem reserva (409); cobrança
+// em aberto com OUTRO método (409: trocar de método com um Pix válido no ar poderia gerar dois pagamentos).
+async function prepararPagamento({ empresa_id, codigo, metodo }) {
+    const client = await db.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const { rows } = await client.query(
+            'SELECT * FROM pedidos_loja WHERE empresa_id = $1 AND codigo = $2 FOR UPDATE',
+            [empresa_id, codigo]
+        );
+
+        if (!rows.length) throw new AppError('Pedido não encontrado', 404);
+
+        const pedido = rows[0];
+
+        if (pedido.status === 'pago') throw recusar('Este pedido já foi pago.', 409, 'PEDIDO_JA_PAGO');
+
+        if (pedido.status !== 'aguardando_pagamento') {
+            throw recusar('Este pedido não está mais aguardando pagamento. Faça um novo pedido.', 409, 'PEDIDO_ENCERRADO');
+        }
+
+        if (new Date(pedido.reserva_expira_em).getTime() < Date.now()) {
+            throw recusar('O prazo de reserva deste pedido terminou. Faça um novo pedido.', 409, 'RESERVA_EXPIRADA');
+        }
+
+        if (pedido.cobranca_codigo) {
+            const { rows: cobrancas } = await client.query(
+                `SELECT codigo, metodo, status, expira_em, qr_code, link_url,
+                        EXTRACT(EPOCH FROM (NOW() - criado_em)) AS idade_segundos
+                   FROM cobrancas_pagamento WHERE codigo = $1 AND empresa_id = $2`,
+                [pedido.cobranca_codigo, empresa_id]
+            );
+            const cobranca = cobrancas[0];
+
+            if (!cobranca) {
+                // Código gravado e cobrança ainda sem linha: outra requisição a está criando agora. Passado o prazo,
+                // considera abandonada (a requisição que a gravou caiu antes de criar) e deixa criar de novo.
+                const idadeSegundos = (Date.now() - new Date(pedido.atualizado_em).getTime()) / 1000;
+
+                if (idadeSegundos < PREPARO_PAGAMENTO_SEGUNDOS) {
+                    throw recusar('O pagamento deste pedido está sendo preparado. Tente novamente em instantes.', 409, 'PAGAMENTO_EM_PREPARO');
+                }
+            } else if (cobranca.status === 'pago') {
+                throw recusar('O pagamento deste pedido já foi recebido e está sendo confirmado.', 409, 'PEDIDO_JA_PAGO');
+            } else if (cobranca.status === 'pendente' && (!cobranca.expira_em || new Date(cobranca.expira_em).getTime() > Date.now())) {
+                // Cobrança criada, mas o provedor ainda não respondeu (sem QR nem link): está em preparo agora. Reutilizá-la
+                // devolveria um pagamento vazio à cliente. Se ficou assim por mais que o prazo, a criação morreu: cria outra
+                // (a antiga não tem id no provedor, então nunca pode ser paga).
+                const semDadosDoProvedor = cobranca.metodo === 'pix' ? !cobranca.qr_code : !cobranca.link_url;
+
+                if (semDadosDoProvedor) {
+                    if (Number(cobranca.idade_segundos) < PREPARO_PAGAMENTO_SEGUNDOS) {
+                        throw recusar('O pagamento deste pedido está sendo preparado. Tente novamente em instantes.', 409, 'PAGAMENTO_EM_PREPARO');
+                    }
+                } else {
+                    if (cobranca.metodo !== METODO_DA_COBRANCA[metodo]) {
+                        throw recusar('Já existe um pagamento em aberto com outro método. Conclua-o ou aguarde ele expirar.', 409, 'PAGAMENTO_OUTRO_METODO');
+                    }
+
+                    await client.query('COMMIT');
+                    return { acao: 'reutilizar', pedido, cobrancaCodigo: cobranca.codigo };
+                }
+            }
+        }
+
+        const novoCodigo = crypto.randomUUID();
+
+        await client.query(
+            'UPDATE pedidos_loja SET cobranca_codigo = $3, atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2',
+            [pedido.id, empresa_id, novoCodigo]
+        );
+        await client.query('COMMIT');
+
+        return { acao: 'criar', pedido, cobrancaCodigo: novoCodigo };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+// A criação da cobrança falhou antes de existir linha dela (ex.: loja sem Mercado Pago conectado): solta o código
+// gravado para a cliente poder tentar de novo na hora. Se a cobrança chegou a existir (e ficou 'falhou'), não mexe.
+async function liberarPagamentoNaoCriado({ empresa_id, pedido_id, cobrancaCodigo }) {
+    await db.query(
+        `UPDATE pedidos_loja SET cobranca_codigo = NULL, atualizado_em = NOW()
+          WHERE id = $1 AND empresa_id = $2 AND cobranca_codigo = $3
+            AND NOT EXISTS (SELECT 1 FROM cobrancas_pagamento c WHERE c.codigo = $3 AND c.empresa_id = $2)`,
+        [pedido_id, empresa_id, cobrancaCodigo]
+    );
+}
+
+// Pagamento iniciado: dá tempo de a cliente pagar (prazo da reserva + uma folga curta), com teto absoluto contado
+// da criação do pedido. O teto impede segurar a peça para sempre criando cobrança atrás de cobrança.
+async function estenderReserva({ empresa_id, pedido_id, cobrancaCodigo, metodo }) {
+    const client = await db.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const { rows } = await client.query(
+            `UPDATE pedidos_loja
+                SET reserva_expira_em = LEAST(
+                        criado_em + ($3::int * INTERVAL '1 minute'),
+                        GREATEST(reserva_expira_em, NOW() + (($4::int + $5::int) * INTERVAL '1 minute'))),
+                    atualizado_em = NOW()
+              WHERE id = $1 AND empresa_id = $2 AND status = 'aguardando_pagamento'
+              RETURNING reserva_expira_em`,
+            [pedido_id, empresa_id, RESERVA_TETO_MINUTOS, RESERVA_MINUTOS, RESERVA_GRACA_MINUTOS]
+        );
+
+        if (rows.length) {
+            await registrarEvento(client, {
+                empresa_id, pedido_id, tipo: 'pagamento_iniciado', de: 'aguardando_pagamento', para: 'aguardando_pagamento',
+                detalhes: { metodo, cobranca: cobrancaCodigo }
+            });
+        }
+
+        await client.query('COMMIT');
+        return rows[0]?.reserva_expira_em ?? null;
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Pedido pago -> venda
+// ---------------------------------------------------------------------------------------------------------------
+
+// Converte o pedido cuja cobrança foi PAGA em uma venda do Vertumno, em UMA transação: devolve a peça da Reserva ao
+// Central, cria a venda (canal `online`, preço CONGELADO do pedido, pagamento do gateway, taxa da plataforma como no
+// PDV) e marca o pedido pago. Qualquer falha desfaz tudo: o pedido segue aguardando, a peça segue reservada e a
+// próxima tentativa (webhook repetido, consulta ou o cron) refaz.
+//
+// Idempotente: sob a trava do pedido, pedido já pago não vende de novo (webhook duplicado, simultâneo ou repetido).
+// Pagamento tardio (pedido já expirado): se ainda houver estoque no Central, vende; se não houver, NÃO vende, registra
+// o evento e a cobrança paga continua sem venda, aparecendo em "a devolver" para o financeiro estornar.
+// Devolve null se a cobrança não é de pedido da loja; senão { resultado, pedido_id, venda_id? }.
+async function converterPedidoPago(cobranca) {
+    const client = await db.connect();
+    let pedido = null;
+
+    try {
+        await client.query('BEGIN');
+
+        const { rows } = await client.query(
+            'SELECT * FROM pedidos_loja WHERE empresa_id = $1 AND cobranca_codigo = $2 FOR UPDATE',
+            [cobranca.empresa_id, cobranca.codigo]
+        );
+
+        if (!rows.length) {
+            await client.query('COMMIT');
+            return null;
+        }
+
+        pedido = rows[0];
+        const empresa_id = pedido.empresa_id;
+
+        if (pedido.status === 'pago') {
+            await client.query('COMMIT');
+            return { resultado: 'ja_convertido', pedido_id: pedido.id, venda_id: pedido.venda_id };
+        }
+
+        if (pedido.status === 'cancelado') {
+            await registrarEvento(client, { empresa_id, pedido_id: pedido.id, tipo: 'pago_em_pedido_cancelado', de: pedido.status, para: pedido.status, detalhes: { cobranca: cobranca.codigo } });
+            await client.query('COMMIT');
+            return { resultado: 'pedido_cancelado', pedido_id: pedido.id };
+        }
+
+        // Estado atual da cobrança, não o objeto recebido (pode estar velho): precisa estar paga e sem venda.
+        const { rows: atuais } = await client.query(
+            'SELECT metodo, status, valor, tipo_cartao, parcelas, venda_id FROM cobrancas_pagamento WHERE codigo = $1 AND empresa_id = $2',
+            [cobranca.codigo, empresa_id]
+        );
+        const cob = atuais[0];
+
+        if (!cob || cob.status !== 'pago' || cob.venda_id !== null) {
+            await client.query('COMMIT');
+            return { resultado: 'cobranca_indisponivel', pedido_id: pedido.id };
+        }
+
+        if (centavos(cob.valor) !== centavos(pedido.total)) {
+            throw new Error('Valor da cobrança paga não confere com o total do pedido');
+        }
+
+        const { rows: itens } = await client.query(
+            'SELECT produto_id, quantidade, preco_unitario FROM itens_pedido_loja WHERE pedido_id = $1 AND empresa_id = $2 ORDER BY produto_id',
+            [pedido.id, empresa_id]
+        );
+
+        await travarProdutos(client, empresa_id, itens.map((i) => i.produto_id));
+
+        const centralId = await estoqueRepository.garantirLocalCentral(client, empresa_id);
+        const reservaId = await estoqueRepository.garantirLocalReserva(client, empresa_id);
+
+        if (pedido.status === 'aguardando_pagamento') {
+            // A peça está na Reserva: volta ao Central e a venda a baixa de lá, na mesma transação (nunca há instante
+            // em que ela esteja livre para o PDV).
+            for (const i of itens) {
+                await mover(client, {
+                    empresa_id, produto_id: i.produto_id, quantidade: i.quantidade, de: reservaId, para: centralId,
+                    motivo: `Reserva online #${pedido.id} (pagamento confirmado)`
+                });
+            }
+        } else {
+            // Pedido expirado: a reserva já voltou ao Central. Só vende se ainda houver saldo para tudo.
+            const { rows: saldos } = await client.query(
+                'SELECT produto_id, saldo FROM estoque_locais WHERE empresa_id = $1 AND local_id = $2 AND produto_id = ANY($3::int[])',
+                [empresa_id, centralId, itens.map((i) => i.produto_id)]
+            );
+            const saldoPor = new Map(saldos.map((r) => [r.produto_id, r.saldo]));
+
+            if (itens.some((i) => (saldoPor.get(i.produto_id) ?? 0) < i.quantidade)) {
+                await registrarEvento(client, { empresa_id, pedido_id: pedido.id, tipo: 'pago_sem_estoque', de: pedido.status, para: pedido.status, detalhes: { cobranca: cobranca.codigo, motivo: 'pagamento chegou depois de a reserva expirar e a peça não está mais disponível; estornar' } });
+                await client.query('COMMIT');
+                return { resultado: 'pago_sem_estoque', pedido_id: pedido.id };
+            }
+        }
+
+        const { rows: canais } = await client.query(
+            `SELECT id FROM canais_venda WHERE empresa_id = $1 AND nome = 'online' AND ativo = true`,
+            [empresa_id]
+        );
+
+        if (!canais.length) throw new Error('Empresa sem o canal de venda "online" ativo');
+
+        const pagamento = cob.metodo === 'pix'
+            ? { forma_pagamento: 'pix', valor: Number(pedido.total), cobranca_codigo: cobranca.codigo }
+            : { forma_pagamento: cob.tipo_cartao, valor: Number(pedido.total), numero_parcelas: cob.parcelas ?? 1, cobranca_codigo: cobranca.codigo };
+
+        if (!pagamento.forma_pagamento) throw new Error('Cobrança de cartão paga sem o tipo do cartão');
+
+        const venda = await vendasRepository.criar({
+            canal_id: canais[0].id,
+            usuario_id: null,
+            empresa_id,
+            itens: itens.map((i) => ({ produto_id: i.produto_id, quantidade: i.quantidade })),
+            pagamentos: [pagamento],
+            clienteExterno: client,
+            precosFixos: Object.fromEntries(itens.map((i) => [i.produto_id, Number(i.preco_unitario)]))
+        });
+
+        await client.query(
+            `UPDATE pedidos_loja
+                SET status = 'pago', pago_em = NOW(), venda_id = $3, encerrado_em = NULL, motivo_encerramento = NULL, atualizado_em = NOW()
+              WHERE id = $1 AND empresa_id = $2`,
+            [pedido.id, empresa_id, venda.id]
+        );
+        await registrarEvento(client, {
+            empresa_id, pedido_id: pedido.id, tipo: 'pago', de: pedido.status, para: 'pago',
+            detalhes: { venda_id: venda.id, metodo: cob.metodo, apos_expirar: pedido.status === 'expirado' }
+        });
+
+        await client.query('COMMIT');
+        return { resultado: 'convertido', pedido_id: pedido.id, venda_id: venda.id };
+    } catch (error) {
+        await client.query('ROLLBACK');
+
+        // Rastro da falha, fora da transação desfeita (só texto curto do erro, nunca dado da cliente).
+        if (pedido) {
+            await db.query(
+                `INSERT INTO pedidos_loja_eventos (empresa_id, pedido_id, tipo, status_anterior, status_novo, detalhes)
+                 VALUES ($1, $2, 'conversao_falhou', $3, $3, $4)`,
+                [pedido.empresa_id, pedido.id, pedido.status, JSON.stringify({ erro: String(error.message).slice(0, 200) })]
+            ).catch(() => {});
+        }
+
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+// Cobranças pendentes de pedidos da loja que vale reconsultar no provedor (rotina do cron): pedido ainda aguardando,
+// criado nas últimas 3 horas (o teto da reserva é 2 h), cobrança pendente que já tem pagamento no provedor (Pix tem id
+// desde a criação; o link de cartão é consultado pela referência). As menos consultadas primeiro: ninguém fica sem vez.
+async function listarCobrancasParaReconciliar({ limite = 50 } = {}) {
+    const { rows } = await db.query(
+        `SELECT c.empresa_id, c.codigo
+           FROM pedidos_loja p
+           JOIN cobrancas_pagamento c ON c.codigo = p.cobranca_codigo AND c.empresa_id = p.empresa_id
+          WHERE p.status = 'aguardando_pagamento' AND c.status = 'pendente'
+            AND (c.id_externo IS NOT NULL OR c.metodo = 'cartao_link')
+            AND p.criado_em > NOW() - INTERVAL '3 hours'
+          ORDER BY c.consultado_em NULLS FIRST, c.id
+          LIMIT $1`,
+        [limite]
+    );
+
+    return rows;
+}
+
+// Rede de segurança (roda no cron): pedidos aguardando cuja cobrança já está paga e ainda sem venda, por exemplo
+// porque a conversão falhou na hora do webhook. Cada um é tentado sozinho; uma falha não impede os outros.
+async function converterPendentes({ limite = 50 } = {}) {
+    const { rows } = await db.query(
+        `SELECT c.* FROM pedidos_loja p
+           JOIN cobrancas_pagamento c ON c.codigo = p.cobranca_codigo AND c.empresa_id = p.empresa_id
+          WHERE p.status = 'aguardando_pagamento' AND c.status = 'pago' AND c.venda_id IS NULL
+          ORDER BY p.id LIMIT $1`,
+        [limite]
+    );
+
+    let convertidos = 0;
+
+    for (const cobranca of rows) {
+        try {
+            const r = await converterPedidoPago(cobranca);
+            if (r?.resultado === 'convertido') convertidos += 1;
+        } catch (error) {
+            console.error(`Falha ao converter o pedido da cobrança ${cobranca.codigo}: ${error.message}`);
+        }
+    }
+
+    return convertidos;
+}
+
+module.exports = {
+    criarPedido, expirarVencidos, buscarPedidoPublico, buscarReaproveitavel, encerrarSemPagamento,
+    prepararPagamento, liberarPagamentoNaoCriado, estenderReserva, converterPedidoPago, converterPendentes,
+    listarCobrancasParaReconciliar
+};

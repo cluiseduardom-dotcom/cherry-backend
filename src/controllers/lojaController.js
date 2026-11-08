@@ -4,8 +4,9 @@ const AppError = require('../errors/AppError');
 const response = require('../utils/response');
 const { SLUG_REGEX } = require('../constants/temasVisuais');
 const { MINIMO_PECAS_MAIS_VENDIDOS, ITENS_POR_VITRINE } = require('../constants/loja');
+const lojaPagamentoService = require('../services/lojaPagamentoService');
 const { exigirVerificacao } = require('../integrations/turnstileClient');
-const { catalogoQuerySchema, marcacaoSchema, pedidoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID } = require('../validations/lojaValidation');
+const { catalogoQuerySchema, marcacaoSchema, pedidoSchema, pagamentoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID } = require('../validations/lojaValidation');
 
 const NAO_ENCONTRADA = 'Loja não encontrada';
 const SLUG_PRODUTO_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -171,6 +172,31 @@ async function buscarPedido(req, res, next) {
     } catch (error) { next(error); }
 }
 
+// Gera o Pix ou o link de cartão do pedido. Idempotente: a mesma cobrança volta enquanto estiver em aberto.
+// A cliente não aprova nada aqui: o pedido só vira pago pelo webhook validado do Mercado Pago.
+async function criarPagamento(req, res, next) {
+    try {
+        const empresa_id = await resolverEmpresa(req);
+        const codigoPedido = String(req.params.codigo ?? '');
+
+        if (!UUID.test(codigoPedido)) throw new AppError('Pedido não encontrado', 404);
+
+        const dados = pagamentoSchema.safeParse(req.body ?? {});
+
+        if (!dados.success) throw new AppError(dados.error.issues[0].message, 400);
+
+        const { pagamento, criado } = await lojaPagamentoService.iniciarPagamento({
+            empresa_id, codigoPedido: codigoPedido.toLowerCase(), metodo: dados.data.metodo
+        });
+
+        res.set('Cache-Control', 'no-store');
+        return response.success(res, pagamento, criado ? 201 : 200);
+    } catch (error) {
+        if (error.codigo && error.statusCode) return responderRecusa(res, error);
+        next(error);
+    }
+}
+
 // ---- Gestão (autenticado; empresa do JWT) ----
 
 function parseId(value) {
@@ -198,4 +224,4 @@ async function salvarMarcacao(req, res, next) {
     } catch (error) { next(error); }
 }
 
-module.exports = { catalogo, produto, categorias, vitrines, criarPedido, buscarPedido, buscarMarcacao, salvarMarcacao };
+module.exports = { catalogo, produto, categorias, vitrines, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };
