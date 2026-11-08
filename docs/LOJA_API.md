@@ -1,6 +1,6 @@
-# Loja online — catálogo, marcação de produto, reserva de estoque e pedidos (fatias 1 e 2)
+# Loja online — catálogo, reserva, pedidos e pagamento (fatias 1, 2 e 3)
 
-Canal e-commerce da Cherry. **Entregue até aqui:** catálogo público, marcação de produto, reserva de estoque e pedido do visitante (fatias 1 e 2). **Ainda não existem:** pagamento, webhook, conversão do pedido em venda, cancelamento pela cliente, endereço de entrega e frete.
+Canal e-commerce da Cherry. **Entregue até aqui:** catálogo público, marcação de produto, reserva de estoque, pedido do visitante, pagamento (Pix e cartão do Mercado Pago) e conversão do pedido pago em venda. **Ainda não existem:** cancelamento pela cliente, endereço de entrega e frete (o frete é "a combinar").
 
 O Vertumno continua sendo a única fonte de preço e estoque. A tabela `produtos_loja` guarda apenas *quais produtos aparecem* e o texto editorial; não tem preço, saldo nem custo (a migration 095 tem teste que garante isso).
 
@@ -115,6 +115,38 @@ Cabeçalho obrigatório `Idempotency-Key` (8 a 80 caracteres: letras, números, 
 - 10 pedidos por minuto por IP, 3 pedidos abertos por e-mail, no máximo 10 unidades por item e 20 itens por pedido.
 - **Risco residual:** uma pessoa real que passe pela verificação ainda segura estoque por 30 minutos, até 3 pedidos por e-mail. Isso é o custo de reservar antes de pagar.
 
+## Pagamento (fatia 3)
+
+`POST /loja/:slug/pedidos/:codigo/pagamento` com `{ "metodo": "pix" | "cartao" }` (corpo estrito; valor, loja e pedido vêm do servidor). Mesmo limite de 10 por minuto por IP do `POST /pedidos`.
+
+- **A cliente nunca aprova pagamento.** Este endpoint só cria a cobrança e devolve o QR ou o link. O pedido só vira `pago` pelo **webhook do Mercado Pago** (`POST /webhooks/mercadopago`, o mesmo do PDV), que valida a assinatura e **reconsulta o pagamento na API do provedor** com o token da loja dona da cobrança, conferindo id, referência e valor. O corpo do webhook nunca é confiado.
+- **Pix:** `{ metodo, status, valor, expira_em, expira_em_segundos, qr_code, qr_code_base64 }`. **Cartão:** `{ metodo, status, valor, expira_em, expira_em_segundos, link_url, parcelas_maximas }`. Nunca saem taxa, id do provedor nem código interno da cobrança.
+- **201** cobrança nova; **200** a mesma cobrança, se já estiver em aberto (idempotente; requisições simultâneas criam uma só). Reabrir a tela: `GET /pedidos/:codigo` traz `pagamento` com o QR ou o link enquanto estiver pendente.
+- **Taxa da plataforma:** a mesma regra do PDV: incide sobre o **Pix** (condição individual, depois plano, depois padrão) e é enviada como `application_fee`; o cartão leva 0 (decisão do PO). A venda online apura a taxa como qualquer venda.
+- **Reserva:** ao iniciar o pagamento a reserva ganha o prazo normal mais 2 minutos de folga, com **teto de 120 minutos** desde a criação do pedido.
+- **Cartão volta para a loja** se `LOJA_PUBLIC_URL` (https) estiver definida (`/pedido/<codigo>?pagamento=sucesso|pendente|falha`); sem ela, a cliente fica na página do Mercado Pago.
+
+| Status | `codigo` | Quando |
+|---|---|---|
+| 404 | (sem) | pedido inexistente, de outra loja ou código malformado |
+| 400 | (sem) | método inválido ou campo extra |
+| 409 | `PEDIDO_JA_PAGO` | pedido já pago ou pagamento recebido e em confirmação |
+| 409 | `PEDIDO_ENCERRADO`, `RESERVA_EXPIRADA` | pedido expirado/cancelado ou prazo da reserva vencido: fazer novo pedido |
+| 409 | `PAGAMENTO_OUTRO_METODO` | há um pagamento em aberto de outro método (evita pagar duas vezes) |
+| 409 | `PAGAMENTO_EM_PREPARO` | outra requisição está criando a cobrança agora; tentar de novo |
+| 503 | `PAGAMENTO_INDISPONIVEL` | o provedor falhou ou a loja não conectou o Mercado Pago. A mensagem do provedor vai só ao log |
+
+### Pedido pago vira venda
+Quando o webhook confirma o pagamento, **numa única transação**: a peça volta da Reserva ao Central, a venda é criada (canal `online`, **preço congelado do pedido**, sem vendedor, pagamento `origem=gateway`, taxa apurada, estoque baixado) e o pedido passa a `pago` com `venda_id`. Qualquer falha desfaz tudo (o pedido segue aguardando, a peça segue reservada) e a próxima tentativa refaz.
+- **Idempotente:** webhook repetido ou simultâneo vende uma vez só (trava da linha do pedido).
+- **Pagamento recusado ou pendente:** o pedido segue aguardando, com a reserva; a cliente pode gerar novo pagamento (a cobrança recusada fica `cancelado`).
+- **Pagamento tardio** (a reserva já expirou): se a peça ainda estiver no Central, o pedido é reaberto e vendido; se não estiver, **não vende**: registra `pago_sem_estoque` e a cobrança paga sem venda aparece em `GET /pagamentos-gateway/a-devolver`, para o financeiro estornar (cartão: pelo painel do Mercado Pago).
+- **Pedido com cobrança paga nunca expira**: espera a conversão. O `scripts/expirar-reservas-loja.js` (cron a cada minuto) também **converte** pedidos pagos que não viraram venda (rede de segurança) antes de liberar as reservas vencidas.
+- **Plano B operacional:** se uma notificação se perder, quem tem acesso ao PDV reconsulta no provedor com `GET /pagamentos-gateway/:codigo` (autenticado); essa consulta também converte o pedido. A cliente nunca consegue isso.
+- **Eventos do pedido** (`pedidos_loja_eventos`, só inserção): `criado`, `pagamento_iniciado`, `pago`, `expirado`, `conversao_falhou`, `pago_sem_estoque`, `pago_em_pedido_cancelado`.
+
+**Assinatura do webhook não confirmada:** o formato do manifesto assinado nunca foi validado com um evento real (a documentação do repositório já registrava isso; a conta de produção nunca recebeu uma cobrança). Se estiver errado, o backend rejeita todo webhook verdadeiro com 401 e **nenhum pedido é marcado como pago** (falha para o lado seguro). Por isso o **primeiro pagamento real, em valor mínimo, deve ser feito pelo Product Owner antes de divulgar a loja**, acompanhando o log. Os testes usam assinatura simulada e provedor simulado; nada foi testado contra a conta real.
+
 ## Rotas de gestão (autenticadas)
 | Rota | Quem | Efeito |
 |---|---|---|
@@ -129,8 +161,11 @@ Cabeçalho obrigatório `Idempotency-Key` (8 a 80 caracteres: letras, números, 
 ## Aplicar em produção
 1. Migration `095_loja_online.sql` (só acrescenta; reversão manual no rodapé do arquivo).
 2. Migration `096_loja_pedidos_reserva.sql`: acrescenta tabelas e **recria as duas constraints de `locais_estoque`** aceitando o tipo `reserva` (relaxamento: nada que valia deixa de valer; trava a tabela por instantes). Reversão manual no rodapé.
-3. **Turnstile:** criar o widget no painel da Cloudflare (Turnstile), guardar a *secret key* em `TURNSTILE_SECRET_KEY` no serviço da API e a *site key* na loja. Sem isso a loja responde 503 em produção, por desenho.
-4. Criar o **Cron Job do Render** `node scripts/expirar-reservas-loja.js` a cada minuto.
-5. Definir `LOJA_CORS_ORIGINS` com o endereço da loja, quando ela existir.
-6. Ligar `loja_online` para a Cherry no Painel.
+3. Migration `097_loja_pagamento.sql`: **relaxa duas colunas** (`cobrancas_pagamento.criado_por` e `pagamentos_venda.usuario_id` passam a aceitar NULL, pois a venda e a cobrança da loja não têm operador) e cria um índice único. Nenhuma linha existente muda; reversão manual no rodapé.
+4. Variável `LOJA_PUBLIC_URL` (https) com o endereço da loja, para o link de cartão voltar a ela.
+5. **Turnstile:** criar o widget no painel da Cloudflare (Turnstile), guardar a *secret key* em `TURNSTILE_SECRET_KEY` no serviço da API e a *site key* na loja. Sem isso a loja responde 503 em produção, por desenho.
+6. Criar o **Cron Job do Render** `node scripts/expirar-reservas-loja.js` a cada minuto.
+7. Definir `LOJA_CORS_ORIGINS` com o endereço da loja, quando ela existir.
+8. Ligar `loja_online` para a Cherry no Painel.
+9. **Primeiro pagamento real feito pelo Product Owner**, em valor mínimo, antes de divulgar.
 Aplicar só pelo responsável; nada disto foi aplicado em produção.
