@@ -10,6 +10,8 @@ const produtoImagensController = require('../controllers/produtoImagensControlle
 const uploadImagemProduto = require('../middlewares/uploadImagemProduto');
 const requireAdmin = require('../middlewares/requireAdmin');
 const requireEstoquista = require('../middlewares/requireEstoquista');
+const exigirFuncionalidade = require('../middlewares/exigirFuncionalidade');
+const lojaController = require('../controllers/lojaController');
 
 router.get('/', controller.listar);
 router.get('/buscar-codigo/:codigo', produtosCodigosController.buscar);
@@ -45,6 +47,10 @@ router.get('/:id/imagens', produtoImagensController.listar);
 router.post('/:id/imagens', requireEstoquista, uploadImagemProduto, produtoImagensController.adicionar);
 router.put('/:id/imagens/ordem', requireEstoquista, produtoImagensController.reordenar);
 router.delete('/:id/imagens/:imagemId', requireEstoquista, produtoImagensController.remover);
+
+// Loja online: marcação do produto (visível na loja + texto editorial). Só admin, e só com a funcionalidade ligada.
+router.get('/:id/loja', requireAdmin, exigirFuncionalidade('loja_online'), lojaController.buscarMarcacao);
+router.put('/:id/loja', requireAdmin, exigirFuncionalidade('loja_online'), lojaController.salvarMarcacao);
 
 router.get('/:id/movimentacoes', estoqueController.historico);
 router.post('/:id/movimentacoes', requireEstoquista, estoqueController.registrarMovimentacao);

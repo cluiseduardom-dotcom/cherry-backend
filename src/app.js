@@ -40,10 +40,11 @@ app.set('trust proxy', obterSaltosProxyConfiaveis());
 
 // PAINEL_CORS_ORIGINS: origem do Painel GiroNex, separada da allowlist do ERP para poder ser
 // trocada (ex.: domínio próprio) sem mexer nas origens das lojas.
+// LOJA_CORS_ORIGINS: origens da loja online (e-commerce), separadas pelo mesmo motivo.
 // SITE_CORS_ORIGINS: origens do site público (marketing), pelo mesmo motivo: acrescentar ou trocar o
 // endereço do site não exige editar CORS_ORIGINS, que protege o login das lojas.
 function obterOrigensPermitidas() {
-    return [process.env.CORS_ORIGINS, process.env.PAINEL_CORS_ORIGINS, process.env.SITE_CORS_ORIGINS].filter(Boolean).join(',')
+    return [process.env.CORS_ORIGINS, process.env.PAINEL_CORS_ORIGINS, process.env.SITE_CORS_ORIGINS, process.env.LOJA_CORS_ORIGINS].filter(Boolean).join(',')
         .split(',')
         .map((origem) => origem.trim())
         .filter(Boolean);
@@ -126,6 +127,7 @@ const exigirFuncionalidade = require('./middlewares/exigirFuncionalidade');
 const empresaRoutes = require('./routes/empresa');
 const painelRoutes = require('./routes/painel');
 const publicoRoutes = require('./routes/publico');
+const lojaRoutes = require('./routes/loja');
 const integracoesMercadoPagoRoutes = require('./routes/integracoesMercadoPago');
 const pagamentosGatewayRoutes = require('./routes/pagamentosGateway');
 const webhooksMercadoPagoRoutes = require('./routes/webhooksMercadoPago');
@@ -143,6 +145,7 @@ const errorHandler = require('./middlewares/errorHandler');
 
 app.use('/auth', authRoutes);
 app.use('/publico', publicoRoutes);
+app.use('/loja', lojaRoutes);
 app.use('/onboarding', onboardingRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);
 app.use('/vendas', authMiddleware, vendasRoutes);

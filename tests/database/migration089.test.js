@@ -5,6 +5,7 @@ const { FUNCIONALIDADES, CODIGOS_FUNCIONALIDADES, RECURSOS } = require('../../sr
 
 const SQL = fs.readFileSync(path.join(__dirname, '../../src/database/migrations/089_funcionalidades.sql'), 'utf8');
 const EXECUTAVEL = SQL.replace(/--.*$/gm, '');
+const INTRODUZIDAS_DEPOIS_DA_089 = ['loja_online'];
 
 describe('migration 089 — arquivo', () => {
     test('está no runner', async () => {
@@ -26,7 +27,10 @@ describe('migration 089 — arquivo', () => {
         const linhas = [...bloco.matchAll(/\('([a-z_]+)',\s*'([^']*)',\s*'(recurso|modulo)',\s*(true|false)\)/g)]
             .map((m) => ({ codigo: m[1], nome: m[2], tipo: m[3], vendavel: m[4] === 'true' }));
 
-        expect(linhas).toEqual(FUNCIONALIDADES.map(({ codigo, nome, tipo, vendavel }) => ({ codigo, nome, tipo, vendavel })));
+        // Códigos criados por migrations posteriores (ex.: 095) não fazem parte do seed da 089.
+        const daMigration089 = FUNCIONALIDADES.filter((f) => !INTRODUZIDAS_DEPOIS_DA_089.includes(f.codigo));
+
+        expect(linhas).toEqual(daMigration089.map(({ codigo, nome, tipo, vendavel }) => ({ codigo, nome, tipo, vendavel })));
         expect(new Set(CODIGOS_FUNCIONALIDADES).size).toBe(CODIGOS_FUNCIONALIDADES.length);
     });
 
