@@ -300,8 +300,19 @@ async function expirarVencidos({ empresa_id = null, codigo = null, limite = 20 }
     return expirados;
 }
 
+// Pedido já criado com esta chave e este conteúdo (retry): devolve sem reservar de novo. Usado ANTES da verificação
+// anti-robô, porque o token dela é de uso único e o retry de uma cliente que perdeu a resposta não pode ser barrado.
+async function buscarReaproveitavel(empresa_id, chave, hash) {
+    const { rows } = await db.query(
+        'SELECT id FROM pedidos_loja WHERE empresa_id = $1 AND chave_idempotencia = $2 AND hash_requisicao = $3',
+        [empresa_id, chave, hash]
+    );
+
+    return rows.length ? visao(db, empresa_id, { coluna: 'id', valor: rows[0].id }) : null;
+}
+
 async function buscarPedidoPublico(empresa_id, codigo) {
     return visao(db, empresa_id, { coluna: 'codigo', valor: codigo });
 }
 
-module.exports = { criarPedido, expirarVencidos, buscarPedidoPublico, encerrarSemPagamento };
+module.exports = { criarPedido, expirarVencidos, buscarPedidoPublico, buscarReaproveitavel, encerrarSemPagamento };

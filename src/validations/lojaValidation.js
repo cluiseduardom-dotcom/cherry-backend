@@ -53,7 +53,9 @@ const pedidoSchema = z.object({
     }).strict(), { error: 'Informe os itens do pedido' })
         .min(1, 'O pedido precisa de ao menos um item')
         .max(MAX_ITENS_POR_PEDIDO, `O pedido aceita no máximo ${MAX_ITENS_POR_PEDIDO} itens`)
-        .refine((itens) => new Set(itens.map((i) => i.slug)).size === itens.length, 'Item repetido: some as quantidades')
+        .refine((itens) => new Set(itens.map((i) => i.slug)).size === itens.length, 'Item repetido: some as quantidades'),
+    // Token do Turnstile. Não entra na impressão digital do pedido: um retry traz outro token e é o mesmo pedido.
+    captcha_token: z.string().trim().min(1).max(2048, 'Verificação de segurança inválida').optional()
 }).strict();
 
 const CHAVE_IDEMPOTENCIA = /^[A-Za-z0-9_-]{8,80}$/;

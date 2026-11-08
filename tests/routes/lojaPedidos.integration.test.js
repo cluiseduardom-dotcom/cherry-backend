@@ -634,6 +634,131 @@ describe('a Reserva é intocável fora do fluxo da loja', () => {
     });
 });
 
+describe('verificação anti-robô (Turnstile)', () => {
+    let fetchOriginal;
+    let consultas;
+
+    // Simula só a Cloudflare: supertest fala com o app direto e não usa fetch.
+    beforeAll(() => {
+        fetchOriginal = global.fetch;
+        process.env.TURNSTILE_SECRET_KEY = 'segredo-de-teste';
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        global.fetch = jest.fn(async (url, opcoes) => {
+            const token = new URLSearchParams(opcoes.body).get('response');
+            consultas.push(token);
+            if (token === 'token-rede') throw new Error('ECONNRESET');
+            return { ok: true, status: 200, json: async () => ({ success: token === 'token-valido' }) };
+        });
+    });
+
+    afterAll(() => {
+        global.fetch = fetchOriginal;
+        delete process.env.TURNSTILE_SECRET_KEY;
+        jest.restoreAllMocks();
+    });
+
+    beforeEach(() => { consultas = []; });
+
+    const comToken = (E, chaves, token, chave) => postar(E, { ...corpo(E, chaves), ...(token ? { captcha_token: token } : {}) }, chave);
+
+    test('sem token: 400 CAPTCHA_OBRIGATORIO e nada é reservado', async () => {
+        await criarProduto(A, 'cap1', { saldo: 3 });
+        const res = await comToken(A, ['cap1'], undefined);
+
+        expect(res.status).toBe(400);
+        expect(res.body.codigo).toBe('CAPTCHA_OBRIGATORIO');
+        expect(consultas).toEqual([]);
+        expect(await estoque(A, 'cap1')).toEqual({ central: 3, reserva: 0, total: 3, fecha: true });
+    });
+
+    test('token inválido: 403 CAPTCHA_INVALIDO e nada é reservado', async () => {
+        await criarProduto(A, 'cap2', { saldo: 3 });
+        const res = await comToken(A, ['cap2'], 'token-ruim');
+
+        expect(res.status).toBe(403);
+        expect(res.body.codigo).toBe('CAPTCHA_INVALIDO');
+        expect(await estoque(A, 'cap2')).toEqual({ central: 3, reserva: 0, total: 3, fecha: true });
+    });
+
+    test('Cloudflare fora do ar: 503 e nada é reservado (falha fechada)', async () => {
+        await criarProduto(A, 'cap3', { saldo: 3 });
+        const res = await comToken(A, ['cap3'], 'token-rede');
+
+        expect(res.status).toBe(503);
+        expect(res.body.codigo).toBe('CAPTCHA_INDISPONIVEL');
+        expect(await estoque(A, 'cap3')).toEqual({ central: 3, reserva: 0, total: 3, fecha: true });
+    });
+
+    test('token válido: cria o pedido', async () => {
+        await criarProduto(A, 'cap4', { saldo: 3 });
+        const res = await comToken(A, ['cap4'], 'token-valido');
+
+        expect(res.status).toBe(201);
+        expect(consultas).toEqual(['token-valido']);
+        expect(await estoque(A, 'cap4')).toEqual({ central: 2, reserva: 1, total: 3, fecha: true });
+    });
+
+    test('a verificação vem antes de reservar: robô sem token não esgota a última unidade', async () => {
+        await criarProduto(A, 'cap5', { saldo: 1 });
+        const robos = await Promise.all(Array.from({ length: 5 }, () => comToken(A, ['cap5'], undefined)));
+
+        expect(robos.every((r) => r.status === 400)).toBe(true);
+        expect(await estoque(A, 'cap5')).toEqual({ central: 1, reserva: 0, total: 1, fecha: true });
+
+        expect((await comToken(A, ['cap5'], 'token-valido')).status).toBe(201);
+    });
+
+    test('RETRY da cliente que perdeu a resposta: mesma chave e conteúdo devolve o pedido SEM nova verificação', async () => {
+        await criarProduto(A, 'cap6', { saldo: 3 });
+        const body = corpo(A, ['cap6']);
+        const chave = chaveNova();
+
+        const primeira = await postar(A, { ...body, captcha_token: 'token-valido' }, chave);
+        consultas = [];
+        // O token da primeira tentativa é de uso único; o retry leva um token vencido e mesmo assim passa.
+        const retry = await postar(A, { ...body, captcha_token: 'token-ja-usado' }, chave);
+        const retrySemToken = await postar(A, body, chave);
+
+        expect(primeira.status).toBe(201);
+        expect([retry.status, retrySemToken.status]).toEqual([200, 200]);
+        expect(retry.headers['idempotent-replayed']).toBe('true');
+        expect(retry.body.data.codigo).toBe(primeira.body.data.codigo);
+        expect(consultas).toEqual([]);
+        expect(await estoque(A, 'cap6')).toEqual({ central: 2, reserva: 1, total: 3, fecha: true });
+    });
+
+    test('mesma chave com conteúdo diferente continua exigindo verificação (e é 409 se passar)', async () => {
+        await criarProduto(A, 'cap7', { saldo: 5 });
+        const chave = chaveNova();
+        const email = emailNovo();
+        await postar(A, { ...corpo(A, ['cap7'], { email }), captcha_token: 'token-valido' }, chave);
+
+        const semToken = await postar(A, corpo(A, [{ chave: 'cap7', quantidade: 3 }], { email }), chave);
+        const comTokenValido = await postar(A, { ...corpo(A, [{ chave: 'cap7', quantidade: 3 }], { email }), captcha_token: 'token-valido' }, chave);
+
+        expect(semToken.status).toBe(400);
+        expect(comTokenValido.status).toBe(409);
+        expect(comTokenValido.body.codigo).toBe('CHAVE_REUTILIZADA');
+    });
+
+    test('o token é limitado em tamanho e não vira parte do conteúdo do pedido', async () => {
+        await criarProduto(A, 'cap8', { saldo: 3 });
+
+        expect((await comToken(A, ['cap8'], 'x'.repeat(2049))).status).toBe(400);
+        expect(consultas).toEqual([]);
+    });
+
+    test('a consulta de pedido e o catálogo não exigem verificação', async () => {
+        await criarProduto(A, 'cap9', { saldo: 3 });
+        const criado = await comToken(A, ['cap9'], 'token-valido');
+        consultas = [];
+
+        expect((await buscar(A, criado.body.data.codigo)).status).toBe(200);
+        expect((await request(app).get(`/loja/${A.slug}/catalogo`)).status).toBe(200);
+        expect(consultas).toEqual([]);
+    });
+});
+
 describe('integridade no banco', () => {
     test('a trilha de eventos é só de inserção: UPDATE e DELETE são recusados', async () => {
         const { rows: [ev] } = await db.query('SELECT id FROM pedidos_loja_eventos WHERE empresa_id = $1 LIMIT 1', [A.id]);

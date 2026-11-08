@@ -66,7 +66,8 @@ Cabeçalho obrigatório `Idempotency-Key` (8 a 80 caracteres: letras, números, 
 ```json
 {
   "cliente": { "nome": "Maria", "email": "maria@exemplo.com", "telefone": "(11) 91234-5678" },
-  "itens": [ { "slug": "anel-solitario-5", "quantidade": 2, "preco_exibido": 63.00 } ]
+  "itens": [ { "slug": "anel-solitario-5", "quantidade": 2, "preco_exibido": 63.00 } ],
+  "captcha_token": "token do Turnstile"
 }
 ```
 - Até 20 itens, 1 a 10 unidades por item, sem item repetido. `telefone` é opcional.
@@ -75,7 +76,9 @@ Cabeçalho obrigatório `Idempotency-Key` (8 a 80 caracteres: letras, números, 
 
 | Status | `codigo` | Quando |
 |---|---|---|
-| 400 | (sem) | corpo ou cabeçalho inválido |
+| 400 | (sem) ou `CAPTCHA_OBRIGATORIO` | corpo ou cabeçalho inválido; falta o token anti-robô |
+| 403 | `CAPTCHA_INVALIDO` | token anti-robô recusado ou vencido |
+| 503 | `CAPTCHA_INDISPONIVEL` | não deu para validar o token (Cloudflare fora do ar) ou o segredo não está configurado em produção |
 | 404 | (sem) | loja inexistente, inativa ou sem `loja_online` |
 | 409 | `ITENS_ALTERADOS` | algum item mudou; `detalhes` lista `{slug, problema}` com `indisponivel`, `estoque_insuficiente` (+`disponivel`) ou `preco_alterado` (+`preco_atual`). **Nada é reservado** (tudo ou nada) |
 | 409 | `CHAVE_REUTILIZADA` | mesma chave com conteúdo diferente |
@@ -105,7 +108,12 @@ Cabeçalho obrigatório `Idempotency-Key` (8 a 80 caracteres: letras, números, 
 `(empresa, Idempotency-Key)` é único. Requisições simultâneas com a mesma chave são serializadas: uma cria, as outras recebem o mesmo pedido. A chave guarda uma impressão digital do conteúdo; a mesma chave com outro conteúdo é recusada.
 
 ### Freios contra reserva sem pagamento
-10 pedidos por minuto por IP, 3 pedidos abertos por e-mail, no máximo 10 unidades por item e 20 itens por pedido. **Risco residual:** quem usar vários e-mails e vários IPs ainda consegue segurar estoque por 30 minutos. A defesa completa (confirmação de e-mail ou captcha) não foi implementada; com peças de 1 ou 2 unidades isso importa e deve ser decidido antes do go-live.
+- **Verificação anti-robô (Cloudflare Turnstile)** no `POST /pedidos`, **antes** de reservar qualquer peça. O navegador envia `captcha_token` no corpo; o servidor confere com a Cloudflare usando `TURNSTILE_SECRET_KEY` (o segredo nunca vai ao frontend nem a log).
+  - Em `production` e `staging` é **obrigatória**: sem o segredo configurado, o pedido responde `503 CAPTCHA_INDISPONIVEL` e o erro vai ao log (falha fechada). Em `development` e `test` só roda se o segredo existir.
+  - `400 CAPTCHA_OBRIGATORIO` (sem token), `403 CAPTCHA_INVALIDO` (token recusado ou vencido), `503 CAPTCHA_INDISPONIVEL` (Cloudflare fora do ar ou lenta: limite de 5 s, e nunca deixa passar).
+  - **Retry não é barrado:** se a mesma chave de idempotência já criou o pedido com o mesmo conteúdo, ele é devolvido sem nova verificação (o token é de uso único). O token não faz parte do conteúdo do pedido.
+- 10 pedidos por minuto por IP, 3 pedidos abertos por e-mail, no máximo 10 unidades por item e 20 itens por pedido.
+- **Risco residual:** uma pessoa real que passe pela verificação ainda segura estoque por 30 minutos, até 3 pedidos por e-mail. Isso é o custo de reservar antes de pagar.
 
 ## Rotas de gestão (autenticadas)
 | Rota | Quem | Efeito |
@@ -121,7 +129,8 @@ Cabeçalho obrigatório `Idempotency-Key` (8 a 80 caracteres: letras, números, 
 ## Aplicar em produção
 1. Migration `095_loja_online.sql` (só acrescenta; reversão manual no rodapé do arquivo).
 2. Migration `096_loja_pedidos_reserva.sql`: acrescenta tabelas e **recria as duas constraints de `locais_estoque`** aceitando o tipo `reserva` (relaxamento: nada que valia deixa de valer; trava a tabela por instantes). Reversão manual no rodapé.
-3. Criar o **Cron Job do Render** `node scripts/expirar-reservas-loja.js` a cada minuto.
-4. Definir `LOJA_CORS_ORIGINS` com o endereço da loja, quando ela existir.
-5. Ligar `loja_online` para a Cherry no Painel.
+3. **Turnstile:** criar o widget no painel da Cloudflare (Turnstile), guardar a *secret key* em `TURNSTILE_SECRET_KEY` no serviço da API e a *site key* na loja. Sem isso a loja responde 503 em produção, por desenho.
+4. Criar o **Cron Job do Render** `node scripts/expirar-reservas-loja.js` a cada minuto.
+5. Definir `LOJA_CORS_ORIGINS` com o endereço da loja, quando ela existir.
+6. Ligar `loja_online` para a Cherry no Painel.
 Aplicar só pelo responsável; nada disto foi aplicado em produção.

@@ -4,6 +4,7 @@ const AppError = require('../errors/AppError');
 const response = require('../utils/response');
 const { SLUG_REGEX } = require('../constants/temasVisuais');
 const { MINIMO_PECAS_MAIS_VENDIDOS, ITENS_POR_VITRINE } = require('../constants/loja');
+const { exigirVerificacao } = require('../integrations/turnstileClient');
 const { catalogoQuerySchema, marcacaoSchema, pedidoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID } = require('../validations/lojaValidation');
 
 const NAO_ENCONTRADA = 'Loja não encontrada';
@@ -121,10 +122,24 @@ async function criarPedido(req, res, next) {
 
         if (!dados.success) throw new AppError(dados.error.issues[0].message, 400);
 
+        const hash = hashDoPedido(dados.data);
+
+        // Retry de um pedido que já existe: devolve sem exigir outra verificação (o token é de uso único).
+        const existente = await pedidosRepository.buscarReaproveitavel(empresa_id, chave, hash);
+
+        if (existente) {
+            res.set('Cache-Control', 'no-store');
+            res.set('Idempotent-Replayed', 'true');
+            return response.success(res, existente, 200);
+        }
+
+        // Anti-robô ANTES de reservar qualquer peça: é o que impede reserva em massa.
+        await exigirVerificacao({ token: dados.data.captcha_token, ip: req.ip });
+
         await varrerVencidos({ empresa_id, limite: 10 });
 
         const { pedido, reaproveitado } = await pedidosRepository.criarPedido({
-            empresa_id, chave, hash: hashDoPedido(dados.data), cliente: dados.data.cliente, itens: dados.data.itens
+            empresa_id, chave, hash, cliente: dados.data.cliente, itens: dados.data.itens
         });
 
         res.set('Cache-Control', 'no-store');
