@@ -1,6 +1,7 @@
 const AppError = require('../errors/AppError');
 const cobrancasService = require('./cobrancasPagamentoService');
 const pedidosRepository = require('../repositories/lojaPedidosRepository');
+const { obterConfigMercadoPago } = require('../config/mercadoPagoConfig');
 
 // Pagamento do pedido da loja online (Pix ou link de cartão do Mercado Pago). A cliente NUNCA aprova pagamento: este
 // serviço só cria a cobrança e devolve o QR ou o link. Quem marca o pedido como pago é o webhook validado do
@@ -66,4 +67,28 @@ async function iniciarPagamento({ empresa_id, codigoPedido, metodo }) {
     return { pagamento: paraCliente(resposta, metodo), criado: true };
 }
 
-module.exports = { iniciarPagamento, urlsDeRetorno, paraCliente };
+// Reconsulta no Mercado Pago os pagamentos pendentes dos pedidos da loja (rotina do cron, a cada minuto). Rede de
+// segurança do webhook: se uma notificação se perder, ou nunca chegar, o pedido pago não fica parado.
+//
+// É a MESMA validação do webhook, só que disparada por nós: `consultar` pergunta ao provedor com o token da loja dona da
+// cobrança e confere id, referência e valor; o pedido só vira pago se o provedor disser aprovado e tudo conferir. A
+// cliente não participa. No máximo uma consulta a cada 5 s por cobrança. Uma falha numa cobrança não impede as outras.
+async function reconciliarPendentes({ limite = 50 } = {}) {
+    if (!obterConfigMercadoPago()) return { pulado: true, consultadas: 0, pagos: 0 };
+
+    const pendentes = await pedidosRepository.listarCobrancasParaReconciliar({ limite });
+    let pagos = 0;
+
+    for (const { empresa_id, codigo } of pendentes) {
+        try {
+            const cobranca = await cobrancasService.consultar(empresa_id, codigo);
+            if (cobranca.status === 'pago') pagos += 1;
+        } catch (error) {
+            console.error(`Loja online: falha ao reconsultar a cobrança ${codigo}: ${error.message}`);
+        }
+    }
+
+    return { pulado: false, consultadas: pendentes.length, pagos };
+}
+
+module.exports = { iniciarPagamento, reconciliarPendentes, urlsDeRetorno, paraCliente };

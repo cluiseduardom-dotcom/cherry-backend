@@ -29,6 +29,7 @@ const client = require('../../src/integrations/mercadoPagoClient');
 const AppError = require('../../src/errors/AppError');
 const vendasRepository = require('../../src/repositories/vendasRepository');
 const pedidosRepository = require('../../src/repositories/lojaPedidosRepository');
+const { reconciliarPendentes } = require('../../src/services/lojaPagamentoService');
 const taxasPlataformaRepository = require('../../src/repositories/taxasPlataformaRepository');
 const { makeToken } = require('../helpers/token');
 const { criarRegistroDeEmpresas } = require('../helpers/limpezaEmpresasTeste');
@@ -703,6 +704,153 @@ describe('isolamento e o PDV', () => {
         expect(venda.status).toBe(201);
         expect(await cobrancaDoBanco(cobranca.codigo)).toMatchObject({ venda_id: venda.body.data.id });
         expect(await estoque(A, 'pdv1')).toEqual({ central: 4, reserva: 0, total: 4, fecha: true });
+    });
+});
+
+describe('reconsulta automática (rede de segurança do webhook)', () => {
+    // O provedor informa, por id de pagamento, o que quiser; ids que não estão no mapa não existem para ele.
+    function provedorPorId(mapa) {
+        client.buscarPagamento.mockImplementation(async (_config, { idExterno }) => {
+            const r = mapa[idExterno];
+            if (r instanceof Error) throw r;
+            return r;
+        });
+    }
+
+    const aprovado = (cobranca) => ({ id: Number(cobranca.id_externo), status: 'approved', external_reference: cobranca.codigo, transaction_amount: Number(cobranca.valor) });
+    const chamadasPara = (cobranca) => client.buscarPagamento.mock.calls.filter(([, p]) => String(p.idExterno) === String(cobranca.id_externo)).length;
+
+    test('notificação perdida: o provedor diz aprovado e o pedido vira venda sem webhook; rodar de novo não vende outra vez', async () => {
+        await criarProduto(A, 'rec1', { saldo: 5 });
+        const pedido = await novoPedido(A, ['rec1']);
+        const cobranca = await pedirPix(A, pedido);
+        provedorPorId({ [cobranca.id_externo]: aprovado(cobranca) });
+
+        const r = await reconciliarPendentes({ limite: 500 });
+
+        expect(r).toMatchObject({ pulado: false });
+        expect(r.pagos).toBeGreaterThanOrEqual(1);
+        const p = await pedidoDoBanco(pedido.id);
+        expect(p.status).toBe('pago');
+        expect(p.venda_id).not.toBeNull();
+        expect(await estoque(A, 'rec1')).toEqual({ central: 4, reserva: 0, total: 4, fecha: true });
+
+        const chamadas = chamadasPara(cobranca);
+        await reconciliarPendentes({ limite: 500 });
+
+        expect(chamadasPara(cobranca)).toBe(chamadas);
+        expect((await db.query('SELECT COUNT(*)::int AS n FROM vendas WHERE id = $1', [p.venda_id])).rows[0].n).toBe(1);
+        expect((await eventos(pedido.id)).filter((e) => e === 'pago')).toHaveLength(1);
+    });
+
+    test('a validação é a do webhook: valor ou referência diferentes não aprovam nada', async () => {
+        await criarProduto(A, 'rec2', { preco: 100, saldo: 5 });
+        const pedido = await novoPedido(A, ['rec2']);
+        const cobranca = await pedirPix(A, pedido);
+        provedorPorId({ [cobranca.id_externo]: { ...aprovado(cobranca), transaction_amount: 1 } });
+
+        await reconciliarPendentes({ limite: 500 });
+        await db.query('UPDATE cobrancas_pagamento SET consultado_em = NULL WHERE id = $1', [cobranca.id]);
+        provedorPorId({ [cobranca.id_externo]: { ...aprovado(cobranca), external_reference: crypto.randomUUID() } });
+        await reconciliarPendentes({ limite: 500 });
+
+        expect((await pedidoDoBanco(pedido.id)).status).toBe('aguardando_pagamento');
+        expect(await estoque(A, 'rec2')).toEqual({ central: 4, reserva: 1, total: 5, fecha: true });
+    });
+
+    test('pagamento ainda pendente: nada muda, e no máximo uma consulta a cada 5 segundos por cobrança', async () => {
+        await criarProduto(A, 'rec3', { saldo: 5 });
+        const pedido = await novoPedido(A, ['rec3']);
+        const cobranca = await pedirPix(A, pedido);
+        provedorPorId({ [cobranca.id_externo]: { ...aprovado(cobranca), status: 'pending' } });
+
+        await reconciliarPendentes({ limite: 500 });
+        await reconciliarPendentes({ limite: 500 });
+        await reconciliarPendentes({ limite: 500 });
+
+        expect(chamadasPara(cobranca)).toBe(1);
+        expect((await pedidoDoBanco(pedido.id)).status).toBe('aguardando_pagamento');
+        expect(await estoque(A, 'rec3')).toEqual({ central: 4, reserva: 1, total: 5, fecha: true });
+    });
+
+    test('uma cobrança que falha no provedor não impede as outras (nem derruba a rotina)', async () => {
+        await criarProduto(A, 'rec4', { saldo: 5 });
+        await criarProduto(A, 'rec5', { saldo: 5 });
+        const ruim = await pedirPix(A, await novoPedido(A, ['rec4']));
+        const pedidoBom = await novoPedido(A, ['rec5']);
+        const boa = await pedirPix(A, pedidoBom);
+        // O pedido com falha vai primeiro na fila (nunca foi consultado).
+        await db.query('UPDATE cobrancas_pagamento SET consultado_em = NULL WHERE id = $1', [ruim.id]);
+        provedorPorId({ [ruim.id_externo]: new Error('provedor fora do ar'), [boa.id_externo]: aprovado(boa) });
+
+        await expect(reconciliarPendentes({ limite: 500 })).resolves.toMatchObject({ pulado: false });
+
+        expect((await pedidoDoBanco(pedidoBom.id)).status).toBe('pago');
+    });
+
+    test('não toca em Pix do PDV, em pedido já pago, expirado ou criado há mais de 3 horas', async () => {
+        await criarProduto(A, 'rec6', { saldo: 5 });
+        await criarProduto(A, 'rec7', { saldo: 5 });
+        await criarProduto(A, 'rec8', { saldo: 5 });
+
+        // PDV: cobrança criada no caixa, sem pedido.
+        client.criarPagamentoPix.mockResolvedValueOnce({ idExterno: String(++idMp), status: 'pending', qrCode: 'QR', qrCodeBase64: 'B64', ticketUrl: 'https://t/x' });
+        const pdv = await request(app).post('/pagamentos-gateway/pix').set('Authorization', `Bearer ${A.token}`).send({ valor: 20, cliente_email: 'pdv@teste.local' });
+        const cobrancaPdv = await cobrancaDoBanco(pdv.body.data.codigo);
+
+        const expirado = await novoPedido(A, ['rec6']);
+        const cobrancaExpirado = await pedirPix(A, expirado);
+        await db.query(`UPDATE pedidos_loja SET reserva_expira_em = NOW() - INTERVAL '1 minute' WHERE id = $1`, [expirado.id]);
+        await db.query(`UPDATE cobrancas_pagamento SET status = 'cancelado' WHERE id = $1`, [cobrancaExpirado.id]);
+        await pedidosRepository.expirarVencidos({ empresa_id: A.id });
+
+        const antigo = await novoPedido(A, ['rec7']);
+        const cobrancaAntigo = await pedirPix(A, antigo);
+        await db.query(`UPDATE pedidos_loja SET criado_em = NOW() - INTERVAL '4 hours' WHERE id = $1`, [antigo.id]);
+
+        const pago = await novoPedido(A, ['rec8']);
+        const cobrancaPago = await pedirPix(A, pago);
+        await db.query(`UPDATE pedidos_loja SET status = 'pago', pago_em = NOW() WHERE id = $1`, [pago.id]);
+
+        const todos = [cobrancaPdv, cobrancaExpirado, cobrancaAntigo, cobrancaPago];
+        provedorPorId(Object.fromEntries(todos.map((c) => [c.id_externo, aprovado(c)])));
+
+        await reconciliarPendentes({ limite: 500 });
+
+        for (const c of todos) expect([c.codigo, chamadasPara(c)]).toEqual([c.codigo, 0]);
+        expect((await cobrancaDoBanco(cobrancaPdv.codigo)).status).toBe('pendente');
+
+        // O 'pago' acima foi forçado só para este teste (sem venda): desfaz, para não quebrar os invariantes finais.
+        await db.query(`UPDATE pedidos_loja SET status = 'cancelado', pago_em = NULL, encerrado_em = NOW(), motivo_encerramento = 'teste' WHERE id = $1`, [pago.id]);
+    });
+
+    test('link de cartão: o pagamento é achado pela referência e o pedido vira venda em 2x', async () => {
+        await criarProduto(A, 'rec9', { preco: 90, saldo: 5 });
+        const pedido = await novoPedido(A, ['rec9']);
+        client.criarPreferenciaCartao.mockResolvedValueOnce({ preferenciaId: `pref-${sufixo}-rec9`, linkUrl: 'https://mp.teste/checkout/rec9' });
+        await pagar(A, pedido.codigo, 'cartao');
+        const { cobranca_codigo } = await pedidoDoBanco(pedido.id);
+        const idPagamento = ++idMp;
+        const pagamentoMp = { id: idPagamento, status: 'approved', external_reference: cobranca_codigo, payment_type_id: 'credit_card', transaction_amount: 90, installments: 2 };
+        client.buscarPagamento.mockImplementation(async (_c, { idExterno }) => (String(idExterno) === String(idPagamento) ? pagamentoMp : undefined));
+        client.buscarPagamentosPorReferencia.mockImplementation(async (_c, { codigo }) => (codigo === cobranca_codigo ? [pagamentoMp] : []));
+
+        await reconciliarPendentes({ limite: 500 });
+
+        const p = await pedidoDoBanco(pedido.id);
+        expect(p.status).toBe('pago');
+        expect((await db.query('SELECT forma_pagamento, numero_parcelas FROM pagamentos_venda WHERE venda_id = $1', [p.venda_id])).rows[0]).toEqual({ forma_pagamento: 'credito', numero_parcelas: 2 });
+    });
+
+    test('Mercado Pago não configurado no ambiente da rotina: pula sem erro e sem consultar', async () => {
+        const guardado = process.env.MP_APP_ID;
+        delete process.env.MP_APP_ID;
+        try {
+            await expect(reconciliarPendentes({ limite: 500 })).resolves.toEqual({ pulado: true, consultadas: 0, pagos: 0 });
+            expect(client.buscarPagamento).not.toHaveBeenCalled();
+        } finally {
+            process.env.MP_APP_ID = guardado;
+        }
     });
 });
 

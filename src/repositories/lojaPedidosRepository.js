@@ -634,6 +634,25 @@ async function converterPedidoPago(cobranca) {
     }
 }
 
+// Cobranças pendentes de pedidos da loja que vale reconsultar no provedor (rotina do cron): pedido ainda aguardando,
+// criado nas últimas 3 horas (o teto da reserva é 2 h), cobrança pendente que já tem pagamento no provedor (Pix tem id
+// desde a criação; o link de cartão é consultado pela referência). As menos consultadas primeiro: ninguém fica sem vez.
+async function listarCobrancasParaReconciliar({ limite = 50 } = {}) {
+    const { rows } = await db.query(
+        `SELECT c.empresa_id, c.codigo
+           FROM pedidos_loja p
+           JOIN cobrancas_pagamento c ON c.codigo = p.cobranca_codigo AND c.empresa_id = p.empresa_id
+          WHERE p.status = 'aguardando_pagamento' AND c.status = 'pendente'
+            AND (c.id_externo IS NOT NULL OR c.metodo = 'cartao_link')
+            AND p.criado_em > NOW() - INTERVAL '3 hours'
+          ORDER BY c.consultado_em NULLS FIRST, c.id
+          LIMIT $1`,
+        [limite]
+    );
+
+    return rows;
+}
+
 // Rede de segurança (roda no cron): pedidos aguardando cuja cobrança já está paga e ainda sem venda, por exemplo
 // porque a conversão falhou na hora do webhook. Cada um é tentado sozinho; uma falha não impede os outros.
 async function converterPendentes({ limite = 50 } = {}) {
@@ -661,5 +680,6 @@ async function converterPendentes({ limite = 50 } = {}) {
 
 module.exports = {
     criarPedido, expirarVencidos, buscarPedidoPublico, buscarReaproveitavel, encerrarSemPagamento,
-    prepararPagamento, liberarPagamentoNaoCriado, estenderReserva, converterPedidoPago, converterPendentes
+    prepararPagamento, liberarPagamentoNaoCriado, estenderReserva, converterPedidoPago, converterPendentes,
+    listarCobrancasParaReconciliar
 };
