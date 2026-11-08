@@ -51,3 +51,11 @@ Quem recebe: equipe (admin/estoquista) vê tudo; os demais, só a **própria** m
 - "Lida/dispensada" não é persistida no servidor nesta fatia (o frontend guarda localmente).
 - Limites fixos (7 / 30 / 90 dias, top 3); tornar configurável por empresa é evolução futura.
 - A idade do produto vem da 1ª movimentação de estoque, pois `produtos` não tem data de criação.
+
+## Avisos da loja online (só empresas com a funcionalidade `loja_online`, só para administrador e vendedor)
+Mesma rota, migration 098. Sem a funcionalidade ligada (lista da sessão) ou para outro perfil, as consultas nem rodam: o aviso traz **nome e telefone da cliente**, por isso estoquista e demais cargos nunca o recebem. Os avisos não têm produto: `produto_id`, `sku` e `nome` vêm `null`, `item` = `pedido`, o `id` é `tipo:pedido_id` e vem `pedido_codigo` (UUID do pedido, para marcar a entrega). Limites em `src/utils/notificacoesLoja.js`.
+
+| Tipo | Prioridade | Regra |
+|---|---|---|
+| `loja_pedido_pago` | média; alta a partir de 24 h de espera | pedido **pago** cuja entrega ainda não foi combinada. Some quando alguém chama `POST /loja-pedidos/:codigo/entrega-combinada` |
+| `loja_pagamento_sem_venda` | alta | pagamento **recebido** que não virou venda há mais de 5 minutos: pedido expirado e a peça acabou (devolver o pagamento) ou conversão que não concluiu (aguardar e, se persistir, falar com a GiroNex). Some quando a cobrança é estornada ou vira venda |
