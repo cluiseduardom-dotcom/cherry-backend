@@ -77,3 +77,17 @@ function hashDoPedido({ cliente, itens }) {
 }
 
 module.exports = { catalogoQuerySchema, marcacaoSchema, pedidoSchema, pagamentoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID, ORDENS };
+
+// ---- Gestão dos pedidos pela equipe ----
+const gestaoQuerySchema = z.object({
+    situacao: z.enum(['a_combinar', 'combinadas', 'todos'], { error: 'Situação inválida' }).default('a_combinar'),
+    limite: z.coerce.number().int().min(1, 'Limite inválido').max(50, 'Limite inválido').default(20),
+    pagina: z.coerce.number().int().min(1, 'Página inválida').max(1000, 'Página inválida').default(1)
+});
+
+const entregaCombinadaSchema = z.object({
+    observacao: z.string().trim().max(500, 'Observação deve ter no máximo 500 caracteres').transform((v) => v || null).nullable().optional()
+}).strict();
+
+module.exports.gestaoQuerySchema = gestaoQuerySchema;
+module.exports.entregaCombinadaSchema = entregaCombinadaSchema;

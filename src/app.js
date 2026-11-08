@@ -128,6 +128,7 @@ const empresaRoutes = require('./routes/empresa');
 const painelRoutes = require('./routes/painel');
 const publicoRoutes = require('./routes/publico');
 const lojaRoutes = require('./routes/loja');
+const lojaPedidosRoutes = require('./routes/lojaPedidos');
 const integracoesMercadoPagoRoutes = require('./routes/integracoesMercadoPago');
 const pagamentosGatewayRoutes = require('./routes/pagamentosGateway');
 const webhooksMercadoPagoRoutes = require('./routes/webhooksMercadoPago');
@@ -146,6 +147,8 @@ const errorHandler = require('./middlewares/errorHandler');
 app.use('/auth', authRoutes);
 app.use('/publico', publicoRoutes);
 app.use('/loja', lojaRoutes);
+// Pedidos da loja online para a equipe (admin e vendedor, só com a funcionalidade ligada): traz o contato da cliente.
+app.use('/loja-pedidos', authMiddleware, requireVendedor, exigirFuncionalidade('loja_online'), lojaPedidosRoutes);
 app.use('/onboarding', onboardingRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);
 app.use('/vendas', authMiddleware, vendasRoutes);

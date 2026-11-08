@@ -159,14 +159,27 @@ Quando o webhook confirma o pagamento, **numa única transação**: a peça volt
 - O `slug` é gerado na primeira marcação (`nome-sem-acento-<id>`) e **nunca muda** (URL estável).
 - Campos ausentes não são alterados; texto vazio vira `null`.
 
+## Pedidos da loja para a equipe (migration 098)
+Depois do pagamento, **a entrega é combinada com a cliente por contato humano** (o Vertumno não guarda endereço nem calcula frete). Para não perder pedido pago:
+
+| Rota | Quem | Efeito |
+|---|---|---|
+| `GET /loja-pedidos?situacao=a_combinar\|combinadas\|todos&limite&pagina` | admin e vendedor + `loja_online` | lista. `a_combinar` (padrão): pagos sem entrega combinada, o mais antigo primeiro. Traz **contato da cliente** (nome, telefone, e-mail), itens, total e datas. Nunca traz custo, taxa nem dado do provedor. `Cache-Control: no-store` |
+| `POST /loja-pedidos/:codigo/entrega-combinada` `{observacao?}` | admin e vendedor + `loja_online` | registra quando e por quem. **Idempotente** (marcar de novo devolve o mesmo registro). Só pedido **pago** (409 nos demais); de outra loja ou inexistente, 404 |
+
+- Estoquista nunca acessa (a tela traz dado pessoal). Cada loja só vê os próprios pedidos.
+- **Aviso no sino** (`GET /notificacoes`, ver `docs/NOTIFICACOES_API.md`): `loja_pedido_pago` enquanto a entrega não for combinada (alta depois de 24 h) e `loja_pagamento_sem_venda` quando um pagamento recebido não virou venda (devolução).
+- O evento `entrega_combinada` entra na trilha `pedidos_loja_eventos`.
+
 ## Aplicar em produção
 1. Migration `095_loja_online.sql` (só acrescenta; reversão manual no rodapé do arquivo).
 2. Migration `096_loja_pedidos_reserva.sql`: acrescenta tabelas e **recria as duas constraints de `locais_estoque`** aceitando o tipo `reserva` (relaxamento: nada que valia deixa de valer; trava a tabela por instantes). Reversão manual no rodapé.
 3. Migration `097_loja_pagamento.sql`: **relaxa duas colunas** (`cobrancas_pagamento.criado_por` e `pagamentos_venda.usuario_id` passam a aceitar NULL, pois a venda e a cobrança da loja não têm operador) e cria um índice único. Nenhuma linha existente muda; reversão manual no rodapé.
-4. Variável `LOJA_PUBLIC_URL` (https) com o endereço da loja, para o link de cartão voltar a ela.
-5. **Turnstile:** criar o widget no painel da Cloudflare (Turnstile), guardar a *secret key* em `TURNSTILE_SECRET_KEY` no serviço da API e a *site key* na loja. Sem isso a loja responde 503 em produção, por desenho.
-6. Criar o **Cron Job do Render** `node scripts/expirar-reservas-loja.js` a cada minuto.
-7. Definir `LOJA_CORS_ORIGINS` com o endereço da loja, quando ela existir.
-8. Ligar `loja_online` para a Cherry no Painel.
-9. **Primeiro pagamento real feito pelo Product Owner**, em valor mínimo, antes de divulgar.
+4. Migration `098_loja_entrega_combinada.sql` (só acrescenta 3 colunas opcionais, uma regra e um índice; reversão manual no rodapé).
+5. Variável `LOJA_PUBLIC_URL` (https) com o endereço da loja, para o link de cartão voltar a ela.
+6. **Turnstile:** criar o widget no painel da Cloudflare (Turnstile), guardar a *secret key* em `TURNSTILE_SECRET_KEY` no serviço da API e a *site key* na loja. Sem isso a loja responde 503 em produção, por desenho.
+7. Criar o **Cron Job do Render** `node scripts/expirar-reservas-loja.js` a cada minuto.
+8. Definir `LOJA_CORS_ORIGINS` com o endereço da loja, quando ela existir.
+9. Ligar `loja_online` para a Cherry no Painel.
+10. **Primeiro pagamento real feito pelo Product Owner**, em valor mínimo, antes de divulgar.
 Aplicar só pelo responsável; nada disto foi aplicado em produção.
