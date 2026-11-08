@@ -14,6 +14,20 @@ async function garantirLocalCentral(client, empresa_id) {
     return rows[0].id;
 }
 
+// Local "Reserva online" da empresa (mercadoria separada para um pedido da loja que ainda não foi pago).
+// Mesmo padrão do Central. Só o fluxo da loja pode movimentá-lo (ver `permitirReserva` em criarMovimentacao).
+async function garantirLocalReserva(client, empresa_id) {
+    await client.query(
+        `INSERT INTO locais_estoque (empresa_id, tipo, nome) VALUES ($1, 'reserva', 'Reserva online') ON CONFLICT DO NOTHING`,
+        [empresa_id]
+    );
+    const { rows } = await client.query(
+        `SELECT id FROM locais_estoque WHERE empresa_id = $1 AND tipo = 'reserva'`,
+        [empresa_id]
+    );
+    return rows[0].id;
+}
+
 // Local "Em trânsito" da empresa (mercadoria enviada e ainda não aceita). Mesmo padrão do Central.
 async function garantirLocalTransito(client, empresa_id) {
     await client.query(
@@ -44,7 +58,11 @@ async function garantirLocalTransito(client, empresa_id) {
 // * `bloquearAjusteParaMais`: ajuste que AUMENTA o saldo do local é recusado (AJUSTE_PARA_MAIS_NAO_AUTORIZADO).
 //   Os fluxos internos não passam o flag e seguem como antes.
 // * `exigirSemHistorico`: só aceita se o produto ainda não tem nenhuma movimentação (ENTRADA_INICIAL_COM_HISTORICO).
-async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario_id, empresa_id, local_id, transferencia_id, origem, bloquearAjusteParaMais, exigirSemHistorico }, clienteExterno) {
+//
+// `permitirReserva`: o local tipo `reserva` (migration 096) só aceita movimentação de quem passa este sinal, que é
+// só o fluxo de pedidos da loja. Movimentação avulsa, transferência e PDV recebem LOCAL_NAO_ENCONTRADO: ninguém
+// mexe na Reserva "no braço", o que descasaria o saldo reservado dos pedidos.
+async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario_id, empresa_id, local_id, transferencia_id, origem, bloquearAjusteParaMais, exigirSemHistorico, permitirReserva }, clienteExterno) {
     const client = clienteExterno || await db.connect();
     const gerenciaTransacao = !clienteExterno;
 
@@ -77,8 +95,9 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
             localId = await garantirLocalCentral(client, empresa_id);
         } else {
             const { rows: localRows } = await client.query(
-                'SELECT id FROM locais_estoque WHERE id = $1 AND empresa_id = $2 AND ativo = true',
-                [localId, empresa_id]
+                `SELECT id FROM locais_estoque WHERE id = $1 AND empresa_id = $2 AND ativo = true
+                   AND (tipo <> 'reserva' OR $3::boolean)`,
+                [localId, empresa_id, permitirReserva === true]
             );
             if (!localRows.length) {
                 if (gerenciaTransacao) await client.query('ROLLBACK');
@@ -178,7 +197,7 @@ async function listarLocais(empresa_id) {
     const { rows } = await db.query(
         `SELECT id, tipo, nome, usuario_id, cliente_id, ativo
          FROM locais_estoque
-         WHERE empresa_id = $1
+         WHERE empresa_id = $1 AND tipo <> 'reserva'
          ORDER BY CASE tipo WHEN 'central' THEN 0 WHEN 'maleta' THEN 1 WHEN 'consignado' THEN 2 ELSE 3 END, nome, id`,
         [empresa_id]
     );
@@ -260,6 +279,7 @@ module.exports = {
     criarMovimentacao,
     garantirLocalCentral,
     garantirLocalTransito,
+    garantirLocalReserva,
     saldosPorLocal,
     listarLocais,
     listarPorProduto,
