@@ -403,6 +403,27 @@ describe('gestão da marcação do produto (autenticada)', () => {
         expect(res.body.data).toMatchObject({ visivel: false, slug: null, materiais: null, cuidados: null });
     });
 
+    test('o admin recebe também o cadastro (nome, descrição e material = categorias de nível 2) para pré-preencher o formulário', async () => {
+        const res = await getM(A, A.p['anel-ouro']);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.cadastro).toEqual({ nome: 'Anel solitário ouro', descricao: SEGREDO_INTERNO, material: 'Banhado Ouro' });
+    });
+
+    test('produto sem descrição nem material no cadastro: cadastro com null, sem inventar', async () => {
+        const res = await getM(A, A.p['nunca-marcado']);
+
+        expect(res.body.data.cadastro.material).toBeNull();
+        expect(typeof res.body.data.cadastro.nome).toBe('string');
+    });
+
+    test('o cadastro nunca sai pela API pública: só o admin o vê, e só salvar o formulário publica algo', async () => {
+        const publico = JSON.stringify((await get(`/loja/${A.slug}/produtos/anel-ouro-${A.p['anel-ouro']}`)).body);
+
+        expect(publico).not.toContain(SEGREDO_INTERNO);
+        expect(publico).not.toContain('cadastro');
+    });
+
     test('publica: cria a marcação, gera slug estável e entra no catálogo; renomear não muda o slug', async () => {
         const id = A.p['nunca-marcado'];
         const publicado = await put(A, id, { visivel: true, titulo: '  Peça Linda  ', materiais: 'Banhado a ouro 18k', cuidados: '' });
@@ -475,15 +496,16 @@ describe('funcionalidade desligada derruba a loja inteira na hora', () => {
         expect((await get(`/loja/${A.slug}/catalogo`)).status).toBe(200);
     });
 
+    // A loja decide "hoje" pela data de Brasília; o teste usa a mesma (CURRENT_DATE do banco é UTC e diverge entre 00h e 03h UTC).
     test('ligação com vigência vencida não vale', async () => {
         await db.query(
-            `UPDATE empresa_funcionalidades SET vigencia_inicio = CURRENT_DATE - 10, vigencia_fim = CURRENT_DATE - 1
+            `UPDATE empresa_funcionalidades SET vigencia_inicio = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 10, vigencia_fim = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 1
               WHERE empresa_id = $1 AND funcionalidade = 'loja_online'`,
             [A.id]
         );
         expect((await get(`/loja/${A.slug}/catalogo`)).status).toBe(404);
 
-        await db.query(`UPDATE empresa_funcionalidades SET vigencia_inicio = CURRENT_DATE, vigencia_fim = NULL WHERE empresa_id = $1 AND funcionalidade = 'loja_online'`, [A.id]);
+        await db.query(`UPDATE empresa_funcionalidades SET vigencia_inicio = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date, vigencia_fim = NULL WHERE empresa_id = $1 AND funcionalidade = 'loja_online'`, [A.id]);
         expect((await get(`/loja/${A.slug}/catalogo`)).status).toBe(200);
     });
 });

@@ -258,20 +258,36 @@ function slugDoProduto(nome, produto_id) {
 
 const COLUNAS_GESTAO = 'produto_id, visivel, slug, titulo, descricao, materiais, cuidados, ordem, publicado_em, atualizado_em';
 
+// Devolve a marcação da loja e, junto, `cadastro`: o que já está escrito no cadastro do produto (nome, descrição e
+// material = categorias de nível 2). Serve SÓ para o admin pré-preencher o formulário e conferir antes de salvar:
+// nada daqui vai para a loja pública sem ele salvar. É a única rota que expõe `produtos.descricao`, e só para admin.
 async function buscarMarcacao(produto_id, empresa_id) {
     const { rows: produto } = await db.query(
-        'SELECT id FROM produtos WHERE id = $1 AND empresa_id = $2',
+        'SELECT id, nome, descricao FROM produtos WHERE id = $1 AND empresa_id = $2',
         [produto_id, empresa_id]
     );
 
     if (!produto.length) throw new AppError('Produto não encontrado', 404);
 
-    const { rows } = await db.query(
-        `SELECT ${COLUNAS_GESTAO} FROM produtos_loja WHERE produto_id = $1 AND empresa_id = $2`,
-        [produto_id, empresa_id]
-    );
+    const [{ rows }, { rows: materiais }] = await Promise.all([
+        db.query(`SELECT ${COLUNAS_GESTAO} FROM produtos_loja WHERE produto_id = $1 AND empresa_id = $2`, [produto_id, empresa_id]),
+        db.query(
+            `SELECT c.nome FROM produtos_categorias pc
+               JOIN categorias_produto c ON c.id = pc.categoria_id AND c.empresa_id = pc.empresa_id
+              WHERE pc.produto_id = $1 AND pc.empresa_id = $2 AND c.nivel = 2
+              ORDER BY c.nome`,
+            [produto_id, empresa_id]
+        )
+    ]);
 
-    return rows[0] ?? { produto_id, visivel: false, slug: null, titulo: null, descricao: null, materiais: null, cuidados: null, ordem: 0, publicado_em: null, atualizado_em: null };
+    const cadastro = {
+        nome: produto[0].nome,
+        descricao: produto[0].descricao?.trim() || null,
+        material: materiais.map((m) => m.nome).join(', ') || null
+    };
+    const marcacao = rows[0] ?? { produto_id, visivel: false, slug: null, titulo: null, descricao: null, materiais: null, cuidados: null, ordem: 0, publicado_em: null, atualizado_em: null };
+
+    return { ...marcacao, cadastro };
 }
 
 // Cria ou atualiza a marcação sob lock da linha do produto. Só produto acabado e ativo pode ficar visível.
