@@ -178,4 +178,33 @@ async function listarProdutosDaLoja({ empresa_id, situacao, busca, limit, offset
     };
 }
 
-module.exports = { listarPedidos, marcarEntregaCombinada, listarParaAvisos, listarProdutosDaLoja, SITUACOES };
+// Copia do cadastro (descrição e material) para as peças JÁ marcadas na loja que ainda estão sem esse texto.
+// Só preenche o que está vazio (NULL): nunca troca texto já escrito, não mexe em peça fora da loja e é por empresa.
+async function preencherTextosDoCadastro(empresa_id) {
+    const { rows } = await db.query(
+        `UPDATE produtos_loja pl
+            SET descricao = COALESCE(pl.descricao, NULLIF(LEFT(btrim(p.descricao), 4000), '')),
+                materiais = COALESCE(pl.materiais, NULLIF(LEFT((
+                    SELECT string_agg(c.nome, ', ' ORDER BY c.nome)
+                      FROM produtos_categorias pc
+                      JOIN categorias_produto c ON c.id = pc.categoria_id AND c.empresa_id = pc.empresa_id
+                     WHERE pc.produto_id = p.id AND pc.empresa_id = p.empresa_id AND c.nivel = 2), 2000), '')),
+                atualizado_em = NOW()
+           FROM produtos p
+          WHERE p.id = pl.produto_id AND p.empresa_id = pl.empresa_id
+            AND pl.empresa_id = $1 AND pl.visivel = true AND p.ativo = true AND p.tipo = 'acabado'
+            AND (
+                (pl.descricao IS NULL AND NULLIF(btrim(p.descricao), '') IS NOT NULL)
+                OR (pl.materiais IS NULL AND EXISTS (
+                    SELECT 1 FROM produtos_categorias pc
+                      JOIN categorias_produto c ON c.id = pc.categoria_id AND c.empresa_id = pc.empresa_id
+                     WHERE pc.produto_id = p.id AND pc.empresa_id = p.empresa_id AND c.nivel = 2))
+            )
+        RETURNING pl.produto_id`,
+        [empresa_id]
+    );
+
+    return { atualizados: rows.length };
+}
+
+module.exports = { listarPedidos, marcarEntregaCombinada, listarParaAvisos, listarProdutosDaLoja, preencherTextosDoCadastro, SITUACOES };

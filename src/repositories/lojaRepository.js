@@ -258,6 +258,23 @@ function slugDoProduto(nome, produto_id) {
 
 const COLUNAS_GESTAO = 'produto_id, visivel, slug, titulo, descricao, materiais, cuidados, ordem, publicado_em, atualizado_em';
 
+// Material do produto = nomes das categorias de nível 2 (o SKU é montado a partir das categorias).
+async function materialDoCadastro(executor, produto_id, empresa_id) {
+    const { rows } = await executor.query(
+        `SELECT string_agg(c.nome, ', ' ORDER BY c.nome) AS material
+           FROM produtos_categorias pc
+           JOIN categorias_produto c ON c.id = pc.categoria_id AND c.empresa_id = pc.empresa_id
+          WHERE pc.produto_id = $1 AND pc.empresa_id = $2 AND c.nivel = 2`,
+        [produto_id, empresa_id]
+    );
+
+    return rows[0]?.material || null;
+}
+
+const LIMITE_DESCRICAO = 4000;
+const LIMITE_MATERIAIS = 2000;
+const textoOuNulo = (valor, limite) => String(valor ?? '').trim().slice(0, limite) || null;
+
 // Devolve a marcação da loja e, junto, `cadastro`: o que já está escrito no cadastro do produto (nome, descrição e
 // material = categorias de nível 2). Serve SÓ para o admin pré-preencher o formulário e conferir antes de salvar:
 // nada daqui vai para a loja pública sem ele salvar. É a única rota que expõe `produtos.descricao`, e só para admin.
@@ -269,21 +286,15 @@ async function buscarMarcacao(produto_id, empresa_id) {
 
     if (!produto.length) throw new AppError('Produto não encontrado', 404);
 
-    const [{ rows }, { rows: materiais }] = await Promise.all([
+    const [{ rows }, material] = await Promise.all([
         db.query(`SELECT ${COLUNAS_GESTAO} FROM produtos_loja WHERE produto_id = $1 AND empresa_id = $2`, [produto_id, empresa_id]),
-        db.query(
-            `SELECT c.nome FROM produtos_categorias pc
-               JOIN categorias_produto c ON c.id = pc.categoria_id AND c.empresa_id = pc.empresa_id
-              WHERE pc.produto_id = $1 AND pc.empresa_id = $2 AND c.nivel = 2
-              ORDER BY c.nome`,
-            [produto_id, empresa_id]
-        )
+        materialDoCadastro(db, produto_id, empresa_id)
     ]);
 
     const cadastro = {
         nome: produto[0].nome,
         descricao: produto[0].descricao?.trim() || null,
-        material: materiais.map((m) => m.nome).join(', ') || null
+        material
     };
     const marcacao = rows[0] ?? { produto_id, visivel: false, slug: null, titulo: null, descricao: null, materiais: null, cuidados: null, ordem: 0, publicado_em: null, atualizado_em: null };
 
@@ -307,7 +318,14 @@ async function salvarMarcacao(produto_id, empresa_id, dados) {
             throw new AppError('Só produto acabado e ativo pode ser publicado na loja', 409);
         }
 
-        const campo = (nome) => (nome in dados ? dados[nome] : (atual[0]?.[nome] ?? null));
+        // Ao PUBLICAR (marcar como visível agora), o que ainda está vazio é copiado do cadastro do produto: descrição e
+        // material. É uma cópia no ato da publicação (nada fica ligado ao cadastro depois) e nunca troca texto já escrito
+        // nem o que veio explícito no pedido (ex.: descricao: null limpa de propósito).
+        const publicandoAgora = visivelFinal && !atual[0]?.visivel;
+        const doCadastro = publicandoAgora
+            ? { descricao: textoOuNulo(produto.descricao, LIMITE_DESCRICAO), materiais: textoOuNulo(await materialDoCadastro(client, produto_id, empresa_id), LIMITE_MATERIAIS) }
+            : {};
+        const campo = (nome) => (nome in dados ? dados[nome] : (atual[0]?.[nome] ?? doCadastro[nome] ?? null));
 
         if (!atual.length) {
             const { rows } = await client.query(
