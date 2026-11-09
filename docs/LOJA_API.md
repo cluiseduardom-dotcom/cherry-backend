@@ -151,7 +151,7 @@ Quando o webhook confirma o pagamento, **numa única transação**: a peça volt
 ## Rotas de gestão (autenticadas)
 | Rota | Quem | Efeito |
 |---|---|---|
-| `GET /produtos/:id/loja` | admin + `loja_online` | marcação atual (padrão: não visível) |
+| `GET /produtos/:id/loja` | admin + `loja_online` | marcação atual (padrão: não visível) **e** `cadastro` (`nome`, `descricao` e `material` = categorias de nível 2, como estão no cadastro do produto). `cadastro` serve só para o admin pré-preencher o formulário e conferir: nada vai para a loja pública sem ele salvar. É a única rota que devolve `produtos.descricao`, só para admin |
 | `PUT /produtos/:id/loja` | admin + `loja_online` | cria/atualiza: `visivel`, `titulo`, `descricao`, `materiais`, `cuidados`, `ordem` |
 
 | `GET /loja-produtos?situacao=todos\|publicados\|nao_publicados&busca&limite&pagina` | admin + `loja_online` | **lista** dos produtos acabados e ativos com a marcação da loja, para a tela "Loja online" do ERP. Cada item: `produto_id`, `nome`, `visivel`, `slug`, `titulo`, `ordem`, `preco_online` (preço vigente no canal `online`, ou `null`), `saldo_central`, `fotos` e `aparece_na_loja` (marcado **e** com preço online). Busca por nome é texto literal. Nunca traz custo nem margem. `Cache-Control: no-store` |
