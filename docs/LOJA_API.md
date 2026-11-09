@@ -156,6 +156,8 @@ Quando o webhook confirma o pagamento, **numa única transação**: a peça volt
 
 | `GET /loja-produtos?situacao=todos\|publicados\|nao_publicados&busca&limite&pagina` | admin + `loja_online` | **lista** dos produtos acabados e ativos com a marcação da loja, para a tela "Loja online" do ERP. Cada item: `produto_id`, `nome`, `visivel`, `slug`, `titulo`, `ordem`, `preco_online` (preço vigente no canal `online`, ou `null`), `saldo_central`, `fotos` e `aparece_na_loja` (marcado **e** com preço online). Busca por nome é texto literal. Nunca traz custo nem margem. `Cache-Control: no-store` |
 
+- **Copiar do cadastro:** ao **publicar** (marcar como visível agora), `descricao` e `materiais` que estiverem vazios são **copiados do cadastro** do produto (descrição; material = categorias de nível 2). É uma cópia no ato: mudar o cadastro depois não muda a loja, e nunca se troca texto já escrito nem o que veio explícito no corpo (`descricao: ""` limpa de propósito).
+- `POST /loja-produtos/preencher-do-cadastro` (admin + `loja_online`): faz essa mesma cópia **em lote** nas peças já marcadas que ainda estão sem descrição ou sem material. Só preenche o que está vazio; resposta `{ atualizados }`; rodar de novo dá 0.
 - Corpo estrito: preço, estoque, custo ou qualquer campo desconhecido respondem `400`.
 - Só produto `acabado` e ativo pode ser publicado (`409`). Produto de outra empresa responde `404`.
 - O `slug` é gerado na primeira marcação (`nome-sem-acento-<id>`) e **nunca muda** (URL estável).

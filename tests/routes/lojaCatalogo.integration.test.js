@@ -417,11 +417,93 @@ describe('gestão da marcação do produto (autenticada)', () => {
         expect(typeof res.body.data.cadastro.nome).toBe('string');
     });
 
-    test('o cadastro nunca sai pela API pública: só o admin o vê, e só salvar o formulário publica algo', async () => {
+    test('a API pública nunca lê o cadastro ao vivo: só mostra o que está na marcação da loja', async () => {
         const publico = JSON.stringify((await get(`/loja/${A.slug}/produtos/anel-ouro-${A.p['anel-ouro']}`)).body);
 
+        expect(publico).toContain('Descrição pública do anel');
         expect(publico).not.toContain(SEGREDO_INTERNO);
         expect(publico).not.toContain('cadastro');
+    });
+
+    describe('copiar do cadastro para a loja', () => {
+        const comMaterial = async (chave, nome, material) => {
+            const cat = await criarCategoria(A, 2, `X${crypto.randomBytes(3).toString('hex').toUpperCase()}`, material);
+            return criarProduto(A, chave, { nome, visivel: null, categorias: [cat], saldo: 1 });
+        };
+
+        test('ao publicar, copia a descrição e o material do cadastro que ainda estão vazios, e a loja pública já mostra', async () => {
+            const id = await comMaterial('copia-pub', 'Peça Cópia', 'Aço Teste');
+            const res = await put(A, id, { visivel: true });
+
+            expect(res.status).toBe(200);
+            expect(res.body.data).toMatchObject({ visivel: true, descricao: SEGREDO_INTERNO, materiais: 'Aço Teste', titulo: null });
+
+            const vitrine = await get(`/loja/${A.slug}/produtos/peca-copia-${id}`);
+            expect(vitrine.body.data).toMatchObject({ descricao: SEGREDO_INTERNO, materiais: 'Aço Teste' });
+        });
+
+        test('é uma cópia no ato da publicação: mudar o cadastro depois não muda a loja, e republicar não sobrescreve', async () => {
+            const id = await comMaterial('copia-fixa', 'Peça Cópia Fixa', 'Latão Teste');
+            await put(A, id, { visivel: true });
+            await db.query(`UPDATE produtos SET descricao = 'Texto novo do cadastro' WHERE id = $1`, [id]);
+
+            expect((await getM(A, id)).body.data).toMatchObject({ descricao: SEGREDO_INTERNO });
+
+            await put(A, id, { descricao: 'Editado na loja' });
+            await put(A, id, { visivel: false });
+            const de_novo = await put(A, id, { visivel: true });
+
+            expect(de_novo.body.data.descricao).toBe('Editado na loja');
+        });
+
+        test('nunca troca o que a pessoa já escreveu nem o que vem explícito na própria publicação', async () => {
+            const id = await comMaterial('copia-explicita', 'Peça Explícita', 'Zinco Teste');
+            const res = await put(A, id, { visivel: true, descricao: 'Texto próprio', materiais: '' });
+
+            expect(res.body.data).toMatchObject({ descricao: 'Texto próprio', materiais: null });
+        });
+
+        test('produto sem descrição e sem material no cadastro: nada é inventado', async () => {
+            const id = await criarProduto(A, 'copia-vazia', { nome: 'Peça Sem Cadastro', visivel: null, saldo: 1 });
+            await db.query(`UPDATE produtos SET descricao = NULL WHERE id = $1`, [id]);
+            const res = await put(A, id, { visivel: true });
+
+            expect(res.body.data).toMatchObject({ descricao: null, materiais: null });
+        });
+
+        describe('em lote (POST /loja-produtos/preencher-do-cadastro)', () => {
+            const lote = (E, papel = 'admin') => request(app).post('/loja-produtos/preencher-do-cadastro').set('Authorization', `Bearer ${papel === 'admin' ? E.tokenAdmin : E.tokenVendedor}`);
+            const linha = async (id) => (await db.query('SELECT descricao, materiais FROM produtos_loja WHERE produto_id = $1', [id])).rows[0];
+
+            test('preenche só o que está vazio nas peças marcadas; não troca texto, não toca peça fora da loja nem de outra empresa', async () => {
+                const vazia = await comMaterial('lote-vazia', 'Peça Lote Vazia', 'Cobre Teste');
+                const propria = await comMaterial('lote-propria', 'Peça Lote Própria', 'Níquel Teste');
+                const fora = await comMaterial('lote-fora', 'Peça Lote Fora', 'Ferro Teste');
+                await db.query(`INSERT INTO produtos_loja (produto_id, empresa_id, visivel, slug, descricao, materiais) VALUES ($1, $2, true, $3, NULL, NULL)`, [vazia, A.id, `lote-vazia-${vazia}`]);
+                await db.query(`INSERT INTO produtos_loja (produto_id, empresa_id, visivel, slug, descricao, materiais) VALUES ($1, $2, true, $3, 'Meu texto', 'Meu material')`, [propria, A.id, `lote-propria-${propria}`]);
+                await db.query(`INSERT INTO produtos_loja (produto_id, empresa_id, visivel, slug, descricao, materiais) VALUES ($1, $2, false, $3, NULL, NULL)`, [fora, A.id, `lote-fora-${fora}`]);
+                const antesB = (await linha(B.p['b-anel'])) ?? null;
+
+                const res = await lote(A);
+
+                expect(res.status).toBe(200);
+                expect(res.body.data.atualizados).toBeGreaterThanOrEqual(1);
+                expect(await linha(vazia)).toEqual({ descricao: SEGREDO_INTERNO, materiais: 'Cobre Teste' });
+                expect(await linha(propria)).toEqual({ descricao: 'Meu texto', materiais: 'Meu material' });
+                expect(await linha(fora)).toEqual({ descricao: null, materiais: null });
+                expect(await linha(B.p['b-anel'])).toEqual(antesB);
+            });
+
+            test('rodar de novo não muda mais nada (0 atualizados)', async () => {
+                expect((await lote(A)).body.data.atualizados).toBe(0);
+            });
+
+            test('só admin, só com a funcionalidade, e sem token é 401', async () => {
+                expect((await lote(A, 'vendedor')).status).toBe(403);
+                expect((await request(app).post('/loja-produtos/preencher-do-cadastro')).status).toBe(401);
+                expect((await request(app).post('/loja-produtos/preencher-do-cadastro').set('Authorization', `Bearer ${SEM_FLAG.tokenAdmin}`)).status).toBe(403);
+            });
+        });
     });
 
     test('publica: cria a marcação, gera slug estável e entra no catálogo; renomear não muda o slug', async () => {

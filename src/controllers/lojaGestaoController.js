@@ -52,4 +52,11 @@ async function listarProdutos(req, res, next) {
     } catch (error) { next(error); }
 }
 
-module.exports = { listar, marcarEntregaCombinada, listarProdutos };
+async function preencherTextosDoCadastro(req, res, next) {
+    try {
+        res.set('Cache-Control', 'no-store');
+        return response.success(res, await repository.preencherTextosDoCadastro(req.usuario.empresa_id));
+    } catch (error) { next(error); }
+}
+
+module.exports = { listar, marcarEntregaCombinada, listarProdutos, preencherTextosDoCadastro };
