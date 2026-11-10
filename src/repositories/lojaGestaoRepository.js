@@ -112,7 +112,8 @@ async function listarParaAvisos(empresa_id) {
 const FILTROS_PRODUTOS = {
     todos: 'TRUE',
     publicados: 'COALESCE(pl.visivel, false)',
-    nao_publicados: 'NOT COALESCE(pl.visivel, false)'
+    nao_publicados: 'NOT COALESCE(pl.visivel, false)',
+    no_carrossel: 'COALESCE(pl.carrossel_novidades, false)'
 };
 
 // Escapa os curingas do LIKE (barra, % e _): a busca da pessoa é texto literal.
