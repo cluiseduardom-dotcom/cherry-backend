@@ -32,6 +32,7 @@ const marcacaoSchema = z.object({
     descricao: texto(4000).optional(),
     materiais: texto(2000).optional(),
     cuidados: texto(2000).optional(),
+    carrossel_novidades: z.boolean({ error: 'carrossel_novidades deve ser verdadeiro ou falso' }).optional(),
     ordem: z.number().int('Ordem inválida').min(0, 'Ordem inválida').max(100000, 'Ordem inválida').optional()
 }).strict();
 
@@ -90,7 +91,7 @@ const entregaCombinadaSchema = z.object({
 }).strict();
 
 const produtosGestaoQuerySchema = z.object({
-    situacao: z.enum(['todos', 'publicados', 'nao_publicados'], { error: 'Situação inválida' }).default('todos'),
+    situacao: z.enum(['todos', 'publicados', 'nao_publicados', 'no_carrossel'], { error: 'Situação inválida' }).default('todos'),
     busca: z.string().trim().max(80, 'Busca deve ter no máximo 80 caracteres').transform((v) => v || undefined).optional(),
     limite: z.coerce.number().int().min(1, 'Limite inválido').max(50, 'Limite inválido').default(20),
     pagina: z.coerce.number().int().min(1, 'Página inválida').max(1000, 'Página inválida').default(1)

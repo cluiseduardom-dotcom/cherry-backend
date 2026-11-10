@@ -96,6 +96,24 @@ describe('quem pode ver', () => {
 });
 
 describe('o que a lista mostra', () => {
+    test('filtro no_carrossel lista só as peças escolhidas para o carrossel de novidades', async () => {
+        expect(nomes(await get(A, 'admin', '/loja-produtos?situacao=no_carrossel'))).toEqual([]);
+
+        await db.query('UPDATE produtos_loja SET carrossel_novidades = true WHERE produto_id = $1 AND empresa_id = $2', [A.p.publicada, A.id]);
+        try {
+            expect(nomes(await get(A, 'admin', '/loja-produtos?situacao=no_carrossel'))).toEqual(['Anel Publicado']);
+        } finally {
+            await db.query('UPDATE produtos_loja SET carrossel_novidades = false WHERE empresa_id = $1', [A.id]);
+        }
+    });
+
+    test('cada peça traz se está escolhida para o carrossel de novidades (padrão: não)', async () => {
+        const res = await get(A, 'admin', '/loja-produtos');
+
+        expect(res.body.data.itens.length).toBeGreaterThan(0);
+        expect(res.body.data.itens.every((i) => i.carrossel_novidades === false)).toBe(true);
+    });
+
     test('só produtos acabados e ativos da própria empresa; publicados primeiro, depois por ordem e nome', async () => {
         const res = await get(A, 'admin', '/loja-produtos');
 

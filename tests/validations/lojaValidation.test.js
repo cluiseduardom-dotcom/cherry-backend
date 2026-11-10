@@ -24,6 +24,11 @@ describe('marcacaoSchema (estrito)', () => {
         expect(marcacaoSchema.parse({ visivel: true, titulo: '  ', materiais: ' Aço ', ordem: 2 })).toEqual({ visivel: true, titulo: null, materiais: 'Aço', ordem: 2 });
     });
 
+    test('aceita escolher a peça para o carrossel de novidades (só booleano)', () => {
+        expect(marcacaoSchema.parse({ carrossel_novidades: true })).toEqual({ carrossel_novidades: true });
+        expect(marcacaoSchema.safeParse({ carrossel_novidades: 'sim' }).success).toBe(false);
+    });
+
     test.each([[{ preco: 10 }], [{ estoque: 1 }], [{ custo: 1 }], [{ empresa_id: 2 }], [{ visivel: 'true' }], [{ ordem: 1.5 }], [{ descricao: 'x'.repeat(4001) }]])('rejeita %j', (entrada) => {
         expect(marcacaoSchema.safeParse(entrada).success).toBe(false);
     });

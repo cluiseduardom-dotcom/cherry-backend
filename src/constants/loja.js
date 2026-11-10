@@ -6,6 +6,8 @@ module.exports = {
     MINIMO_PECAS_MAIS_VENDIDOS: 4,
     // Itens de cada vitrine da página inicial.
     ITENS_POR_VITRINE: 8,
+    // Carrossel de novidades da página inicial: no máximo este número de peças (mais que isso deixa as faixas estreitas demais).
+    MAX_ITENS_CARROSSEL: 6,
     // A galeria do produto tem no máximo 5 fotos (produto_imagens); a API nunca devolve mais que isso.
     MAX_FOTOS_PUBLICAS: 5,
     // Estoque exibido é limitado: acima disso a loja só sabe que "há estoque". Não expõe o saldo real.

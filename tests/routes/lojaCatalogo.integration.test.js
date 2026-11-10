@@ -376,6 +376,87 @@ describe('Novidades e Mais vendidos (regras do PO)', () => {
     });
 });
 
+describe('carrossel de novidades da Home (curadoria por peça)', () => {
+    const put = (E, id, corpo) => request(app).put(`/produtos/${id}/loja`).set('Authorization', `Bearer ${E.tokenAdmin}`).send(corpo);
+    const carrossel = async () => (await get(`/loja/${A.slug}/vitrines`)).body.data.carrossel.map((i) => i.slug);
+    const fotos = [];
+
+    async function addFoto(E, produto_id, n = 1) {
+        for (let i = 0; i < n; i += 1) {
+            const chave = `teste/${sufixo}/${produto_id}-${i}.jpg`;
+            await db.query(
+                `INSERT INTO produto_imagens (empresa_id, produto_id, chave, content_type, tamanho_bytes, ordem) VALUES ($1, $2, $3, 'image/jpeg', 10, $4)`,
+                [E.id, produto_id, chave, i]
+            );
+            fotos.push(chave);
+        }
+    }
+
+    beforeAll(async () => {
+        // Só peça com foto entra no carrossel. O brinco (novidade) fica sem foto de propósito.
+        await addFoto(A, A.p['anel-ouro'], 2);
+        await addFoto(A, A.p['anel-prata']);
+        await addFoto(A, A.p['promo-100']);
+    });
+
+    afterAll(async () => {
+        await db.query('DELETE FROM produto_imagens WHERE chave = ANY($1::text[])', [fotos]);
+        await db.query('UPDATE produtos_loja SET carrossel_novidades = false WHERE empresa_id = $1', [A.id]);
+    });
+
+    test('nada escolhido: entram automaticamente as novidades que têm foto (sem foto e sem ser novidade ficam de fora)', async () => {
+        expect(await carrossel()).toEqual([`anel-ouro-${A.p['anel-ouro']}`]);
+    });
+
+    test('com peça escolhida, mostra SÓ as escolhidas (mesmo que não sejam novidade), na ordem da loja', async () => {
+        expect((await put(A, A.p['promo-100'], { carrossel_novidades: true })).body.data.carrossel_novidades).toBe(true);
+        expect(await carrossel()).toEqual([`promo-100-${A.p['promo-100']}`]);
+
+        await put(A, A.p['anel-prata'], { carrossel_novidades: true, ordem: 0 });
+        await put(A, A.p['promo-100'], { ordem: 5 });
+        expect(await carrossel()).toEqual([`anel-prata-${A.p['anel-prata']}`, `promo-100-${A.p['promo-100']}`]);
+    });
+
+    test('escolhida sem foto, oculta ou sem preço não entra; se sobrar nenhuma, volta ao automático', async () => {
+        await db.query('UPDATE produtos_loja SET carrossel_novidades = false WHERE empresa_id = $1', [A.id]);
+        await put(A, A.p['brinco-ouro'], { carrossel_novidades: true });
+        await put(A, A.p['oculto'], { carrossel_novidades: true });
+        await put(A, A.p['sem-preco'], { carrossel_novidades: true });
+
+        expect(await carrossel()).toEqual([`anel-ouro-${A.p['anel-ouro']}`]);
+    });
+
+    test('no máximo 6 peças, e o carrossel só traz o formato público (nada interno)', async () => {
+        await db.query('UPDATE produtos_loja SET carrossel_novidades = false WHERE empresa_id = $1', [A.id]);
+        const ids = [];
+        for (let i = 0; i < 7; i += 1) {
+            const id = await criarProduto(A, `car-${i}`, { nome: `Peça carrossel ${i}`, preco: 10 + i });
+            await addFoto(A, id);
+            await db.query('UPDATE produtos_loja SET carrossel_novidades = true, ordem = $2 WHERE produto_id = $1', [id, 100 + i]);
+            ids.push(id);
+        }
+
+        const res = await get(`/loja/${A.slug}/vitrines`);
+        expect(res.body.data.carrossel).toHaveLength(6);
+        expect(res.body.data.carrossel.map((i) => i.slug)).toEqual(ids.slice(0, 6).map((id, i) => `car-${i}-${id}`));
+        expect(Object.keys(res.body.data.carrossel[0]).sort()).toEqual(
+            ['cuidados', 'categorias', 'descricao', 'disponivel', 'imagens', 'materiais', 'nome', 'novidade', 'preco', 'quantidade_disponivel', 'slug'].sort()
+        );
+        expect(JSON.stringify(res.body)).not.toMatch(/carrossel_novidades/);
+    });
+
+    test('uma empresa nunca vê o carrossel da outra', async () => {
+        const res = await get(`/loja/${B.slug}/vitrines`);
+        expect(res.body.data.carrossel).toEqual([]);
+    });
+
+    test('vendedor não escolhe peça para o carrossel (só admin) e valor inválido é 400', async () => {
+        const vend = await request(app).put(`/produtos/${A.p['anel-ouro']}/loja`).set('Authorization', `Bearer ${A.tokenVendedor}`).send({ carrossel_novidades: true });
+        expect([401, 403]).toContain(vend.status);
+        expect((await put(A, A.p['anel-ouro'], { carrossel_novidades: 'sim' })).status).toBe(400);
+    });
+});
+
 describe('gestão da marcação do produto (autenticada)', () => {
     const put = (E, id, corpo, token = E.tokenAdmin) => request(app).put(`/produtos/${id}/loja`).set('Authorization', `Bearer ${token}`).send(corpo);
     const getM = (E, id, token = E.tokenAdmin) => request(app).get(`/produtos/${id}/loja`).set('Authorization', `Bearer ${token}`);
