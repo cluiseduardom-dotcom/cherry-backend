@@ -96,6 +96,13 @@ describe('quem pode ver', () => {
 });
 
 describe('o que a lista mostra', () => {
+    test('cada peça traz se está escolhida para o carrossel de novidades (padrão: não)', async () => {
+        const res = await get(A, 'admin', '/loja-produtos');
+
+        expect(res.body.data.itens.length).toBeGreaterThan(0);
+        expect(res.body.data.itens.every((i) => i.carrossel_novidades === false)).toBe(true);
+    });
+
     test('só produtos acabados e ativos da própria empresa; publicados primeiro, depois por ordem e nome', async () => {
         const res = await get(A, 'admin', '/loja-produtos');
 

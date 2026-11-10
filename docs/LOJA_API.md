@@ -18,7 +18,7 @@ Base: `/loja/:slug/...`, onde `:slug` é o identificador público da empresa (`e
 | `GET /catalogo` | `{ itens: Produto[], total, pagina, limite }` |
 | `GET /produtos/:produtoSlug` | `Produto` (404 se não visível, inativo, sem preço online ou de outra empresa) |
 | `GET /categorias` | `[{ nivel, codigo, nome, quantidade }]` só de categorias com produto visível |
-| `GET /vitrines` | `{ novidades: Produto[], mais_vendidos: Produto[] }` (até 8 cada) |
+| `GET /vitrines` | `{ novidades: Produto[], mais_vendidos: Produto[], carrossel: Produto[] }` (até 8 cada; `carrossel` até 6). `carrossel` = as peças escolhidas no ERP para o carrossel de novidades da Home (na ordem da loja); se nenhuma peça visível estiver escolhida, são as novidades automaticamente. Só entra peça com foto. |
 
 ### Query do `/catalogo`
 | Parâmetro | Valores |
@@ -152,9 +152,9 @@ Quando o webhook confirma o pagamento, **numa única transação**: a peça volt
 | Rota | Quem | Efeito |
 |---|---|---|
 | `GET /produtos/:id/loja` | admin + `loja_online` | marcação atual (padrão: não visível) **e** `cadastro` (`nome`, `descricao` e `material` = categorias de nível 2, como estão no cadastro do produto). `cadastro` serve só para o admin pré-preencher o formulário e conferir: nada vai para a loja pública sem ele salvar. É a única rota que devolve `produtos.descricao`, só para admin |
-| `PUT /produtos/:id/loja` | admin + `loja_online` | cria/atualiza: `visivel`, `titulo`, `descricao`, `materiais`, `cuidados`, `ordem` |
+| `PUT /produtos/:id/loja` | admin + `loja_online` | cria/atualiza: `visivel`, `titulo`, `descricao`, `materiais`, `cuidados`, `ordem`, `carrossel_novidades` (booleano: escolhe a peça para o carrossel de novidades da Home) |
 
-| `GET /loja-produtos?situacao=todos\|publicados\|nao_publicados&busca&limite&pagina` | admin + `loja_online` | **lista** dos produtos acabados e ativos com a marcação da loja, para a tela "Loja online" do ERP. Cada item: `produto_id`, `nome`, `visivel`, `slug`, `titulo`, `ordem`, `preco_online` (preço vigente no canal `online`, ou `null`), `saldo_central`, `fotos` e `aparece_na_loja` (marcado **e** com preço online). Busca por nome é texto literal. Nunca traz custo nem margem. `Cache-Control: no-store` |
+| `GET /loja-produtos?situacao=todos\|publicados\|nao_publicados&busca&limite&pagina` | admin + `loja_online` | **lista** dos produtos acabados e ativos com a marcação da loja, para a tela "Loja online" do ERP. Cada item: `produto_id`, `nome`, `visivel`, `slug`, `titulo`, `ordem`, `carrossel_novidades`, `preco_online` (preço vigente no canal `online`, ou `null`), `saldo_central`, `fotos` e `aparece_na_loja` (marcado **e** com preço online). Busca por nome é texto literal. Nunca traz custo nem margem. `Cache-Control: no-store` |
 
 - **Copiar do cadastro:** ao **publicar** (marcar como visível agora), `descricao` e `materiais` que estiverem vazios são **copiados do cadastro** do produto (descrição; material = categorias de nível 2). É uma cópia no ato: mudar o cadastro depois não muda a loja, e nunca se troca texto já escrito nem o que veio explícito no corpo (`descricao: ""` limpa de propósito).
 - `POST /loja-produtos/preencher-do-cadastro` (admin + `loja_online`): faz essa mesma cópia **em lote** nas peças já marcadas que ainda estão sem descrição ou sem material. Só preenche o que está vazio; resposta `{ atualizados }`; rodar de novo dá 0.

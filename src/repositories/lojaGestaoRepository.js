@@ -145,7 +145,7 @@ async function listarProdutosDaLoja({ empresa_id, situacao, busca, limit, offset
         WHERE p.empresa_id = $1 AND p.ativo = true AND p.tipo = 'acabado' AND ${filtro} ${filtroBusca}`;
 
     const { rows } = await db.query(
-        `SELECT p.id AS produto_id, p.nome, COALESCE(pl.visivel, false) AS visivel, pl.slug, pl.titulo, COALESCE(pl.ordem, 0) AS ordem,
+        `SELECT p.id AS produto_id, p.nome, COALESCE(pl.visivel, false) AS visivel, pl.slug, pl.titulo, COALESCE(pl.ordem, 0) AS ordem, COALESCE(pl.carrossel_novidades, false) AS carrossel_novidades,
                 preco.preco_venda AS preco_online, COALESCE(el.saldo, 0) AS saldo_central,
                 (SELECT COUNT(*)::int FROM produto_imagens i WHERE i.produto_id = p.id AND i.empresa_id = p.empresa_id) AS fotos
          ${base}
@@ -167,6 +167,7 @@ async function listarProdutosDaLoja({ empresa_id, situacao, busca, limit, offset
                 slug: r.slug,
                 titulo: r.titulo,
                 ordem: r.ordem,
+                carrossel_novidades: r.carrossel_novidades,
                 preco_online: temPreco ? preco : null,
                 saldo_central: Number(r.saldo_central),
                 fotos: r.fotos,

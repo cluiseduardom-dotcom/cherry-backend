@@ -32,6 +32,7 @@ const marcacaoSchema = z.object({
     descricao: texto(4000).optional(),
     materiais: texto(2000).optional(),
     cuidados: texto(2000).optional(),
+    carrossel_novidades: z.boolean({ error: 'carrossel_novidades deve ser verdadeiro ou falso' }).optional(),
     ordem: z.number().int('Ordem inválida').min(0, 'Ordem inválida').max(100000, 'Ordem inválida').optional()
 }).strict();
 

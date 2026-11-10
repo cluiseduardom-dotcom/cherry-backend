@@ -78,9 +78,14 @@ async function vitrines(req, res, next) {
         const empresa_id = await resolverEmpresa(req);
         const base = { limite: ITENS_POR_VITRINE, offset: 0 };
 
-        const [novidades, comVenda] = await Promise.all([
+        const [novidades, comVenda, carrossel] = await Promise.all([
             repository.listarCatalogo(empresa_id, { ...base, novidades: true, ordem: 'novidades' }),
-            repository.contarComVenda(empresa_id)
+            repository.contarComVenda(empresa_id),
+            // O carrossel é um complemento: se falhar (ex.: migration 099 ainda não aplicada), a Home continua com as vitrines.
+            repository.listarCarrosselNovidades(empresa_id).catch((erro) => {
+                console.error('[loja] carrossel de novidades indisponível:', erro.message);
+                return [];
+            })
         ]);
 
         const maisVendidos = comVenda >= MINIMO_PECAS_MAIS_VENDIDOS
@@ -88,7 +93,7 @@ async function vitrines(req, res, next) {
             : [];
 
         cachePublico(res);
-        return response.success(res, { novidades: novidades.itens, mais_vendidos: maisVendidos });
+        return response.success(res, { novidades: novidades.itens, mais_vendidos: maisVendidos, carrossel });
     } catch (error) { next(error); }
 }
 
