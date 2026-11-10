@@ -100,3 +100,24 @@ const produtosGestaoQuerySchema = z.object({
 module.exports.produtosGestaoQuerySchema = produtosGestaoQuerySchema;
 module.exports.gestaoQuerySchema = gestaoQuerySchema;
 module.exports.entregaCombinadaSchema = entregaCombinadaSchema;
+
+// ---- Retratos da Home (gestão) ----
+// Criar: só texto alternativo e nome (a foto vem no campo "arquivo"). Vazio vira null.
+const textoOpcional = (max) => z.string().trim().max(max, `Texto deve ter no máximo ${max} caracteres`).transform((v) => v || null).optional().transform((v) => v ?? null);
+
+const retratoCriarSchema = z.object({
+    alt: textoOpcional(300),
+    nome: textoOpcional(120)
+}).strict();
+
+// Atualizar: estrito. A autorização só se confirma com `autorizacao_assinada: true` (quem e quando ficam registrados).
+const retratoAtualizarSchema = z.object({
+    alt: z.string().max(300, 'A descrição deve ter no máximo 300 caracteres').transform((v) => v.trim() || null).nullable().optional(),
+    nome: z.string().max(120, 'O nome deve ter no máximo 120 caracteres').transform((v) => v.trim() || null).nullable().optional(),
+    ordem: z.number().int('Ordem inválida').min(0, 'Ordem inválida').max(100000, 'Ordem inválida').optional(),
+    ativo: z.boolean({ error: 'ativo deve ser verdadeiro ou falso' }).optional(),
+    autorizacao_assinada: z.boolean({ error: 'autorizacao_assinada deve ser verdadeiro ou falso' }).optional()
+}).strict();
+
+module.exports.retratoCriarSchema = retratoCriarSchema;
+module.exports.retratoAtualizarSchema = retratoAtualizarSchema;

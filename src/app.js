@@ -130,6 +130,7 @@ const publicoRoutes = require('./routes/publico');
 const lojaRoutes = require('./routes/loja');
 const lojaPedidosRoutes = require('./routes/lojaPedidos');
 const lojaProdutosRoutes = require('./routes/lojaProdutos');
+const lojaRetratosRoutes = require('./routes/lojaRetratos');
 const integracoesMercadoPagoRoutes = require('./routes/integracoesMercadoPago');
 const pagamentosGatewayRoutes = require('./routes/pagamentosGateway');
 const webhooksMercadoPagoRoutes = require('./routes/webhooksMercadoPago');
@@ -150,6 +151,8 @@ app.use('/publico', publicoRoutes);
 app.use('/loja', lojaRoutes);
 // Pedidos da loja online para a equipe (admin e vendedor, só com a funcionalidade ligada): traz o contato da cliente.
 app.use('/loja-produtos', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaProdutosRoutes);
+// Retratos da abertura da Home (foto + autorização de uso de imagem). Só admin, só com a funcionalidade ligada.
+app.use('/loja-retratos', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaRetratosRoutes);
 app.use('/loja-pedidos', authMiddleware, requireVendedor, exigirFuncionalidade('loja_online'), lojaPedidosRoutes);
 app.use('/onboarding', onboardingRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);
