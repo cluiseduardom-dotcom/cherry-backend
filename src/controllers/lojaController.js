@@ -8,6 +8,9 @@ const lojaPagamentoService = require('../services/lojaPagamentoService');
 const { exigirVerificacao } = require('../integrations/turnstileClient');
 const { catalogoQuerySchema, marcacaoSchema, pedidoSchema, pagamentoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID } = require('../validations/lojaValidation');
 
+const retratosRepository = require('../repositories/lojaRetratosRepository');
+const storage = require('../services/storage/imagensStorage');
+
 const NAO_ENCONTRADA = 'Loja não encontrada';
 const SLUG_PRODUTO_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -94,6 +97,19 @@ async function vitrines(req, res, next) {
 
         cachePublico(res);
         return response.success(res, { novidades: novidades.itens, mais_vendidos: maisVendidos, carrossel });
+    } catch (error) { next(error); }
+}
+
+// Retratos da abertura da Home: só os ativos COM autorização de uso de imagem registrada (a regra está na consulta).
+async function retratos(req, res, next) {
+    try {
+        const empresa_id = await resolverEmpresa(req);
+        const lista = await retratosRepository.listarPublicos(empresa_id);
+
+        res.set('Cache-Control', 'public, max-age=60');
+        return response.success(res, lista
+            .map((r) => ({ url: storage.urlPublica(r.chave), alt: r.alt, nome: r.nome }))
+            .filter((r) => r.url));
     } catch (error) { next(error); }
 }
 
@@ -229,4 +245,4 @@ async function salvarMarcacao(req, res, next) {
     } catch (error) { next(error); }
 }
 
-module.exports = { catalogo, produto, categorias, vitrines, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };
+module.exports = { catalogo, produto, categorias, vitrines, retratos, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };

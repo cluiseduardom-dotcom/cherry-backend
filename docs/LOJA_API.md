@@ -18,6 +18,7 @@ Base: `/loja/:slug/...`, onde `:slug` é o identificador público da empresa (`e
 | `GET /catalogo` | `{ itens: Produto[], total, pagina, limite }` |
 | `GET /produtos/:produtoSlug` | `Produto` (404 se não visível, inativo, sem preço online ou de outra empresa) |
 | `GET /categorias` | `[{ nivel, codigo, nome, quantidade }]` só de categorias com produto visível |
+| `GET /retratos` | `[{ url, alt, nome }]`: retratos da abertura da Home. Só os **ativos e com autorização de uso de imagem registrada** (quem confirmou e quando ficam no banco, nunca na resposta). Cache de 60 s. |
 | `GET /vitrines` | `{ novidades: Produto[], mais_vendidos: Produto[], carrossel: Produto[] }` (até 8 cada; `carrossel` até 6). `carrossel` = as peças escolhidas no ERP para o carrossel de novidades da Home (na ordem da loja); se nenhuma peça visível estiver escolhida, são as novidades automaticamente. Só entra peça com foto. |
 
 ### Query do `/catalogo`
@@ -187,3 +188,15 @@ Depois do pagamento, **a entrega é combinada com a cliente por contato humano**
 9. Ligar `loja_online` para a Cherry no Painel.
 10. **Primeiro pagamento real feito pelo Product Owner**, em valor mínimo, antes de divulgar.
 Aplicar só pelo responsável; nada disto foi aplicado em produção.
+
+
+## Retratos da abertura da Home (gestão, admin + `loja_online`)
+
+Migration `100_loja_retratos.sql`. Nasce **inativo e sem autorização**; só vai à loja pública o retrato ativo **e** autorizado.
+
+| Rota | O que faz |
+|---|---|
+| `GET /loja-retratos` | lista (não removidos): `id`, `url`, `alt`, `nome`, `ordem`, `ativo`, `autorizacao_assinada`, `autorizado_por` (nome), `autorizado_em`. `no-store` |
+| `POST /loja-retratos` | multipart: `arquivo` (JPEG/PNG/WebP, até 2 MB; o tipo é conferido pelo conteúdo) + `alt` e `nome` opcionais. Cria inativo e sem autorização |
+| `PATCH /loja-retratos/:id` | estrito: `alt`, `nome`, `ordem`, `ativo`, `autorizacao_assinada`. `autorizacao_assinada: true` = o admin confirma que tem o termo **assinado** (registra quem e quando). Ativar exige autorização e `alt` (409). Tirar a autorização desativa na hora |
+| `DELETE /loja-retratos/:id` | remove da loja e do armazenamento; a linha fica como trilha (`removido_em`) |
