@@ -107,6 +107,11 @@ describe('o que a lista mostra', () => {
         }
     });
 
+    test('cada peça traz se é o destaque da Home (padrão: não)', async () => {
+        const res = await get(A, 'admin', '/loja-produtos');
+        expect(res.body.data.itens.every((i) => i.destaque_home === false)).toBe(true);
+    });
+
     test('cada peça traz se está escolhida para o carrossel de novidades (padrão: não)', async () => {
         const res = await get(A, 'admin', '/loja-produtos');
 
