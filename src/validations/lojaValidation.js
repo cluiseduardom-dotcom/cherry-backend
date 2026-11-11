@@ -129,8 +129,8 @@ const REDES = { instagram_url: ['instagram.com'], facebook_url: ['facebook.com',
 function urlDaRede(rede) {
     const dominios = REDES[rede];
 
-    return z.string().trim().max(300, 'O link deve ter no máximo 300 caracteres').nullable().optional().transform((v, ctx) => {
-        if (v === null || v === undefined || v === '') return null;
+    return z.string().trim().max(300, 'O link deve ter no máximo 300 caracteres').nullable().transform((v, ctx) => {
+        if (v === null || v === '') return null;
 
         let u;
         try { u = new URL(v); } catch { ctx.addIssue({ code: 'custom', message: 'Link inválido: copie o endereço completo do perfil (começa com https://)' }); return z.NEVER; }
@@ -141,7 +141,7 @@ function urlDaRede(rede) {
         if (!ok) { ctx.addIssue({ code: 'custom', message: `O link precisa ser de ${dominios[0]} e começar com https://` }); return z.NEVER; }
 
         return u.toString();
-    });
+    }).optional();
 }
 
 const textoLivre = (max, rotulo) => z.string().max(max, `${rotulo} deve ter no máximo ${max} caracteres`).transform((v) => v.trim() || null).nullable().optional();
@@ -167,32 +167,78 @@ const institucionalSchema = z.object({
     servicos: textoLivre(1500, 'Os serviços'),
     atendimento: textoLivre(1000, 'O texto de atendimento'),
     horario_atendimento: textoLivre(200, 'O horário'),
-    email_contato: z.string().trim().max(160, 'O e-mail deve ter no máximo 160 caracteres').nullable().optional().transform((v, ctx) => {
+    email_contato: z.string().trim().max(160, 'O e-mail deve ter no máximo 160 caracteres').nullable().transform((v, ctx) => {
         if (!v) return null;
         if (!EMAIL.test(v)) { ctx.addIssue({ code: 'custom', message: 'E-mail inválido' }); return z.NEVER; }
         return v.toLowerCase();
-    }),
+    }).optional(),
     // Aceita "(11) 99999-9999" e "5511999999999"; guarda só dígitos com o 55 do Brasil.
-    whatsapp: z.string().max(30).nullable().optional().transform((v, ctx) => {
+    whatsapp: z.string().max(30).nullable().transform((v, ctx) => {
         const digitos = String(v ?? '').replace(/\D/g, '');
         if (!digitos) return null;
         const completo = digitos.length === 10 || digitos.length === 11 ? `55${digitos}` : digitos;
         if (!/^\d{12,13}$/.test(completo)) { ctx.addIssue({ code: 'custom', message: 'WhatsApp inválido: informe o DDD e o número (ex.: 11 99999-9999)' }); return z.NEVER; }
         return completo;
-    }),
+    }).optional(),
     instagram_url: urlDaRede('instagram_url'),
     facebook_url: urlDaRede('facebook_url'),
     tiktok_url: urlDaRede('tiktok_url'),
     razao_social: textoLivre(160, 'A razão social'),
-    cnpj: z.string().max(30).nullable().optional().transform((v, ctx) => {
+    cnpj: z.string().max(30).nullable().transform((v, ctx) => {
         const digitos = String(v ?? '').replace(/\D/g, '');
         if (!digitos) return null;
         if (!cnpjValido(digitos)) { ctx.addIssue({ code: 'custom', message: 'CNPJ inválido' }); return z.NEVER; }
         return digitos;
-    }),
+    }).optional(),
     endereco: textoLivre(300, 'O endereço'),
     avisos: textoLivre(600, 'Os avisos')
 }).strict();
 
 module.exports.institucionalSchema = institucionalSchema;
 module.exports.cnpjValido = cnpjValido;
+
+// ---- Faixas (banners) rotativas da Home (gestão) ----
+const FUNDOS_BANNER = ['vinho', 'ouro', 'rosa', 'escuro'];
+
+// Link da faixa: caminho interno da loja (começa com uma única barra) ou https. Nunca javascript:, data: nem "//host".
+function linkDoBanner() {
+    return z.string().trim().max(300, 'O link deve ter no máximo 300 caracteres').nullable().transform((v, ctx) => {
+        if (v === null || v === '') return null;
+
+        const interno = /^\/(?!\/)[^\s<>"'\\]*$/.test(v);
+        let externoOk = false;
+        try { const u = new URL(v); externoOk = u.protocol === 'https:' && !u.username && !u.password; } catch { externoOk = false; }
+
+        if (!interno && !externoOk) { ctx.addIssue({ code: 'custom', message: 'Link inválido: use um caminho da loja (ex.: /produtos) ou um endereço https://' }); return z.NEVER; }
+
+        return v;
+    }).optional();
+}
+
+const dataOuNula = (rotulo) => z.string().trim().nullable().transform((v, ctx) => {
+    if (v === null || v === '') return null;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) { ctx.addIssue({ code: 'custom', message: `${rotulo} inválida` }); return z.NEVER; }
+    return d.toISOString();
+}).optional();
+
+const bannerCampos = {
+    ativo: z.boolean({ error: 'ativo deve ser verdadeiro ou falso' }).optional(),
+    usa_retrato: z.boolean({ error: 'usa_retrato deve ser verdadeiro ou falso' }).optional(),
+    fundo: z.enum(FUNDOS_BANNER, { error: 'Cor de fundo inválida' }).optional(),
+    ordem: z.number().int('Ordem inválida').min(0, 'Ordem inválida').max(1000, 'Ordem inválida').optional(),
+    rotulo: textoLivre(40, 'O rótulo'),
+    titulo: textoLivre(100, 'O título'),
+    destaque: textoLivre(40, 'O destaque'),
+    subtitulo: textoLivre(120, 'O subtítulo'),
+    botao_texto: textoLivre(30, 'O texto do botão'),
+    link: linkDoBanner(),
+    rodape_texto: textoLivre(100, 'O texto de rodapé'),
+    inicio_em: dataOuNula('A data de início'),
+    fim_em: dataOuNula('A data de fim')
+};
+
+const bannerSchema = z.object(bannerCampos).strict();
+
+module.exports.bannerSchema = bannerSchema;
+module.exports.FUNDOS_BANNER = FUNDOS_BANNER;

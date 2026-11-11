@@ -8,6 +8,7 @@ const lojaPagamentoService = require('../services/lojaPagamentoService');
 const { exigirVerificacao } = require('../integrations/turnstileClient');
 const { catalogoQuerySchema, marcacaoSchema, pedidoSchema, pagamentoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID } = require('../validations/lojaValidation');
 
+const bannersRepository = require('../repositories/lojaBannersRepository');
 const institucionalRepository = require('../repositories/lojaInstitucionalRepository');
 const retratosRepository = require('../repositories/lojaRetratosRepository');
 const storage = require('../services/storage/imagensStorage');
@@ -148,6 +149,22 @@ async function institucional(req, res, next) {
     } catch (error) { next(error); }
 }
 
+// Faixas rotativas da Home: só as ativas, com conteúdo e dentro da janela de datas (a regra está na consulta).
+async function banners(req, res, next) {
+    try {
+        const empresa_id = await resolverEmpresa(req);
+        const lista = await bannersRepository.listarPublicos(empresa_id);
+
+        res.set('Cache-Control', 'public, max-age=30');
+        return response.success(res, lista.map((b) => Object.fromEntries(Object.entries({
+            fundo: b.fundo, usa_retrato: b.usa_retrato, rotulo: b.rotulo, titulo: b.titulo, destaque: b.destaque, subtitulo: b.subtitulo,
+            botao_texto: b.botao_texto, link: b.link, rodape_texto: b.rodape_texto,
+            imagem_esquerda: b.imagem_esquerda_chave ? storage.urlPublica(b.imagem_esquerda_chave) : null,
+            imagem_direita: b.imagem_direita_chave ? storage.urlPublica(b.imagem_direita_chave) : null
+        }).filter(([, v]) => v !== null && v !== false))));
+    } catch (error) { next(error); }
+}
+
 // ---- Pedido do visitante ----
 
 // Libera reservas vencidas antes de ler ou criar pedido, para a disponibilidade e o status estarem em dia mesmo
@@ -280,4 +297,4 @@ async function salvarMarcacao(req, res, next) {
     } catch (error) { next(error); }
 }
 
-module.exports = { catalogo, produto, categorias, menu, vitrines, retratos, institucional, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };
+module.exports = { catalogo, produto, categorias, menu, banners, vitrines, retratos, institucional, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };
