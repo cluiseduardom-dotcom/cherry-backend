@@ -268,6 +268,54 @@ async function listarCategoriasComProdutos(empresa_id) {
     return rows;
 }
 
+// Menu de categorias com as VARIAÇÕES de cada tipo de peça (ex.: dentro de "Anel": os materiais e os públicos que existem
+// de verdade nas peças à venda), mais a peça mais nova com foto de cada tipo. Só entra o que tem ao menos uma peça visível
+// à venda: o menu nunca oferece um filtro que leva a uma página vazia. Nada é inventado: tudo vem do cadastro.
+async function listarMenuDeCategorias(empresa_id) {
+    const juntaN1 = `JOIN produtos_categorias pc1 ON pc1.produto_id = p.id AND pc1.empresa_id = p.empresa_id
+         JOIN categorias_produto c1 ON c1.id = pc1.categoria_id AND c1.empresa_id = pc1.empresa_id AND c1.deletado_em IS NULL AND c1.nivel = 1`;
+    const comFiltro = (extra) => BASE_SQL.replace('WHERE pl.empresa_id', `${extra}\n         WHERE pl.empresa_id`);
+
+    const [{ rows: tipos }, { rows: filhos }, { rows: novas }] = await Promise.all([
+        db.query(
+            `SELECT c1.codigo, c1.nome, COUNT(DISTINCT p.id)::int AS quantidade
+             ${comFiltro(juntaN1)} GROUP BY c1.codigo, c1.nome ORDER BY c1.nome`,
+            [empresa_id]
+        ),
+        db.query(
+            `SELECT c1.codigo AS n1, c.nivel, c.codigo, c.nome, COUNT(DISTINCT p.id)::int AS quantidade
+             ${comFiltro(`${juntaN1}
+         JOIN produtos_categorias pc ON pc.produto_id = p.id AND pc.empresa_id = p.empresa_id
+         JOIN categorias_produto c ON c.id = pc.categoria_id AND c.empresa_id = pc.empresa_id AND c.deletado_em IS NULL AND c.nivel IN (2, 3)`)}
+             GROUP BY c1.codigo, c.nivel, c.codigo, c.nome ORDER BY c.nivel, c.nome`,
+            [empresa_id]
+        ),
+        db.query(
+            `SELECT DISTINCT ON (c1.codigo) c1.codigo AS n1, pl.slug, COALESCE(NULLIF(btrim(pl.titulo), ''), p.nome) AS nome, img.chave
+             ${comFiltro(`${juntaN1}
+         JOIN LATERAL (SELECT i.chave FROM produto_imagens i WHERE i.produto_id = p.id AND i.empresa_id = p.empresa_id ORDER BY i.ordem ASC, i.id ASC LIMIT 1) img ON true`)}
+             ORDER BY c1.codigo, ${PRIMEIRA_ENTRADA_SQL} DESC NULLS LAST, pl.produto_id DESC`,
+            [empresa_id]
+        )
+    ]);
+
+    return tipos.map((t) => {
+        const nova = novas.find((n) => n.n1 === t.codigo);
+        const deste = (nivel) => filhos
+            .filter((f) => f.n1 === t.codigo && f.nivel === nivel)
+            .map((f) => ({ codigo: f.codigo, nome: f.nome, quantidade: f.quantidade }));
+
+        return {
+            codigo: t.codigo,
+            nome: t.nome,
+            quantidade: t.quantidade,
+            n2: deste(2),
+            n3: deste(3),
+            novidade: nova && urlDaFoto(nova.chave) ? { slug: nova.slug, nome: nova.nome, imagem: urlDaFoto(nova.chave) } : null
+        };
+    });
+}
+
 // Quantas peças da loja têm ao menos uma venda finalizada (decide se "Mais vendidos" aparece).
 async function contarComVenda(empresa_id) {
     const { rows } = await db.query(
@@ -403,6 +451,7 @@ module.exports = {
     buscarDestaqueDaHome,
     buscarProdutoPorSlug,
     listarCategoriasComProdutos,
+    listarMenuDeCategorias,
     contarComVenda,
     buscarMarcacao,
     salvarMarcacao,

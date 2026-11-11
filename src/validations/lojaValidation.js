@@ -190,7 +190,8 @@ const institucionalSchema = z.object({
         if (!cnpjValido(digitos)) { ctx.addIssue({ code: 'custom', message: 'CNPJ inválido' }); return z.NEVER; }
         return digitos;
     }),
-    endereco: textoLivre(300, 'O endereço')
+    endereco: textoLivre(300, 'O endereço'),
+    avisos: textoLivre(600, 'Os avisos')
 }).strict();
 
 module.exports.institucionalSchema = institucionalSchema;

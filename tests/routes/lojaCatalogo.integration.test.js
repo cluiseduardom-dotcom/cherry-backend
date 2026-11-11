@@ -457,6 +457,66 @@ describe('carrossel de novidades da Home (curadoria por peça)', () => {
     });
 });
 
+describe('menu de categorias com as variações que existem', () => {
+    const menu = async (E = A) => (await get(`/loja/${E.slug}/menu`)).body.data;
+    const tipo = (m, codigo) => m.find((t) => t.codigo === codigo);
+    const fotos = [];
+    let n3;
+
+    const baseAnterior = process.env.R2_PUBLIC_BASE_URL;
+
+    beforeAll(async () => {
+        process.env.R2_PUBLIC_BASE_URL = 'https://fotos.exemplo.test';
+        n3 = await criarCategoria(A, 3, 'MAS', 'Masculino');
+        await db.query(`INSERT INTO produtos_categorias (produto_id, categoria_id, empresa_id) VALUES ($1, $2, $3)`, [A.p['anel-ouro'], n3, A.id]);
+        for (const chave of ['anel-ouro', 'anel-prata']) {
+            const arq = `teste/${sufixo}/menu-${chave}.jpg`;
+            await db.query(`INSERT INTO produto_imagens (empresa_id, produto_id, chave, content_type, tamanho_bytes, ordem) VALUES ($1, $2, $3, 'image/jpeg', 10, 0)`, [A.id, A.p[chave], arq]);
+            fotos.push(arq);
+        }
+    });
+
+    afterAll(async () => {
+        if (baseAnterior === undefined) delete process.env.R2_PUBLIC_BASE_URL; else process.env.R2_PUBLIC_BASE_URL = baseAnterior;
+        await db.query('DELETE FROM produto_imagens WHERE chave = ANY($1::text[])', [fotos]);
+        await db.query('DELETE FROM produtos_categorias WHERE categoria_id = $1', [n3]);
+    });
+
+    test('cada tipo traz SÓ as variações que existem nas peças à venda daquele tipo (Brinco não oferece Prata)', async () => {
+        const m = await menu();
+
+        expect(m.map((t) => t.codigo)).toEqual(['ANE', 'BRC']);
+        expect(tipo(m, 'ANE').n2.map((c) => c.codigo)).toEqual(['BO', 'AG']);
+        expect(tipo(m, 'BRC').n2.map((c) => c.codigo)).toEqual(['BO']);
+        expect(tipo(m, 'ANE').n3).toEqual([{ codigo: 'MAS', nome: 'Masculino', quantidade: 1 }]);
+        expect(tipo(m, 'BRC').n3).toEqual([]);
+    });
+
+    test('as quantidades contam peças distintas visíveis à venda (oculta, insumo, inativa e sem preço ficam de fora)', async () => {
+        const m = await menu();
+
+        expect(tipo(m, 'ANE')).toMatchObject({ nome: 'Anel', quantidade: 2 });
+        expect(tipo(m, 'ANE').n2.find((c) => c.codigo === 'BO').quantidade).toBe(1);
+        expect(tipo(m, 'BRC').quantidade).toBe(1);
+    });
+
+    test('a peça mais nova com foto de cada tipo (null se nenhuma tem foto), só com dado público', async () => {
+        const m = await menu();
+
+        expect(tipo(m, 'ANE').novidade).toMatchObject({ slug: `anel-ouro-${A.p['anel-ouro']}`, nome: 'Anel solitário ouro' });
+        expect(tipo(m, 'ANE').novidade.imagem).toContain(`teste/${sufixo}/menu-anel-ouro.jpg`);
+        expect(Object.keys(tipo(m, 'ANE').novidade).sort()).toEqual(['imagem', 'nome', 'slug']);
+        expect(tipo(m, 'BRC').novidade).toBeNull();
+        expect(JSON.stringify(m)).not.toMatch(/custo|margem|fornecedor|empresa_id|preco/i);
+    });
+
+    test('uma empresa nunca vê o menu da outra; loja sem a funcionalidade é 404', async () => {
+        expect(await menu(B)).toEqual([]);
+        expect((await get(`/loja/${SEM_FLAG.slug}/menu`)).status).toBe(404);
+        expect((await get('/loja/nao-existe/menu')).status).toBe(404);
+    });
+});
+
 describe('destaque da Home (a peça do momento, escolhida pela loja)', () => {
     const put = (E, id, corpo) => request(app).put(`/produtos/${id}/loja`).set('Authorization', `Bearer ${E.tokenAdmin}`).send(corpo);
     const destaque = async () => (await get(`/loja/${A.slug}/vitrines`)).body.data.destaque;

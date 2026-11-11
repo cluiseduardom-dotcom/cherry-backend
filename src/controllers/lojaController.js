@@ -75,6 +75,16 @@ async function categorias(req, res, next) {
     } catch (error) { next(error); }
 }
 
+// Menu de categorias com as variações (materiais e públicos que existem) e a peça mais nova de cada tipo.
+async function menu(req, res, next) {
+    try {
+        const empresa_id = await resolverEmpresa(req);
+
+        cachePublico(res);
+        return response.success(res, await repository.listarMenuDeCategorias(empresa_id));
+    } catch (error) { next(error); }
+}
+
 // Vitrines da página inicial. "Mais vendidos" vem vazio enquanto houver menos de N peças com venda (não se
 // mostra um ranking de uma ou duas peças).
 async function vitrines(req, res, next) {
@@ -125,11 +135,12 @@ async function institucional(req, res, next) {
         const empresa_id = await resolverEmpresa(req);
         const d = await institucionalRepository.buscar(empresa_id);
         const servicos = String(d.servicos ?? '').split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 12);
+        const avisos = String(d.avisos ?? '').split('\n').map((l) => l.trim().slice(0, 100)).filter(Boolean).slice(0, 5);
         const redes = Object.fromEntries([['instagram', d.instagram_url], ['facebook', d.facebook_url], ['tiktok', d.tiktok_url]].filter(([, v]) => v));
         const saida = {
             historia: d.historia, fundadora_nome: d.fundadora_nome, servicos: servicos.length ? servicos : null,
             atendimento: d.atendimento, horario_atendimento: d.horario_atendimento, email_contato: d.email_contato, whatsapp: d.whatsapp,
-            redes: Object.keys(redes).length ? redes : null, razao_social: d.razao_social, cnpj: d.cnpj, endereco: d.endereco
+            redes: Object.keys(redes).length ? redes : null, razao_social: d.razao_social, cnpj: d.cnpj, endereco: d.endereco, avisos: avisos.length ? avisos : null
         };
 
         res.set('Cache-Control', 'public, max-age=60');
@@ -269,4 +280,4 @@ async function salvarMarcacao(req, res, next) {
     } catch (error) { next(error); }
 }
 
-module.exports = { catalogo, produto, categorias, vitrines, retratos, institucional, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };
+module.exports = { catalogo, produto, categorias, menu, vitrines, retratos, institucional, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };
