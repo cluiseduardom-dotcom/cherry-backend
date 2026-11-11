@@ -21,6 +21,7 @@ Base: `/loja/:slug/...`, onde `:slug` é o identificador público da empresa (`e
 | `GET /retratos` | `[{ url, alt, nome }]`: retratos da abertura da Home. Só os **ativos e com autorização de uso de imagem registrada** (quem confirmou e quando ficam no banco, nunca na resposta). Cache de 60 s. |
 | `GET /institucional` | dados institucionais, **só os preenchidos** (a chave some se estiver vazia): `historia`, `fundadora_nome`, `servicos` (lista), `atendimento`, `horario_atendimento`, `email_contato`, `whatsapp` (dígitos com 55), `redes` (`instagram`, `facebook`, `tiktok`: https do domínio da rede), `razao_social`, `cnpj` (14 dígitos), `endereco`, `avisos` (lista de até 5 avisos curtos da faixa sob o banner). Cache de 60 s. |
 | `GET /menu` | menu de categorias com as variações: `[{ codigo, nome, quantidade, n2: [{codigo, nome, quantidade}], n3: [...], novidade: { slug, nome, imagem } \| null }]`. `n2` e `n3` são as categorias de nível 2 (material) e 3 (público) que existem nas peças à venda daquele tipo; só entra o que tem peça visível (não há filtro que leve a página vazia). `novidade` = a peça mais nova com foto do tipo. Cache de 60 s. |
+| `GET /banners` | faixas rotativas da Home: só as **ativas, com conteúdo e dentro da janela de datas**, na ordem da gestão. Cada uma traz só os campos preenchidos: `fundo` (`vinho`/`ouro`/`rosa`/`escuro`), `usa_retrato` (leva o retrato do dia à esquerda), `rotulo`, `titulo`, `destaque`, `subtitulo`, `botao_texto`, `link` (caminho da loja ou https), `rodape_texto`, `imagem_esquerda`, `imagem_direita` (URLs). Cache de 30 s. |
 | `GET /vitrines` | `{ novidades: Produto[], mais_vendidos: Produto[], carrossel: Produto[] }` (até 8 cada; `carrossel` até 6). `carrossel` = as peças escolhidas no ERP para o carrossel de novidades da Home (na ordem da loja); se nenhuma peça visível estiver escolhida, são as novidades automaticamente. Só entra peça com foto. |
 
 ### Query do `/catalogo`
@@ -212,3 +213,19 @@ Migration `101_loja_institucional.sql`. Uma linha por empresa; tudo nasce vazio 
 |---|---|
 | `GET /loja-institucional` | todos os campos (nulos quando vazios) + `atualizado_em`. `no-store` |
 | `PUT /loja-institucional` | estrito; campo ausente não muda, `null` ou texto vazio limpa. Valida: link de rede social (`https` e domínio do Instagram, Facebook/fb.com ou TikTok, sem usuário e senha), CNPJ (dígitos verificadores), WhatsApp (DDD + número; guarda com 55), e-mail, tamanhos |
+
+
+## Faixas (banners) rotativas da Home (gestão, admin + `loja_online`)
+
+Migration `104_loja_banners.sql`. Nasce **vazia e inativa**; no máximo **6 faixas** por empresa (a 7ª é 409). Só vai à loja a faixa ativa, com algo para mostrar e dentro da janela de datas (`inicio_em`/`fim_em`, opcionais).
+
+| Rota | O que faz |
+|---|---|
+| `GET /loja-banners` | lista (não removidas), com URLs das imagens. `no-store` |
+| `POST /loja-banners` | cria vazia e inativa (corpo estrito: `fundo`, `usa_retrato`, `rotulo`, `titulo`, `destaque`, `subtitulo`, `botao_texto`, `link`, `rodape_texto`, `inicio_em`, `fim_em`) |
+| `PATCH /loja-banners/:id` | estrito; campo ausente não muda, `null` limpa; `ativo` e `ordem`. Regras: botão exige link (400), fim depois do início (400), ativar exige ao menos um texto ou imagem (409) |
+| `PUT /loja-banners/:id/imagem/:lado` | `lado` = `esquerda` ou `direita`; multipart `arquivo` (JPEG/PNG/WebP, até 2 MB, conferido pelo conteúdo). A chave leva o `empresa_id` do JWT. Trocar apaga o arquivo antigo |
+| `DELETE /loja-banners/:id/imagem/:lado` | tira a imagem (409 se a faixa está ativa e ficaria sem conteúdo) |
+| `DELETE /loja-banners/:id` | tira da loja e apaga as imagens; a linha fica como trilha (`removido_em`) |
+
+Link da faixa: caminho da loja (começa com uma única `/`) ou `https://` sem usuário e senha. Nunca `javascript:`, `data:` nem `//host`.

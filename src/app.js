@@ -132,6 +132,7 @@ const lojaPedidosRoutes = require('./routes/lojaPedidos');
 const lojaProdutosRoutes = require('./routes/lojaProdutos');
 const lojaRetratosRoutes = require('./routes/lojaRetratos');
 const lojaInstitucionalRoutes = require('./routes/lojaInstitucional');
+const lojaBannersRoutes = require('./routes/lojaBanners');
 const integracoesMercadoPagoRoutes = require('./routes/integracoesMercadoPago');
 const pagamentosGatewayRoutes = require('./routes/pagamentosGateway');
 const webhooksMercadoPagoRoutes = require('./routes/webhooksMercadoPago');
@@ -156,6 +157,8 @@ app.use('/loja-produtos', authMiddleware, requireAdmin, exigirFuncionalidade('lo
 app.use('/loja-retratos', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaRetratosRoutes);
 // Dados institucionais da loja (história, serviços, atendimento, redes sociais, dados da empresa). Só admin, só com a funcionalidade ligada.
 app.use('/loja-institucional', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaInstitucionalRoutes);
+// Faixas (banners) rotativas da Home: promoções, recados e fotos. Só admin, só com a funcionalidade ligada.
+app.use('/loja-banners', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaBannersRoutes);
 app.use('/loja-pedidos', authMiddleware, requireVendedor, exigirFuncionalidade('loja_online'), lojaPedidosRoutes);
 app.use('/onboarding', onboardingRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);

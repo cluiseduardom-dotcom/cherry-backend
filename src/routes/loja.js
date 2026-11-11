@@ -33,6 +33,7 @@ router.get('/:slug/menu', limiteLoja, controller.menu);
 router.get('/:slug/vitrines', limiteLoja, controller.vitrines);
 router.get('/:slug/retratos', limiteLoja, controller.retratos);
 router.get('/:slug/institucional', limiteLoja, controller.institucional);
+router.get('/:slug/banners', limiteLoja, controller.banners);
 router.get('/:slug/produtos/:produtoSlug', limiteLoja, controller.produto);
 router.post('/:slug/pedidos', limitePedido, controller.criarPedido);
 router.get('/:slug/pedidos/:codigo', limiteLoja, controller.buscarPedido);

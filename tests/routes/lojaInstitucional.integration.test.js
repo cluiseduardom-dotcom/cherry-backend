@@ -124,6 +124,17 @@ describe('o que a loja mostra', () => {
         expect(dados.fundadora_nome).toBe('Fundadora TESTE');
     });
 
+    test('um PUT parcial NÃO apaga o que não foi enviado (WhatsApp, e-mail, redes e CNPJ incluídos)', async () => {
+        await gravar(A, { whatsapp: '11 98888-7777', email_contato: 'parcial@teste.local', instagram_url: 'https://www.instagram.com/parcial', facebook_url: 'https://www.facebook.com/parcial', tiktok_url: 'https://www.tiktok.com/@parcial', cnpj: CNPJ_OK });
+        const res = await gravar(A, { atendimento: 'Só este campo foi enviado' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toMatchObject({
+            atendimento: 'Só este campo foi enviado', whatsapp: '5511988887777', email_contato: 'parcial@teste.local', cnpj: CNPJ_OK,
+            instagram_url: 'https://www.instagram.com/parcial', facebook_url: 'https://www.facebook.com/parcial', tiktok_url: 'https://www.tiktok.com/@parcial'
+        });
+    });
+
     test('uma empresa nunca vê o institucional da outra', async () => {
         expect((await ler(B)).body.data.fundadora_nome).toBeNull();
         expect((await publico(B)).body.data).toEqual({});
