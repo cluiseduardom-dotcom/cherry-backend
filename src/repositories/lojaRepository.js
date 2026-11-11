@@ -198,6 +198,11 @@ async function listarCatalogo(empresa_id, filtros) {
         condicoes.push('pl.carrossel_novidades = true');
     }
 
+    // Uso interno (cena "Destaque" da Home): só a peça escolhida pela loja como destaque.
+    if (filtros.somenteDestaque) {
+        condicoes.push('pl.destaque_home = true');
+    }
+
     if (filtros.somenteComFoto) {
         condicoes.push('EXISTS (SELECT 1 FROM produto_imagens i WHERE i.produto_id = p.id AND i.empresa_id = p.empresa_id)');
     }
@@ -229,6 +234,13 @@ async function listarCarrosselNovidades(empresa_id) {
     if (escolhidas.itens.length) return escolhidas.itens;
 
     return (await listarCatalogo(empresa_id, { ...base, novidades: true, ordem: 'novidades' })).itens;
+}
+
+// Destaque da Home: a peça que a loja escolheu como "peça do momento", ou null. Só entra se já passa em todas as regras do
+// catálogo público (visível, com preço online, ativa) e tem foto.
+async function buscarDestaqueDaHome(empresa_id) {
+    const { itens } = await listarCatalogo(empresa_id, { limite: 1, offset: 0, somenteDestaque: true, somenteComFoto: true, ordem: 'destaque' });
+    return itens[0] ?? null;
 }
 
 async function buscarProdutoPorSlug(empresa_id, slug) {
@@ -277,7 +289,7 @@ function slugDoProduto(nome, produto_id) {
     return base ? `${base}-${produto_id}` : `produto-${produto_id}`;
 }
 
-const COLUNAS_GESTAO = 'produto_id, visivel, slug, titulo, descricao, materiais, cuidados, ordem, carrossel_novidades, publicado_em, atualizado_em';
+const COLUNAS_GESTAO = 'produto_id, visivel, slug, titulo, descricao, materiais, cuidados, ordem, carrossel_novidades, destaque_home, publicado_em, atualizado_em';
 
 // Material do produto = nomes das categorias de nível 2 (o SKU é montado a partir das categorias).
 async function materialDoCadastro(executor, produto_id, empresa_id) {
@@ -317,7 +329,7 @@ async function buscarMarcacao(produto_id, empresa_id) {
         descricao: produto[0].descricao?.trim() || null,
         material
     };
-    const marcacao = rows[0] ?? { produto_id, visivel: false, slug: null, titulo: null, descricao: null, materiais: null, cuidados: null, ordem: 0, carrossel_novidades: false, publicado_em: null, atualizado_em: null };
+    const marcacao = rows[0] ?? { produto_id, visivel: false, slug: null, titulo: null, descricao: null, materiais: null, cuidados: null, ordem: 0, carrossel_novidades: false, destaque_home: false, publicado_em: null, atualizado_em: null };
 
     return { ...marcacao, cadastro };
 }
@@ -342,6 +354,18 @@ async function salvarMarcacao(produto_id, empresa_id, dados) {
         // Ao PUBLICAR (marcar como visível agora), o que ainda está vazio é copiado do cadastro do produto: descrição e
         // material. É uma cópia no ato da publicação (nada fica ligado ao cadastro depois) e nunca troca texto já escrito
         // nem o que veio explícito no pedido (ex.: descricao: null limpa de propósito).
+        if (dados.destaque_home === true && !visivelFinal) {
+            throw new AppError('Só peça publicada na loja pode ser o destaque da Home', 409);
+        }
+
+        // Só UMA peça por empresa é o destaque: escolher esta tira a anterior (mesma transação; o índice único garante).
+        if (dados.destaque_home === true) {
+            await client.query('UPDATE produtos_loja SET destaque_home = false, atualizado_em = NOW() WHERE empresa_id = $1 AND produto_id <> $2 AND destaque_home', [empresa_id, produto_id]);
+        }
+
+        // Despublicar uma peça que é o destaque tira o destaque dela (não fica um destaque "fantasma" para quando voltar).
+        const destaqueFinal = visivelFinal ? (dados.destaque_home ?? atual[0]?.destaque_home ?? false) : false;
+
         const publicandoAgora = visivelFinal && !atual[0]?.visivel;
         const doCadastro = publicandoAgora
             ? { descricao: textoOuNulo(produto.descricao, LIMITE_DESCRICAO), materiais: textoOuNulo(await materialDoCadastro(client, produto_id, empresa_id), LIMITE_MATERIAIS) }
@@ -350,23 +374,23 @@ async function salvarMarcacao(produto_id, empresa_id, dados) {
 
         if (!atual.length) {
             const { rows } = await client.query(
-                `INSERT INTO produtos_loja (produto_id, empresa_id, visivel, slug, titulo, descricao, materiais, cuidados, ordem, carrossel_novidades, publicado_em)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $3 THEN NOW() END)
+                `INSERT INTO produtos_loja (produto_id, empresa_id, visivel, slug, titulo, descricao, materiais, cuidados, ordem, carrossel_novidades, destaque_home, publicado_em)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CASE WHEN $3 THEN NOW() END)
                  RETURNING ${COLUNAS_GESTAO}`,
                 [produto_id, empresa_id, visivelFinal, slugDoProduto(produto.nome, produto_id),
-                    campo('titulo'), campo('descricao'), campo('materiais'), campo('cuidados'), dados.ordem ?? 0, dados.carrossel_novidades ?? false]
+                    campo('titulo'), campo('descricao'), campo('materiais'), campo('cuidados'), dados.ordem ?? 0, dados.carrossel_novidades ?? false, destaqueFinal]
             );
             return rows[0];
         }
 
         const { rows } = await client.query(
             `UPDATE produtos_loja
-                SET visivel = $3, titulo = $4, descricao = $5, materiais = $6, cuidados = $7, ordem = $8, carrossel_novidades = $9,
+                SET visivel = $3, titulo = $4, descricao = $5, materiais = $6, cuidados = $7, ordem = $8, carrossel_novidades = $9, destaque_home = $10,
                     publicado_em = COALESCE(publicado_em, CASE WHEN $3 THEN NOW() END),
                     atualizado_em = NOW()
               WHERE produto_id = $1 AND empresa_id = $2
               RETURNING ${COLUNAS_GESTAO}`,
-            [produto_id, empresa_id, visivelFinal, campo('titulo'), campo('descricao'), campo('materiais'), campo('cuidados'), dados.ordem ?? atual[0].ordem, dados.carrossel_novidades ?? atual[0].carrossel_novidades]
+            [produto_id, empresa_id, visivelFinal, campo('titulo'), campo('descricao'), campo('materiais'), campo('cuidados'), dados.ordem ?? atual[0].ordem, dados.carrossel_novidades ?? atual[0].carrossel_novidades, destaqueFinal]
         );
         return rows[0];
     });
@@ -376,6 +400,7 @@ module.exports = {
     buscarEmpresaDaLoja,
     listarCatalogo,
     listarCarrosselNovidades,
+    buscarDestaqueDaHome,
     buscarProdutoPorSlug,
     listarCategoriasComProdutos,
     contarComVenda,

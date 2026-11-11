@@ -457,6 +457,81 @@ describe('carrossel de novidades da Home (curadoria por peça)', () => {
     });
 });
 
+describe('destaque da Home (a peça do momento, escolhida pela loja)', () => {
+    const put = (E, id, corpo) => request(app).put(`/produtos/${id}/loja`).set('Authorization', `Bearer ${E.tokenAdmin}`).send(corpo);
+    const destaque = async () => (await get(`/loja/${A.slug}/vitrines`)).body.data.destaque;
+    const fotos = [];
+
+    beforeAll(async () => {
+        for (const chave of ['anel-ouro', 'anel-prata']) {
+            const arq = `teste/${sufixo}/destaque-${chave}.jpg`;
+            await db.query(
+                `INSERT INTO produto_imagens (empresa_id, produto_id, chave, content_type, tamanho_bytes, ordem) VALUES ($1, $2, $3, 'image/jpeg', 10, 0)`,
+                [A.id, A.p[chave], arq]
+            );
+            fotos.push(arq);
+        }
+    });
+
+    afterAll(async () => {
+        await db.query('DELETE FROM produto_imagens WHERE chave = ANY($1::text[])', [fotos]);
+        await db.query('UPDATE produtos_loja SET destaque_home = false WHERE empresa_id = $1', [A.id]);
+    });
+
+    test('nada escolhido: o destaque é null (a Home usa a peça automática de sempre)', async () => {
+        expect(await destaque()).toBeNull();
+    });
+
+    test('escolher uma peça a põe no destaque, com o mesmo formato público (nada interno)', async () => {
+        const res = await put(A, A.p['anel-ouro'], { destaque_home: true });
+        expect(res.status).toBe(200);
+        expect(res.body.data.destaque_home).toBe(true);
+
+        const d = await destaque();
+        expect(d.slug).toBe(`anel-ouro-${A.p['anel-ouro']}`);
+        expect(Object.keys(d).sort()).toEqual(['cuidados', 'categorias', 'descricao', 'disponivel', 'imagens', 'materiais', 'nome', 'novidade', 'preco', 'quantidade_disponivel', 'slug'].sort());
+        expect(JSON.stringify(await destaque())).not.toMatch(/destaque_home/);
+    });
+
+    test('só UMA peça é o destaque: escolher outra tira a anterior', async () => {
+        await put(A, A.p['anel-prata'], { destaque_home: true });
+
+        expect((await destaque()).slug).toBe(`anel-prata-${A.p['anel-prata']}`);
+        const { rows } = await db.query('SELECT produto_id FROM produtos_loja WHERE empresa_id = $1 AND destaque_home', [A.id]);
+        expect(rows.map((r) => r.produto_id)).toEqual([A.p['anel-prata']]);
+    });
+
+    test('tirar o destaque volta ao null; peça sem foto, despublicada ou sem preço não aparece', async () => {
+        await put(A, A.p['anel-prata'], { destaque_home: false });
+        expect(await destaque()).toBeNull();
+
+        await put(A, A.p['brinco-ouro'], { destaque_home: true }); // sem foto de propósito
+        expect(await destaque()).toBeNull();
+    });
+
+    test('despublicar a peça tira o destaque dela; só peça publicada pode ser destaque (409)', async () => {
+        await put(A, A.p['anel-ouro'], { destaque_home: true });
+        await put(A, A.p['anel-ouro'], { visivel: false });
+        expect(await destaque()).toBeNull();
+        expect((await db.query('SELECT destaque_home FROM produtos_loja WHERE produto_id = $1', [A.p['anel-ouro']])).rows[0].destaque_home).toBe(false);
+        await put(A, A.p['anel-ouro'], { visivel: true });
+        expect(await destaque()).toBeNull();
+
+        const nao = await put(A, A.p['oculto'], { destaque_home: true });
+        expect(nao.status).toBe(409);
+    });
+
+    test('o banco também garante no máximo um destaque por empresa (índice único)', async () => {
+        await put(A, A.p['anel-prata'], { destaque_home: true });
+        await expect(db.query('UPDATE produtos_loja SET destaque_home = true WHERE produto_id = $1', [A.p['anel-ouro']])).rejects.toThrow();
+    });
+
+    test('valor inválido é 400; uma empresa nunca vê o destaque da outra', async () => {
+        expect((await put(A, A.p['anel-ouro'], { destaque_home: 'sim' })).status).toBe(400);
+        expect((await get(`/loja/${B.slug}/vitrines`)).body.data.destaque).toBeNull();
+    });
+});
+
 describe('gestão da marcação do produto (autenticada)', () => {
     const put = (E, id, corpo, token = E.tokenAdmin) => request(app).put(`/produtos/${id}/loja`).set('Authorization', `Bearer ${token}`).send(corpo);
     const getM = (E, id, token = E.tokenAdmin) => request(app).get(`/produtos/${id}/loja`).set('Authorization', `Bearer ${token}`);
