@@ -1,7 +1,7 @@
 const db = require('../config/db');
 
 const CAMPOS = ['historia', 'fundadora_nome', 'servicos', 'atendimento', 'horario_atendimento', 'email_contato', 'whatsapp',
-    'instagram_url', 'facebook_url', 'tiktok_url', 'razao_social', 'cnpj', 'endereco'];
+    'instagram_url', 'facebook_url', 'tiktok_url', 'razao_social', 'cnpj', 'endereco', 'avisos'];
 
 const VAZIO = Object.freeze(Object.fromEntries(CAMPOS.map((c) => [c, null])));
 

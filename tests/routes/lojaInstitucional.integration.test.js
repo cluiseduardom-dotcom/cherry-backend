@@ -98,6 +98,21 @@ describe('o que a loja mostra', () => {
         expect(Object.keys(pub)).not.toContain('atualizado_por');
     });
 
+    test('avisos da faixa: uma linha por aviso, aparados, no máximo 5 e 100 caracteres; sem aviso a chave some', async () => {
+        const linhas = ['Aviso TESTE 1', '  Aviso TESTE 2  ', '', 'x'.repeat(150), 'A4', 'A5', 'A6 (passa de 5)'].join('\n');
+        const res = await gravar(A, { avisos: linhas });
+
+        expect(res.status).toBe(200);
+        const pub = (await publico(A)).body.data;
+        expect(pub.avisos).toHaveLength(5);
+        expect(pub.avisos.slice(0, 2)).toEqual(['Aviso TESTE 1', 'Aviso TESTE 2']);
+        expect(pub.avisos[2]).toHaveLength(100);
+
+        await gravar(A, { avisos: null });
+        expect((await publico(A)).body.data.avisos).toBeUndefined();
+        expect((await gravar(A, { avisos: 'x'.repeat(601) })).status).toBe(400);
+    });
+
     test('campo ausente não apaga o que está salvo; null limpa', async () => {
         await gravar(A, { atendimento: 'Atendimento TESTE' });
         expect((await ler(A)).body.data).toMatchObject({ atendimento: 'Atendimento TESTE', historia: 'Texto de TESTE da história.' });
