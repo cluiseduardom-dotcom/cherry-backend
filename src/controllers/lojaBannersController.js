@@ -14,7 +14,7 @@ function parseId(valor) {
 }
 
 function parseLado(valor) {
-    if (!(valor in repository.LADOS)) throw new AppError('Lado inválido (esquerda ou direita)', 400);
+    if (!Object.prototype.hasOwnProperty.call(repository.LADOS, valor)) throw new AppError('Lado inválido (esquerda, direita ou centro)', 400);
     return valor;
 }
 
@@ -24,7 +24,8 @@ function paraResposta(b) {
         rotulo: b.rotulo, titulo: b.titulo, destaque: b.destaque, subtitulo: b.subtitulo, botao_texto: b.botao_texto, link: b.link,
         rodape_texto: b.rodape_texto, inicio_em: b.inicio_em, fim_em: b.fim_em,
         imagem_esquerda: b.imagem_esquerda_chave ? storage.urlPublica(b.imagem_esquerda_chave) : null,
-        imagem_direita: b.imagem_direita_chave ? storage.urlPublica(b.imagem_direita_chave) : null
+        imagem_direita: b.imagem_direita_chave ? storage.urlPublica(b.imagem_direita_chave) : null,
+        imagem_centro: b.imagem_centro_chave ? storage.urlPublica(b.imagem_centro_chave) : null
     };
 }
 

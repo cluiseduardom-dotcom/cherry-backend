@@ -3,10 +3,10 @@ const AppError = require('../errors/AppError');
 const { executarComLock } = require('./shared/transacoes');
 
 const MAX_BANNERS = 6;
-const LADOS = { esquerda: 'imagem_esquerda_chave', direita: 'imagem_direita_chave' };
+const LADOS = { esquerda: 'imagem_esquerda_chave', direita: 'imagem_direita_chave', centro: 'imagem_centro_chave' };
 const CAMPOS_TEXTO = ['rotulo', 'titulo', 'destaque', 'subtitulo', 'botao_texto', 'link', 'rodape_texto'];
 const COLUNAS = `id, ordem, ativo, usa_retrato, fundo, rotulo, titulo, destaque, subtitulo, botao_texto, link, rodape_texto,
-    imagem_esquerda_chave, imagem_direita_chave, inicio_em, fim_em, atualizado_em`;
+    imagem_esquerda_chave, imagem_direita_chave, imagem_centro_chave, inicio_em, fim_em, atualizado_em`;
 
 async function listar(empresa_id) {
     const { rows } = await db.query(
@@ -54,7 +54,7 @@ function regrasDoConjunto(f) {
     if (f.botao_texto && !f.link) throw new AppError('O botão precisa de um link', 400);
     if (f.inicio_em && f.fim_em && new Date(f.fim_em) <= new Date(f.inicio_em)) throw new AppError('A data de fim deve ser depois da de início', 400);
 
-    const temConteudo = f.usa_retrato || f.titulo || f.destaque || f.subtitulo || f.imagem_esquerda_chave || f.imagem_direita_chave;
+    const temConteudo = f.usa_retrato || f.titulo || f.destaque || f.subtitulo || f.imagem_esquerda_chave || f.imagem_direita_chave || f.imagem_centro_chave;
     if (f.ativo && !temConteudo) throw new AppError('Preencha ao menos um texto ou uma imagem antes de ativar a faixa', 409);
 }
 
@@ -97,13 +97,13 @@ async function definirImagem(id, empresa_id, lado, chave) {
 async function remover(id, empresa_id) {
     const { rows } = await db.query(
         `UPDATE loja_banners SET removido_em = NOW(), ativo = false, atualizado_em = NOW()
-          WHERE id = $1 AND empresa_id = $2 AND removido_em IS NULL RETURNING imagem_esquerda_chave, imagem_direita_chave`,
+          WHERE id = $1 AND empresa_id = $2 AND removido_em IS NULL RETURNING imagem_esquerda_chave, imagem_direita_chave, imagem_centro_chave`,
         [id, empresa_id]
     );
 
     if (!rows.length) throw new AppError('Faixa não encontrada', 404);
 
-    return [rows[0].imagem_esquerda_chave, rows[0].imagem_direita_chave].filter(Boolean);
+    return [rows[0].imagem_esquerda_chave, rows[0].imagem_direita_chave, rows[0].imagem_centro_chave].filter(Boolean);
 }
 
 module.exports = { listar, listarPublicos, buscar, criar, atualizar, definirImagem, remover, MAX_BANNERS, LADOS, CAMPOS_TEXTO };
