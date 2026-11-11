@@ -210,10 +210,30 @@ describe('imagens', () => {
         expect(mockObjetos.has(chave)).toBe(false);
     });
 
+    test('a imagem central (foto dos itens): envia, vai ao público como imagem_centro e conta como conteúdo; lado inexistente é 400', async () => {
+        const centro = (await criar(A, {})).body.data.id;
+        const so = await imagem(A, centro, 'centro');
+
+        expect(so.status).toBe(200);
+        expect(so.body.data.imagem_centro).toContain(`/${A.id}/banners/`);
+        expect((await patch(A, centro, { ativo: true })).status).toBe(200); // a imagem central basta para ligar a faixa
+
+        const pub = (await publico(A)).body.data.find((b) => b.imagem_centro);
+        expect(pub.imagem_centro).toMatch(/^https:\/\/fotos\.exemplo\.test\//);
+        expect((await imagem(A, centro, 'meio')).status).toBe(400);
+        expect((await imagem(A, centro, '__proto__')).status).toBe(400);
+
+        const chave = so.body.data.imagem_centro.split('exemplo.test/')[1];
+        const bloqueio = await request(app).delete(`/loja-banners/${centro}/imagem/centro`).set(como(A));
+        expect(bloqueio.status).toBe(409); // faixa ativa que ficaria vazia
+        await request(app).delete(`/loja-banners/${centro}`).set(como(A));
+        expect(mockObjetos.has(chave)).toBe(false);
+    });
+
     test('arquivo que não é JPEG/PNG/WebP é 400; sem arquivo é 400; lado inválido é 400; faixa inexistente é 404', async () => {
         expect((await imagem(A, id, 'esquerda', gif())).status).toBe(400);
         expect((await request(app).put(`/loja-banners/${id}/imagem/esquerda`).set(como(A))).status).toBe(400);
-        expect((await imagem(A, id, 'centro')).status).toBe(400);
+        expect((await imagem(A, id, 'meio')).status).toBe(400);
         expect((await imagem(A, 999999, 'esquerda')).status).toBe(404);
     });
 

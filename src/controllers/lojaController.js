@@ -160,7 +160,8 @@ async function banners(req, res, next) {
             fundo: b.fundo, usa_retrato: b.usa_retrato, rotulo: b.rotulo, titulo: b.titulo, destaque: b.destaque, subtitulo: b.subtitulo,
             botao_texto: b.botao_texto, link: b.link, rodape_texto: b.rodape_texto,
             imagem_esquerda: b.imagem_esquerda_chave ? storage.urlPublica(b.imagem_esquerda_chave) : null,
-            imagem_direita: b.imagem_direita_chave ? storage.urlPublica(b.imagem_direita_chave) : null
+            imagem_direita: b.imagem_direita_chave ? storage.urlPublica(b.imagem_direita_chave) : null,
+            imagem_centro: b.imagem_centro_chave ? storage.urlPublica(b.imagem_centro_chave) : null
         }).filter(([, v]) => v !== null && v !== false))));
     } catch (error) { next(error); }
 }
