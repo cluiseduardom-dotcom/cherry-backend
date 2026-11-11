@@ -131,6 +131,7 @@ const lojaRoutes = require('./routes/loja');
 const lojaPedidosRoutes = require('./routes/lojaPedidos');
 const lojaProdutosRoutes = require('./routes/lojaProdutos');
 const lojaRetratosRoutes = require('./routes/lojaRetratos');
+const lojaInstitucionalRoutes = require('./routes/lojaInstitucional');
 const integracoesMercadoPagoRoutes = require('./routes/integracoesMercadoPago');
 const pagamentosGatewayRoutes = require('./routes/pagamentosGateway');
 const webhooksMercadoPagoRoutes = require('./routes/webhooksMercadoPago');
@@ -153,6 +154,8 @@ app.use('/loja', lojaRoutes);
 app.use('/loja-produtos', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaProdutosRoutes);
 // Retratos da abertura da Home (foto + autorização de uso de imagem). Só admin, só com a funcionalidade ligada.
 app.use('/loja-retratos', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaRetratosRoutes);
+// Dados institucionais da loja (história, serviços, atendimento, redes sociais, dados da empresa). Só admin, só com a funcionalidade ligada.
+app.use('/loja-institucional', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaInstitucionalRoutes);
 app.use('/loja-pedidos', authMiddleware, requireVendedor, exigirFuncionalidade('loja_online'), lojaPedidosRoutes);
 app.use('/onboarding', onboardingRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);

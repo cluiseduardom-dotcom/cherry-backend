@@ -19,6 +19,7 @@ Base: `/loja/:slug/...`, onde `:slug` é o identificador público da empresa (`e
 | `GET /produtos/:produtoSlug` | `Produto` (404 se não visível, inativo, sem preço online ou de outra empresa) |
 | `GET /categorias` | `[{ nivel, codigo, nome, quantidade }]` só de categorias com produto visível |
 | `GET /retratos` | `[{ url, alt, nome }]`: retratos da abertura da Home. Só os **ativos e com autorização de uso de imagem registrada** (quem confirmou e quando ficam no banco, nunca na resposta). Cache de 60 s. |
+| `GET /institucional` | dados institucionais, **só os preenchidos** (a chave some se estiver vazia): `historia`, `fundadora_nome`, `servicos` (lista), `atendimento`, `horario_atendimento`, `email_contato`, `whatsapp` (dígitos com 55), `redes` (`instagram`, `facebook`, `tiktok`: https do domínio da rede), `razao_social`, `cnpj` (14 dígitos), `endereco`. Cache de 60 s. |
 | `GET /vitrines` | `{ novidades: Produto[], mais_vendidos: Produto[], carrossel: Produto[] }` (até 8 cada; `carrossel` até 6). `carrossel` = as peças escolhidas no ERP para o carrossel de novidades da Home (na ordem da loja); se nenhuma peça visível estiver escolhida, são as novidades automaticamente. Só entra peça com foto. |
 
 ### Query do `/catalogo`
@@ -200,3 +201,13 @@ Migration `100_loja_retratos.sql`. Nasce **inativo e sem autorização**; só va
 | `POST /loja-retratos` | multipart: `arquivo` (JPEG/PNG/WebP, até 2 MB; o tipo é conferido pelo conteúdo) + `alt` e `nome` opcionais. Cria inativo e sem autorização |
 | `PATCH /loja-retratos/:id` | estrito: `alt`, `nome`, `ordem`, `ativo`, `autorizacao_assinada`. `autorizacao_assinada: true` = o admin confirma que tem o termo **assinado** (registra quem e quando). Ativar exige autorização e `alt` (409). Tirar a autorização desativa na hora |
 | `DELETE /loja-retratos/:id` | remove da loja e do armazenamento; a linha fica como trilha (`removido_em`) |
+
+
+## Dados institucionais da loja (gestão, admin + `loja_online`)
+
+Migration `101_loja_institucional.sql`. Uma linha por empresa; tudo nasce vazio e o sistema nunca preenche nada.
+
+| Rota | O que faz |
+|---|---|
+| `GET /loja-institucional` | todos os campos (nulos quando vazios) + `atualizado_em`. `no-store` |
+| `PUT /loja-institucional` | estrito; campo ausente não muda, `null` ou texto vazio limpa. Valida: link de rede social (`https` e domínio do Instagram, Facebook/fb.com ou TikTok, sem usuário e senha), CNPJ (dígitos verificadores), WhatsApp (DDD + número; guarda com 55), e-mail, tamanhos |

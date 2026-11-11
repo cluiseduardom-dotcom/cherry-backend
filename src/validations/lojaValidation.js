@@ -121,3 +121,76 @@ const retratoAtualizarSchema = z.object({
 
 module.exports.retratoCriarSchema = retratoCriarSchema;
 module.exports.retratoAtualizarSchema = retratoAtualizarSchema;
+
+// ---- Dados institucionais da loja (gestão) ----
+const REDES = { instagram_url: ['instagram.com'], facebook_url: ['facebook.com', 'fb.com'], tiktok_url: ['tiktok.com'] };
+
+function urlDaRede(rede) {
+    const dominios = REDES[rede];
+
+    return z.string().trim().max(300, 'O link deve ter no máximo 300 caracteres').nullable().optional().transform((v, ctx) => {
+        if (v === null || v === undefined || v === '') return null;
+
+        let u;
+        try { u = new URL(v); } catch { ctx.addIssue({ code: 'custom', message: 'Link inválido: copie o endereço completo do perfil (começa com https://)' }); return z.NEVER; }
+
+        const host = u.hostname.toLowerCase();
+        const ok = u.protocol === 'https:' && !u.username && !u.password && dominios.some((d) => host === d || host.endsWith(`.${d}`));
+
+        if (!ok) { ctx.addIssue({ code: 'custom', message: `O link precisa ser de ${dominios[0]} e começar com https://` }); return z.NEVER; }
+
+        return u.toString();
+    });
+}
+
+const textoLivre = (max, rotulo) => z.string().max(max, `${rotulo} deve ter no máximo ${max} caracteres`).transform((v) => v.trim() || null).nullable().optional();
+
+// CNPJ: 14 dígitos com os dois dígitos verificadores corretos.
+function cnpjValido(d) {
+    if (!/^\d{14}$/.test(d) || /^(\d)\1+$/.test(d)) return false;
+
+    const dv = (base) => {
+        let soma = 0;
+        let peso = base.length - 7;
+        for (const n of base) { soma += Number(n) * peso; peso = peso === 2 ? 9 : peso - 1; }
+        const r = soma % 11;
+        return r < 2 ? 0 : 11 - r;
+    };
+
+    return dv(d.slice(0, 12)) === Number(d[12]) && dv(d.slice(0, 13)) === Number(d[13]);
+}
+
+const institucionalSchema = z.object({
+    historia: textoLivre(6000, 'A história'),
+    fundadora_nome: textoLivre(120, 'O nome'),
+    servicos: textoLivre(1500, 'Os serviços'),
+    atendimento: textoLivre(1000, 'O texto de atendimento'),
+    horario_atendimento: textoLivre(200, 'O horário'),
+    email_contato: z.string().trim().max(160, 'O e-mail deve ter no máximo 160 caracteres').nullable().optional().transform((v, ctx) => {
+        if (!v) return null;
+        if (!EMAIL.test(v)) { ctx.addIssue({ code: 'custom', message: 'E-mail inválido' }); return z.NEVER; }
+        return v.toLowerCase();
+    }),
+    // Aceita "(11) 99999-9999" e "5511999999999"; guarda só dígitos com o 55 do Brasil.
+    whatsapp: z.string().max(30).nullable().optional().transform((v, ctx) => {
+        const digitos = String(v ?? '').replace(/\D/g, '');
+        if (!digitos) return null;
+        const completo = digitos.length === 10 || digitos.length === 11 ? `55${digitos}` : digitos;
+        if (!/^\d{12,13}$/.test(completo)) { ctx.addIssue({ code: 'custom', message: 'WhatsApp inválido: informe o DDD e o número (ex.: 11 99999-9999)' }); return z.NEVER; }
+        return completo;
+    }),
+    instagram_url: urlDaRede('instagram_url'),
+    facebook_url: urlDaRede('facebook_url'),
+    tiktok_url: urlDaRede('tiktok_url'),
+    razao_social: textoLivre(160, 'A razão social'),
+    cnpj: z.string().max(30).nullable().optional().transform((v, ctx) => {
+        const digitos = String(v ?? '').replace(/\D/g, '');
+        if (!digitos) return null;
+        if (!cnpjValido(digitos)) { ctx.addIssue({ code: 'custom', message: 'CNPJ inválido' }); return z.NEVER; }
+        return digitos;
+    }),
+    endereco: textoLivre(300, 'O endereço')
+}).strict();
+
+module.exports.institucionalSchema = institucionalSchema;
+module.exports.cnpjValido = cnpjValido;

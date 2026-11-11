@@ -31,6 +31,7 @@ router.get('/:slug/catalogo', limiteLoja, controller.catalogo);
 router.get('/:slug/categorias', limiteLoja, controller.categorias);
 router.get('/:slug/vitrines', limiteLoja, controller.vitrines);
 router.get('/:slug/retratos', limiteLoja, controller.retratos);
+router.get('/:slug/institucional', limiteLoja, controller.institucional);
 router.get('/:slug/produtos/:produtoSlug', limiteLoja, controller.produto);
 router.post('/:slug/pedidos', limitePedido, controller.criarPedido);
 router.get('/:slug/pedidos/:codigo', limiteLoja, controller.buscarPedido);

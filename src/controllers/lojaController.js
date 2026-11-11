@@ -8,6 +8,7 @@ const lojaPagamentoService = require('../services/lojaPagamentoService');
 const { exigirVerificacao } = require('../integrations/turnstileClient');
 const { catalogoQuerySchema, marcacaoSchema, pedidoSchema, pagamentoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID } = require('../validations/lojaValidation');
 
+const institucionalRepository = require('../repositories/lojaInstitucionalRepository');
 const retratosRepository = require('../repositories/lojaRetratosRepository');
 const storage = require('../services/storage/imagensStorage');
 
@@ -110,6 +111,24 @@ async function retratos(req, res, next) {
         return response.success(res, lista
             .map((r) => ({ url: storage.urlPublica(r.chave), alt: r.alt, nome: r.nome }))
             .filter((r) => r.url));
+    } catch (error) { next(error); }
+}
+
+// Dados institucionais públicos: SÓ o que estiver preenchido (nada vazio, nada inventado). Serviços viram lista (uma linha cada).
+async function institucional(req, res, next) {
+    try {
+        const empresa_id = await resolverEmpresa(req);
+        const d = await institucionalRepository.buscar(empresa_id);
+        const servicos = String(d.servicos ?? '').split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 12);
+        const redes = Object.fromEntries([['instagram', d.instagram_url], ['facebook', d.facebook_url], ['tiktok', d.tiktok_url]].filter(([, v]) => v));
+        const saida = {
+            historia: d.historia, fundadora_nome: d.fundadora_nome, servicos: servicos.length ? servicos : null,
+            atendimento: d.atendimento, horario_atendimento: d.horario_atendimento, email_contato: d.email_contato, whatsapp: d.whatsapp,
+            redes: Object.keys(redes).length ? redes : null, razao_social: d.razao_social, cnpj: d.cnpj, endereco: d.endereco
+        };
+
+        res.set('Cache-Control', 'public, max-age=60');
+        return response.success(res, Object.fromEntries(Object.entries(saida).filter(([, v]) => v !== null && v !== undefined)));
     } catch (error) { next(error); }
 }
 
@@ -245,4 +264,4 @@ async function salvarMarcacao(req, res, next) {
     } catch (error) { next(error); }
 }
 
-module.exports = { catalogo, produto, categorias, vitrines, retratos, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };
+module.exports = { catalogo, produto, categorias, vitrines, retratos, institucional, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };
