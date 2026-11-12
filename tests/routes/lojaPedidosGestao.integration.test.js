@@ -283,6 +283,27 @@ describe('aviso no sino', () => {
         expect(ids).not.toContain(`loja_pagamento_sem_venda:${estornado.id}`);
     });
 
+    test('pagamento estornado com a venda finalizada gera aviso alto; venda cancelada ou cobrança paga não geram', async () => {
+        const canal = await um(`INSERT INTO canais_venda (empresa_id, nome, ativo) VALUES ($1, 'canal-estorno-teste', true) RETURNING id`, [A.id]);
+        const vendaCom = async (E, status) => um(`INSERT INTO vendas (empresa_id, canal_id, status) VALUES ($1, $2, $3) RETURNING id`, [E.id, canal, status]);
+        const cobrancaComVenda = async (E, statusCobranca, statusVenda) => {
+            const codigo = await cobrancaPaga(E, { status: statusCobranca });
+            await db.query(`UPDATE cobrancas_pagamento SET venda_id = $2, usada_em = NOW() WHERE codigo = $1`, [codigo, await vendaCom(E, statusVenda)]);
+            return codigo;
+        };
+        const ativa = await pedido(A, { status: 'pago', nome: 'EstornoAtivo', cobranca: await cobrancaComVenda(A, 'estornado', 'finalizada') });
+        const cancelada = await pedido(A, { status: 'pago', cobranca: await cobrancaComVenda(A, 'estornado', 'cancelada') });
+        const normal = await pedido(A, { status: 'pago', cobranca: await cobrancaComVenda(A, 'pago', 'finalizada') });
+        const avisos = await avisosDaLoja(A, 'admin');
+        const aviso = avisos.find((a) => a.id === `loja_pagamento_estornado:${ativa.id}`);
+
+        expect(aviso).toMatchObject({ tipo: 'loja_pagamento_estornado', prioridade: 'alta' });
+        expect(avisos.map((a) => a.id)).not.toContain(`loja_pagamento_estornado:${cancelada.id}`);
+        expect(avisos.map((a) => a.id)).not.toContain(`loja_pagamento_estornado:${normal.id}`);
+        expect(JSON.stringify((await get(B, 'admin', '/notificacoes')).body)).not.toContain('EstornoAtivo');
+        expect((await avisosDaLoja(A, 'estoquista'))).toEqual([]);
+    });
+
     test('o aviso não traz custo, margem, taxa, e-mail nem dado do provedor', async () => {
         const texto = JSON.stringify(await avisosDaLoja(A, 'admin'));
 

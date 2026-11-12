@@ -71,3 +71,23 @@ describe('segurança do conteúdo', () => {
         expect(montarNotificacoesLoja({}, admin)).toEqual([]);
     });
 });
+
+describe('pagamento estornado com a venda ainda ativa', () => {
+    const estornada = (extra = {}) => ({ id: 11, codigo: CODIGO, cliente_nome: 'Bia', cliente_telefone: '11977776666', total: '80.00', ...extra });
+
+    test('aviso alto, id estável, com valor, nome, telefone e ação; sem dado do provedor', () => {
+        const [a] = montarNotificacoesLoja({ estornadas: [estornada()] }, admin);
+
+        expect(a).toMatchObject({ id: 'loja_pagamento_estornado:11', tipo: TIPOS_LOJA.PAGAMENTO_ESTORNADO, prioridade: 'alta', item: 'pedido', pedido_codigo: CODIGO });
+        expect(a.mensagem).toMatch(/R\$ 80,00/);
+        expect(a.mensagem).toContain('Bia');
+        expect(a.mensagem).toContain('Telefone: 11977776666');
+        expect(a.acao).toMatch(/cancele a venda/i);
+        expect(a.dados).toEqual({ pedido_id: 11, total: 80 });
+        expect(JSON.stringify(a)).not.toMatch(/custo|margem|taxa|id_externo/i);
+    });
+
+    test('estoquista não recebe', () => {
+        expect(montarNotificacoesLoja({ estornadas: [estornada()] }, { estoquista: true })).toEqual([]);
+    });
+});
