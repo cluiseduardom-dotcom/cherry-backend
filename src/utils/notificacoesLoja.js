@@ -5,7 +5,8 @@ const LIMITES_LOJA = Object.freeze({ PEDIDO_PAGO_ALTA_HORAS: 24 });
 
 const TIPOS_LOJA = Object.freeze({
     PEDIDO_PAGO: 'loja_pedido_pago',
-    PAGAMENTO_SEM_VENDA: 'loja_pagamento_sem_venda'
+    PAGAMENTO_SEM_VENDA: 'loja_pagamento_sem_venda',
+    PAGAMENTO_ESTORNADO: 'loja_pagamento_estornado'
 });
 
 const moeda = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }).replace(/ /g, ' ');
@@ -32,7 +33,8 @@ const contato = (p) => (p.cliente_telefone ? ` Telefone: ${p.cliente_telefone}.`
 
 // aCombinar: { id, codigo, cliente_nome, cliente_telefone, total, horas }
 // semVenda:  { id, codigo, status, cliente_nome, cliente_telefone, total }
-function montarNotificacoesLoja({ aCombinar = [], semVenda = [] }, perfil) {
+// estornadas: { id, codigo, cliente_nome, cliente_telefone, total } — pagamento estornado ou contestado no Mercado Pago, mas a venda segue ativa
+function montarNotificacoesLoja({ aCombinar = [], semVenda = [], estornadas = [] }, perfil) {
     if (!perfil.administrador && !perfil.vendedor) return [];
 
     const itens = [];
@@ -64,6 +66,16 @@ function montarNotificacoesLoja({ aCombinar = [], semVenda = [] }, perfil) {
                 ? 'Avisar a cliente e devolver o pagamento (Pix a devolver; cartão pelo painel do Mercado Pago).'
                 : 'Aguardar a conversão automática; se persistir, falar com a GiroNex.',
             { pedido_id: Number(p.id), total: Number(p.total), situacao: p.status }
+        ));
+    }
+
+    for (const p of estornadas) {
+        itens.push(aviso(
+            TIPOS_LOJA.PAGAMENTO_ESTORNADO, p, 'alta',
+            'Pagamento da loja estornado',
+            `O pagamento do pedido ${curto(p.codigo)} (${moeda(p.total)}) de ${p.cliente_nome} foi estornado ou contestado no Mercado Pago, mas a venda continua registrada.${contato(p)}`,
+            'Se a compra foi desfeita, cancele a venda pelo Histórico de vendas; se não, confira o pagamento no painel do Mercado Pago.',
+            { pedido_id: Number(p.id), total: Number(p.total) }
         ));
     }
 

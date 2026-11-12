@@ -83,7 +83,7 @@ async function marcarEntregaCombinada({ empresa_id, codigo, usuario_id, observac
 //  * semVenda: pagamento RECEBIDO que não virou venda (peça acabou depois de o pedido expirar, ou conversão que não
 //    concluiu) há mais de 5 minutos: a conversão automática leva até ~1 min, então menos que isso é normal.
 async function listarParaAvisos(empresa_id) {
-    const [{ rows: aCombinar }, { rows: semVenda }] = await Promise.all([
+    const [{ rows: aCombinar }, { rows: semVenda }, { rows: estornadas }] = await Promise.all([
         db.query(
             `SELECT p.id, p.codigo, p.cliente_nome, p.cliente_telefone, p.total,
                     FLOOR(EXTRACT(EPOCH FROM (NOW() - p.pago_em)) / 3600)::int AS horas
@@ -100,10 +100,20 @@ async function listarParaAvisos(empresa_id) {
                 AND c.atualizado_em < NOW() - INTERVAL '5 minutes'
               ORDER BY c.atualizado_em ASC LIMIT 30`,
             [empresa_id]
+        ),
+        // Pagamento estornado/contestado no provedor com a venda ainda finalizada: o sistema não desfaz a venda sozinho.
+        db.query(
+            `SELECT p.id, p.codigo, p.cliente_nome, p.cliente_telefone, c.valor AS total
+               FROM pedidos_loja p
+               JOIN cobrancas_pagamento c ON c.codigo = p.cobranca_codigo AND c.empresa_id = p.empresa_id
+               JOIN vendas v ON v.id = c.venda_id AND v.empresa_id = c.empresa_id
+              WHERE p.empresa_id = $1 AND p.status = 'pago' AND c.status = 'estornado' AND v.status = 'finalizada'
+              ORDER BY c.atualizado_em DESC LIMIT 30`,
+            [empresa_id]
         )
     ]);
 
-    return { aCombinar, semVenda };
+    return { aCombinar, semVenda, estornadas };
 }
 
 // ---- Produtos da loja (gestão da marcação "mostrar na loja") ----
