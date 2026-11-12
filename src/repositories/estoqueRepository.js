@@ -223,7 +223,7 @@ async function listarPorProduto(produto_id, empresa_id, { limit, offset }) {
 
 async function getEstoqueBaixo(empresa_id) {
     const { rows } = await db.query(`
-        SELECT id, sku, nome, categoria, estoque_atual, estoque_minimo
+        SELECT id, sku, nome, categoria, estoque_atual, estoque_minimo, tipo
         FROM produtos
         WHERE ativo = true
           AND estoque_atual <= estoque_minimo
