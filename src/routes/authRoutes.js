@@ -12,6 +12,8 @@ const confirmacaoSenhaRateLimiter = require('../middlewares/confirmacaoSenhaRate
 
 router.post('/login', loginRateLimiter, authController.login);
 router.get('/me', authMiddleware, authController.me);
+// Renova o token da PRÓPRIA sessão (id e empresa vêm do JWT; sem corpo). Respeita o teto de 8 h desde o login.
+router.post('/renovar', authMiddleware, authController.renovar);
 // Qualquer usuário autenticado troca a PRÓPRIA senha (empresa e id vêm do JWT, nunca do body).
 router.post('/senha', authMiddleware, confirmacaoSenhaRateLimiter, authController.alterarSenha);
 // Qualquer usuário autenticado troca/remove a PRÓPRIA foto (alvo = id do JWT, nunca do body/URL).

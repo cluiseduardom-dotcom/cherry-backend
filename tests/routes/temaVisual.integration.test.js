@@ -74,7 +74,7 @@ describe('tema visual da empresa no login, com banco real (cherry-frontend#63)',
     const { token } = (await login(emailCherry)).body.data;
     const payload = jwt.decode(token);
 
-    expect(Object.keys(payload).sort()).toEqual(['empresa_id', 'exp', 'iat', 'id', 'role', 'tv']);
+    expect(Object.keys(payload).sort()).toEqual(['empresa_id', 'exp', 'iat', 'id', 'role', 'sa', 'tv']);
   });
 
   test('tema, empresa_id e empresa no corpo ou na query não mudam o resultado', async () => {
