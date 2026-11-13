@@ -18,6 +18,7 @@ O que **não** existe e precisa ser configurado fora do código:
    - O que dispara: só erro inesperado (5xx), falha ao subir o servidor e falha do cron das reservas da loja (o que cobre "pagamento pago que não virou venda por erro"). Erros de entrada do usuário (4xx) não são enviados.
    - Como ligar: criar uma conta e um projeto Node no Sentry; copiar o DSN; no Render, definir `SENTRY_DSN` nos serviços `cherry-backend` **e** `cherry-loja-cron` (e, se quiser, no staging); no Sentry, criar uma regra de alerta por e-mail para "novo erro". [CONFIRMAR: ligado em __/__/____]
    - Ao ligar, o provedor já consta na Política de privacidade da loja (seção "Com quem compartilhamos").
+   - Teste depois de definir o DSN: `SENTRY_DSN='<dsn>' node scripts/testar-sentry.js` (ou no Shell do Render). Deve aparecer um erro "Teste do Sentry (pode ignorar)" com `[email]` e `[cpf]` no lugar dos dados fictícios.
 4. **Logs**: hoje são `console.*` no stdout do Render (retenção do plano do Render [CONFIRMAR]). Nunca registrar token, senha, DATABASE_URL nem dado de cartão.
 
 Rotina semanal sugerida (5 minutos): abrir "Pagamentos a devolver" e o sino do ERP; conferir no painel do Mercado Pago as entregas de webhook (status 200; 401 repetido = assinatura divergente).
