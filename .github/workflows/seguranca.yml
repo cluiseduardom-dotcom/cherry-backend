@@ -1,0 +1,70 @@
+name: Segurança (Semgrep)
+
+# Análise estática de segurança do código (injeção, segredos no código, uso perigoso de APIs etc.).
+# MODO RELATÓRIO: não bloqueia merge. O resultado aparece no resumo do job (contagem por severidade e lista de
+# arquivo:linha, sem trechos de código) e o JSON completo fica como artefato. Depois de triar os achados da primeira
+# rodada, dá para endurecer com `--error` e tornar o check obrigatório.
+# `--metrics=off`: nada de telemetria. Roda a cada PR, a cada push no ramo principal e toda segunda-feira (regras novas).
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar Semgrep (versão fixa)
+        run: pip install semgrep==1.185.0
+
+      - name: Analisar
+        run: >
+          semgrep scan
+          --config p/javascript --config p/nodejs --config p/owasp-top-ten
+          --metrics=off --exclude node_modules --exclude tests
+          --json --output semgrep.json
+          src scripts
+
+      - name: Resumo
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os, collections
+          try:
+              d = json.load(open('semgrep.json'))
+          except Exception as e:
+              open(os.environ['GITHUB_STEP_SUMMARY'], 'a').write(f'Sem resultado do Semgrep: {e}\n')
+              raise SystemExit(0)
+          r = d.get('results', [])
+          por = collections.Counter(x['extra']['severity'] for x in r)
+          out = ['## Semgrep', '', f'Achados: **{len(r)}** ' + ' · '.join(f'{k}: {v}' for k, v in sorted(por.items())), '']
+          for x in sorted(r, key=lambda x: (x['extra']['severity'], x['path']))[:40]:
+              out.append(f"- `{x['extra']['severity']}` {x['check_id'].split('.')[-1]} — `{x['path']}:{x['start']['line']}`")
+          open(os.environ['GITHUB_STEP_SUMMARY'], 'a').write('\n'.join(out) + '\n')
+          print('\n'.join(out))  # também no log do job
+          PY
+
+      - name: Guardar resultado completo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-resultado
+          path: semgrep.json
+          if-no-files-found: ignore
+          retention-days: 30

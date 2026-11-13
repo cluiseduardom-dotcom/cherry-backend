@@ -30,3 +30,32 @@ describe('criptografiaToken', () => {
         expect(() => cifrar(undefined, chave)).toThrow();
     });
 });
+
+describe('tamanho da tag de autenticação (GCM)', () => {
+    const chave = crypto.randomBytes(32);
+
+    test('uma tag TRUNCADA (prefixo da tag verdadeira) é rejeitada, mesmo com o texto cifrado intacto', () => {
+        const [versao, iv, tag, cifrado] = cifrar('token-secreto-da-loja', chave).split('.');
+        const completa = Buffer.from(tag, 'base64url');
+
+        expect(completa).toHaveLength(16);
+        for (const tamanho of [4, 8, 12, 15]) {
+            const truncada = completa.subarray(0, tamanho).toString('base64url');
+
+            expect(() => decifrar([versao, iv, truncada, cifrado].join('.'), chave)).toThrow();
+        }
+    });
+
+    test('tag maior que 16 bytes e IV de tamanho inesperado também são rejeitados', () => {
+        const [versao, iv, tag, cifrado] = cifrar('token-secreto-da-loja', chave).split('.');
+        const longa = Buffer.concat([Buffer.from(tag, 'base64url'), Buffer.alloc(4)]).toString('base64url');
+        const ivCurto = Buffer.from(iv, 'base64url').subarray(0, 8).toString('base64url');
+
+        expect(() => decifrar([versao, iv, longa, cifrado].join('.'), chave)).toThrow();
+        expect(() => decifrar([versao, ivCurto, tag, cifrado].join('.'), chave)).toThrow();
+    });
+
+    test('o caminho normal continua funcionando (compatível com o que já está gravado)', () => {
+        expect(decifrar(cifrar('token-secreto-da-loja', chave), chave)).toBe('token-secreto-da-loja');
+    });
+});
