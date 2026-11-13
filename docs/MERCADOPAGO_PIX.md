@@ -1,5 +1,10 @@
 # Mercado Pago — conexão da loja e Pix com comissão
 
+> **Status da validação com dinheiro real (consolidado em 13/11/2026, só com o que este documento já registra):**
+> - **Confirmado:** Pix de R$ 20,00 criado e pago com a loja conectada por OAuth; comissão `application_fee` de R$ 0,03 aceita e recebida pela conta do app (fica em "Dinheiro a liberar"); link de cartão gerado e aberto no Checkout Pro nos testes de 31/10 e 02/11/2026 (ofereceu crédito e não ofereceu débito); a devolução chega ao Mercado Pago (resposta `120065`, não `404`/`422`).
+> - **Pendente:** devolução de Pix concluída (recusada por saldo disponível); formato do manifesto da assinatura do webhook (confirmar com um evento real e conferir no painel do Mercado Pago que as entregas voltam `200`, não `401`); parcelas com juros (`transaction_amount` igual ao valor da cobrança); débito no link; cartão pago de ponta a ponta na loja online.
+> - **Como fechar:** cobrança real de R$ 1 (Pix e cartão) na loja de verdade, seguindo `docs/LOJA_GO_LIVE.md`, e atualizar este bloco com o resultado.
+
 Integração em modelo **marketplace**: cada loja autoriza a própria conta Mercado Pago (OAuth) e a Vertumno recebe uma comissão (`application_fee`, valor em reais) por Pix gerado. Usa a **Payments API** (`POST /v1/payments`); a Orders API não tem, na documentação consultada, campo equivalente à comissão. A Payments API não tem data de descontinuação publicada. Toda chamada ao provedor passa por `src/integrations/mercadoPagoClient.js`, para uma troca futura ficar isolada.
 
 Sem as variáveis `MP_*` a integração fica **desligada**: nada muda para as lojas.

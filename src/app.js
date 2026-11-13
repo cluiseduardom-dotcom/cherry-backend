@@ -96,6 +96,23 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 
+// Prontidão: além do processo, confere que o banco responde (SELECT 1, com limite de 3 s). Para o monitor de
+// uptime avisar quando o app está de pé mas sem banco. Público e sem detalhe: nunca devolve erro, host nem credencial.
+app.get('/health/ready', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+
+    let temporizador;
+    try {
+        const limite = new Promise((_, rejeitar) => { temporizador = setTimeout(() => rejeitar(new Error('timeout')), 3000); });
+        await Promise.race([require('./config/db').query('SELECT 1'), limite]);
+        return res.status(200).json({ status: 'ok' });
+    } catch {
+        return res.status(503).json({ status: 'indisponivel' });
+    } finally {
+        clearTimeout(temporizador);
+    }
+});
+
 // ROTAS
 const produtosRoutes = require('./routes/produtos');
 const vendasRoutes = require('./routes/vendas');

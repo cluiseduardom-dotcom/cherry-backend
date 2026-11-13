@@ -89,13 +89,31 @@ async function executarArquivoSql(client, arquivo) {
     await client.query(sql);
 }
 
-async function aplicarMigration(client, migration) {
+// Chave da trava que serializa quem aplica migrations (dois processos subindo juntos, ex.: deploys sobrepostos).
+// Trava DE TRANSAÇÃO (pg_advisory_xact_lock): some sozinha no COMMIT/ROLLBACK e funciona mesmo atrás de pooler
+// (PgBouncer em modo transação), onde trava de sessão não é confiável.
+const CHAVE_TRAVA_MIGRATIONS = 'cherry:migrations';
+
+// Devolve true se aplicou e false se outro processo já tinha aplicado (a conferência é feita DENTRO da trava,
+// senão o segundo processo tentaria rodar o mesmo SQL de novo).
+async function aplicarMigration(client, migration, diretorio = MIGRATIONS_DIR) {
     await client.query('BEGIN');
 
     try {
-        await executarArquivoSql(client, path.join(MIGRATIONS_DIR, migration.nome));
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [CHAVE_TRAVA_MIGRATIONS]);
+
+        const { rows } = await client.query('SELECT 1 FROM schema_migrations WHERE version = $1', [migration.versao]);
+
+        if (rows.length) {
+            await client.query('COMMIT');
+            return false;
+        }
+
+        await executarArquivoSql(client, path.join(diretorio, migration.nome));
         await registrarMigration(client, migration);
         await client.query('COMMIT');
+
+        return true;
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -169,7 +187,8 @@ async function main() {
             if (versoesAplicadas.has(migration.versao)) continue;
 
             console.log('Aplicando migration ' + migration.nome + '...');
-            await aplicarMigration(client, migration);
+            const aplicou = await aplicarMigration(client, migration);
+            if (!aplicou) console.log('Migration ' + migration.nome + ' já tinha sido aplicada por outro processo.');
             versoesAplicadas.add(migration.versao);
         }
 

@@ -96,3 +96,7 @@ Toda conexão — API (`src/config/db.js`), migrations (`src/database/migrate.js
 - **Host local** (`localhost`, `127.0.0.1`, `::1`): sem TLS, para CI e desenvolvimento.
 - As mensagens de erro nunca incluem a URL, usuário, senha ou host.
 - A política independe da semântica de `sslmode` do driver (o `pg` v9 passa a seguir o libpq, em que `require` não valida certificado).
+
+## Limites de escala conhecidos
+
+- **Rate limit em memória:** os limitadores (`express-rate-limit`) guardam a contagem na memória de cada processo. Com mais de uma instância do backend o limite efetivo deixa de valer (cada instância conta separado). Hoje o serviço roda com uma instância; antes de escalar, trocar por um repositório compartilhado (ex.: Redis). Detalhes operacionais em `docs/OPERACAO.md`.

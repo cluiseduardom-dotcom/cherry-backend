@@ -6,3 +6,7 @@ coverage/
 
 # Script legado com conexão embutida (nunca versionado): manter local, fora do git
 /apply-migration-019.js
+
+# Cópias do banco (dados pessoais e financeiros): nunca versionar
+backups/
+*.dump
