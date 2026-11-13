@@ -142,7 +142,9 @@ const ORDENS = {
     mais_vendidos: `${VENDIDAS_SQL} DESC, pl.produto_id ASC`,
     preco_asc: 'preco.preco_venda ASC, pl.produto_id ASC',
     preco_desc: 'preco.preco_venda DESC, pl.produto_id ASC',
-    nome: `LOWER(COALESCE(NULLIF(btrim(pl.titulo), ''), p.nome)) ASC, pl.produto_id ASC`
+    nome: `LOWER(COALESCE(NULLIF(btrim(pl.titulo), ''), p.nome)) ASC, pl.produto_id ASC`,
+    // Uso interno ("Últimas unidades" da Home): as de menor saldo primeiro; empate, a mais recente.
+    menor_estoque: 'COALESCE(el.saldo, 0) ASC, pl.produto_id DESC'
 };
 
 function escaparLike(texto) {
@@ -203,6 +205,12 @@ async function listarCatalogo(empresa_id, filtros) {
         condicoes.push('pl.destaque_home = true');
     }
 
+    // Uso interno ("Últimas unidades" da Home): só peça disponível com saldo de 1 até `estoqueMax`. Não é parâmetro da API pública.
+    if (filtros.estoqueMax != null) {
+        valores.push(filtros.estoqueMax);
+        condicoes.push(`COALESCE(el.saldo, 0) > 0 AND COALESCE(el.saldo, 0) <= $${valores.length}`);
+    }
+
     if (filtros.somenteComFoto) {
         condicoes.push('EXISTS (SELECT 1 FROM produto_imagens i WHERE i.produto_id = p.id AND i.empresa_id = p.empresa_id)');
     }
@@ -241,6 +249,24 @@ async function listarCarrosselNovidades(empresa_id) {
 async function buscarDestaqueDaHome(empresa_id) {
     const { itens } = await listarCatalogo(empresa_id, { limite: 1, offset: 0, somenteDestaque: true, somenteComFoto: true, ordem: 'destaque' });
     return itens[0] ?? null;
+}
+
+// Preços das peças que a loja vende de verdade agora (visíveis, com preço online e saldo no Central). Alimenta as faixas
+// "até R$ X" da Home. Só os valores: nenhum dado do produto.
+async function listarPrecosDisponiveis(empresa_id) {
+    const { rows } = await db.query(
+        `SELECT preco.preco_venda AS preco ${BASE_SQL} AND COALESCE(el.saldo, 0) > 0 LIMIT 5000`,
+        [empresa_id]
+    );
+
+    return rows.map((r) => Number(r.preco));
+}
+
+// "Últimas unidades" da Home: peças disponíveis com 1 ou 2 no Central, com foto, as de menor saldo primeiro.
+async function listarUltimasUnidades(empresa_id, limite = 4) {
+    const { itens } = await listarCatalogo(empresa_id, { limite, offset: 0, estoqueMax: 2, somenteComFoto: true, ordem: 'menor_estoque' });
+
+    return itens;
 }
 
 async function buscarProdutoPorSlug(empresa_id, slug) {
@@ -449,6 +475,8 @@ module.exports = {
     listarCatalogo,
     listarCarrosselNovidades,
     buscarDestaqueDaHome,
+    listarPrecosDisponiveis,
+    listarUltimasUnidades,
     buscarProdutoPorSlug,
     listarCategoriasComProdutos,
     listarMenuDeCategorias,

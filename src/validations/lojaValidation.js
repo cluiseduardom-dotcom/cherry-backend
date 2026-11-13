@@ -195,6 +195,19 @@ const institucionalSchema = z.object({
 }).strict();
 
 module.exports.institucionalSchema = institucionalSchema;
+
+// ---- Seção comercial da Home (gestão): liga/desliga e textos editáveis. Texto vazio vira null (a loja usa o padrão). ----
+const homeVendasSchema = z.object({
+    home_vendas_ativo: z.boolean('O campo "mostrar a seção" deve ser verdadeiro ou falso').optional(),
+    home_presentes_titulo: textoLivre(80, 'O título dos presentes'),
+    home_presentes_texto: textoLivre(200, 'O texto dos presentes'),
+    home_ultimas_titulo: textoLivre(80, 'O título das últimas unidades'),
+    home_ultimas_texto: textoLivre(200, 'O texto das últimas unidades'),
+    home_ajuda_titulo: textoLivre(80, 'O título da ajuda'),
+    home_ajuda_texto: textoLivre(200, 'O texto da ajuda')
+});
+
+module.exports.homeVendasSchema = homeVendasSchema;
 module.exports.cnpjValido = cnpjValido;
 
 // ---- Faixas (banners) rotativas da Home (gestão) ----

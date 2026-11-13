@@ -11,6 +11,8 @@ const { catalogoQuerySchema, marcacaoSchema, pedidoSchema, pagamentoSchema, hash
 const bannersRepository = require('../repositories/lojaBannersRepository');
 const institucionalRepository = require('../repositories/lojaInstitucionalRepository');
 const retratosRepository = require('../repositories/lojaRetratosRepository');
+const homeVendasRepository = require('../repositories/lojaHomeVendasRepository');
+const { calcularFaixasDePreco } = require('../utils/lojaFaixasPreco');
 const storage = require('../services/storage/imagensStorage');
 
 const NAO_ENCONTRADA = 'Loja não encontrada';
@@ -112,9 +114,38 @@ async function vitrines(req, res, next) {
             ? (await repository.listarCatalogo(empresa_id, { ...base, ordem: 'mais_vendidos', somenteComVenda: true })).itens
             : [];
 
+        // Seção comercial da Home (migration 106): só existe se o admin ligou no ERP. Complemento: qualquer falha aqui
+        // não derruba a Home (ela segue como sempre, sem a seção).
+        const secaoVendas = await montarSecaoVendas(empresa_id);
+
         cachePublico(res);
-        return response.success(res, { novidades: novidades.itens, mais_vendidos: maisVendidos, carrossel, destaque });
+        return response.success(res, { novidades: novidades.itens, mais_vendidos: maisVendidos, carrossel, destaque, ...(secaoVendas ? { secao_vendas: secaoVendas } : {}) });
     } catch (error) { next(error); }
+}
+
+// Faixas de preço automáticas (preços reais das peças à venda), últimas unidades (saldo real de 1 ou 2) e textos do admin
+// (só os preenchidos). Devolve null se a seção estiver desligada ou se algo falhar.
+async function montarSecaoVendas(empresa_id) {
+    try {
+        const config = await homeVendasRepository.buscarPublico(empresa_id);
+
+        if (!config) return null;
+
+        const [precos, ultimasUnidades] = await Promise.all([
+            repository.listarPrecosDisponiveis(empresa_id),
+            repository.listarUltimasUnidades(empresa_id)
+        ]);
+        const textos = Object.fromEntries([
+            ['presentes_titulo', config.home_presentes_titulo], ['presentes_texto', config.home_presentes_texto],
+            ['ultimas_titulo', config.home_ultimas_titulo], ['ultimas_texto', config.home_ultimas_texto],
+            ['ajuda_titulo', config.home_ajuda_titulo], ['ajuda_texto', config.home_ajuda_texto]
+        ].filter(([, v]) => v));
+
+        return { textos, faixas_preco: calcularFaixasDePreco(precos), ultimas_unidades: ultimasUnidades };
+    } catch (erro) {
+        console.error('[loja] seção comercial da Home indisponível:', erro.message);
+        return null;
+    }
 }
 
 // Retratos da abertura da Home: só os ativos COM autorização de uso de imagem registrada (a regra está na consulta).
