@@ -48,7 +48,10 @@ node scripts/lgpd-anonimizar.js --empresa <id> --pedido-loja <codigo> --motivo "
 # Colaborador (precisa estar bloqueado)
 node scripts/lgpd-anonimizar.js --empresa <id> --colaborador <usuario_id> --executado-por <id-do-admin> --motivo "..." --executar
 
-# Prazos vencidos (rodar mensalmente: primeiro sem --executar, conferir, depois com)
+# Conferência mensal em TODAS as lojas (só simulação: conta o que venceu e não grava nada)
+node scripts/lgpd-anonimizar.js --retencao --todas-empresas
+
+# Prazos vencidos, por empresa (primeiro sem --executar, conferir, depois com)
 node scripts/lgpd-anonimizar.js --empresa <id> --retencao --executado-por <id-do-admin> [--executar]
 ```
 
@@ -61,4 +64,4 @@ Pedido de **cópia dos dados** (acesso): ainda manual, feito pelo PO com consult
 2. Aviso interno aos colaboradores sobre CPF, endereço e foto.
 3. Plano de incidente: quem avisa a ANPD e os titulares, e em quanto tempo.
 4. Validar os prazos da seção 3 com contador/advogado.
-5. Rotina mensal: alguém precisa rodar `--retencao` (hoje é manual; pode virar tarefa agendada depois de validada).
+5. Rotina mensal: a conferência (`--retencao --todas-empresas`) pode rodar agendada; **aplicar** (`--executar`) continua sendo ato humano, por empresa, depois de conferir os números e de os prazos terem sido validados.

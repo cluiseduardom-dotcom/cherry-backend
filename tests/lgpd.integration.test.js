@@ -184,3 +184,18 @@ describe('colaborador (dados cadastrais e foto)', () => {
         expect((await linha('SELECT cpf FROM usuarios_dados WHERE usuario_id = $1', [bloqueado])).cpf).toBe(cpfs.get(bloqueado));
     });
 });
+
+describe('simulação em todas as empresas (rotina mensal)', () => {
+    test('conta o que venceu em cada empresa sem gravar nada e sem dado pessoal', async () => {
+        const E = {}; await criarEmpresa(E, 'Todas');
+        const velho = await pedido(E, { pagoHa: '6 years', nome: 'Pessoa Vencida' });
+
+        const r = await lgpd.simularRetencaoTodasEmpresas();
+        const minha = r.por_empresa.find((e) => e.empresa_id === E.id);
+
+        expect(minha).toEqual({ empresa_id: E.id, pedidos_vencidos: 1, colaboradores_vencidos: 0 });
+        expect(r.total.pedidos_vencidos).toBeGreaterThanOrEqual(1);
+        expect((await linha('SELECT cliente_nome FROM pedidos_loja WHERE codigo = $1', [velho])).cliente_nome).toBe('Pessoa Vencida');
+        expect(JSON.stringify(r)).not.toMatch(/Pessoa Vencida|teste\.local/);
+    });
+});

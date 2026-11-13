@@ -98,4 +98,11 @@ async function listarColaboradoresVencidos(empresa_id) {
     return rows.map((r) => r.id);
 }
 
-module.exports = { anonimizarPedidoLoja, listarPedidosLojaVencidos, anonimizarColaborador, listarColaboradoresVencidos };
+// Empresas ativas (rotina de sistema que varre todas as lojas; cada consulta seguinte filtra pelo empresa_id da linha).
+async function listarEmpresasAtivas() {
+    const { rows } = await db.query(`SELECT id FROM empresas WHERE status = 'ativa' ORDER BY id`);
+
+    return rows.map((r) => r.id);
+}
+
+module.exports = { listarEmpresasAtivas, anonimizarPedidoLoja, listarPedidosLojaVencidos, anonimizarColaborador, listarColaboradoresVencidos };

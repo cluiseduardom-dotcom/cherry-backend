@@ -9,6 +9,8 @@
 //     node scripts/lgpd-anonimizar.js --empresa 1 --colaborador <id> --executado-por <id-do-admin> --motivo "..." [--executar]
 //   Prazos de retenção vencidos (ver src/constants/lgpd.js e docs/LGPD.md):
 //     node scripts/lgpd-anonimizar.js --empresa 1 --retencao --executado-por <id-do-admin> [--executar]
+//   Conferência mensal (todas as lojas, SÓ simulação: conta o que venceu, não grava nada):
+//     node scripts/lgpd-anonimizar.js --retencao --todas-empresas
 //
 // Variáveis: as mesmas do serviço da API (DATABASE_URL etc.). Anonimizar não apaga cópias de segurança já feitas.
 require('dotenv').config({ quiet: true });
@@ -36,8 +38,17 @@ const inteiro = (v) => (/^\d+$/.test(String(v)) ? Number(v) : null);
     const args = lerArgs(process.argv.slice(2));
     const empresa_id = inteiro(args.empresa);
     const executar = args.executar === true;
+    const todas = args['todas-empresas'] === true;
 
     try {
+        if (todas) {
+            if (executar) throw new Error('--todas-empresas é só simulação: para aplicar, rode por empresa com --empresa <id> --executar.');
+            if (args.retencao !== true) throw new Error('--todas-empresas vale só com --retencao.');
+            console.log('MODO: SIMULAÇÃO em todas as empresas ativas (nada é gravado)');
+            console.log(JSON.stringify(await lgpdService.simularRetencaoTodasEmpresas(), null, 2));
+            return;
+        }
+
         if (!empresa_id) throw new Error('Informe --empresa <id>.');
 
         console.log(executar ? 'MODO: EXECUTAR (grava no banco)' : 'MODO: SIMULAÇÃO (nada é gravado; use --executar para aplicar)');
