@@ -56,10 +56,21 @@ Registro dos testes:
 
 ## 3. Deploy e migrations
 
-- `npm start` roda `node src/database/migrate.js && node src/server.js`: as migrations pendentes rodam antes de o servidor subir. Se uma migration falhar, o processo encerra com código 1 e **o servidor novo não sobe**; no Render o deploy é marcado como falho e a versão anterior continua atendendo [CONFIRMAR: comportamento do seu plano com health check configurado em `/health`].
-- As migrations agora usam uma **trava no banco** (transação): dois processos subindo juntos não aplicam a mesma migration duas vezes.
-- Para separar migrations do boot (recomendado quando houver mais de uma loja pagando): no Render, definir o **Pre-Deploy Command** como `npm run db:migrate` e o **Start Command** como `node src/server.js`. [Decisão do PO; recurso do Render depende do plano, CONFIRMAR]. Até lá, o comportamento atual continua válido.
+Situação verificada no Render em 13/11/2026 (serviço `cherry-backend`, plano Starter `0.5c-512mb`, 1 instância): **Start Command** `node src/server.js`; **Health Check Path vazio**; **sem Pre-Deploy Command**. O `src/server.js` aplica as migrations pendentes antes de abrir a porta; se uma falhar, o processo encerra com código 1 e o deploy falha, mantendo a versão anterior no ar (fonte: documentação do Render sobre deploys, https://render.com/docs/deploys).
+
+Migrations em etapa própria do deploy (recomendado). O Pre-Deploy Command existe em serviços pagos (o seu é pago) e roda em uma instância separada; se falhar, o deploy inteiro falha e a versão anterior continua atendendo. Fazer **nesta ordem**:
+1. Mergear e deixar o deploy que traz a chave `MIGRATIONS_NO_BOOT` (sem a variável, tudo continua como hoje).
+2. No Render, serviço `cherry-backend` → Settings → **Pre-Deploy Command**: `npm run db:migrate`.
+3. No mesmo serviço → Environment: `MIGRATIONS_NO_BOOT=true`.
+4. No mesmo serviço → **Health Check Path**: `/health` (só o processo). Use `/health/ready` apenas no monitor externo: se o Neon oscilar, o Render não deve reiniciar a API por causa disso.
+5. Próximo deploy: conferir nos logs "Database atualizado até migration ..." na etapa de Pre-Deploy e o servidor subindo sem rodar migrations.
+
+Com `MIGRATIONS_NO_BOOT=true` o servidor **só confere** (SELECT em `schema_migrations`) e recusa subir se faltar migration ("Migrations pendentes (...)"), em vez de rodar código novo em schema antigo. Para voltar ao comportamento anterior, remover a variável.
+
+Observações:
+- As migrations usam uma **trava no banco** (transação): dois processos subindo juntos não aplicam a mesma migration duas vezes.
 - Migration nova: revisável e reversível (regra do projeto); só aplicada em produção pelo PO.
+- O staging (`cherry-backend-staging`, plano gratuito) pode continuar rodando migrations no boot; Pre-Deploy não existe no plano gratuito.
 
 ## 4. Limites conhecidos
 

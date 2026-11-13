@@ -100,3 +100,7 @@ Toda conexão — API (`src/config/db.js`), migrations (`src/database/migrate.js
 ## Limites de escala conhecidos
 
 - **Rate limit em memória:** os limitadores (`express-rate-limit`) guardam a contagem na memória de cada processo. Com mais de uma instância do backend o limite efetivo deixa de valer (cada instância conta separado). Hoje o serviço roda com uma instância; antes de escalar, trocar por um repositório compartilhado (ex.: Redis). Detalhes operacionais em `docs/OPERACAO.md`.
+
+## MIGRATIONS_NO_BOOT (opcional)
+
+Sem a variável (padrão), `src/server.js` aplica as migrations pendentes antes de abrir a porta. Com `MIGRATIONS_NO_BOOT=true`, o servidor não aplica nada: só confere que não falta migration e recusa subir se faltar. Usar junto com o Pre-Deploy Command `npm run db:migrate` do Render (passo a passo em `docs/OPERACAO.md`, seção 3).
