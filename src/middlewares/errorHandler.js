@@ -1,3 +1,5 @@
+const { registrarErro } = require('../config/monitoramento');
+
 const MENSAGEM_ERRO_INTERNO = 'Erro interno do servidor';
 
 // Erros do driver pg que são causados por entrada do cliente, não por falha do
@@ -27,6 +29,9 @@ module.exports = (err, req, res, next) => {
     const status = Number.isInteger(err.statusCode) ? err.statusCode : (Number.isInteger(err.status) ? err.status : 500);
 
     if (status >= 500 || status < 400) {
+        // Só erro inesperado vai para a coleta de erros (opcional). Rota = template, sem ids nem dados da requisição.
+        registrarErro(err, { rota: req.route?.path ? `${req.baseUrl || ''}${req.route.path}` : undefined, metodo: req.method });
+
         return res.status(500).json({ success: false, message: MENSAGEM_ERRO_INTERNO });
     }
 
