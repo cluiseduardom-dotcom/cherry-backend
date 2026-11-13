@@ -1,6 +1,6 @@
 # Loja online: funcionalidades de venda (plano por fases)
 
-Estado: **fase 1 entregue** (seção "presentes por faixa de preço + últimas unidades + ajuda por WhatsApp", migration 106, ligada pelo ERP). As demais funcionalidades pedidas pelo PO estão **planejadas aqui**, cada uma com dado real por trás, desligada por padrão e por loja.
+Estado: **fase 1 e fase 2 (condições de venda) entregues**. Fase 1: (seção "presentes por faixa de preço + últimas unidades + ajuda por WhatsApp", migration 106, ligada pelo ERP). As demais funcionalidades pedidas pelo PO estão **planejadas aqui**, cada uma com dado real por trás, desligada por padrão e por loja.
 
 Regras que valem para todas (do PO): aditivo; funcionalidade desligada por padrão; nada altera PDV, estoque, vendas, financeiro nem permissões; `empresa_id` nunca vem do navegador; **nada inventado** (nem prova social, nem prazo, nem promoção, nem garantia); nada de dado simulado exibido como real.
 
@@ -14,7 +14,12 @@ Regras que valem para todas (do PO): aditivo; funcionalidade desligada por padr�
 | 5 | Campanhas com preço (base do contador e do "5% no Pix") | Alto | Alto | Regra comercial do PO |
 | 6 | "X pessoas vendo agora" | Médio | Médio (privacidade) | Tráfego real e política |
 
-## 1. Garantia, embalagem de presente e frete grátis
+## 1. Garantia, embalagem de presente e frete grátis — ENTREGUE (migration 107)
+**Decisões do PO (13/11/2026):** frete grátis a partir de R$ 300,00 (subtotal das peças, Brasil todo, sem desconto vigente); garantia de 1 ano que não cobre mau uso; embalagem de presente grátis. Os textos finais são digitados pelo admin no ERP ("Institucional da loja" > "Condições de venda").
+**Como funciona:** o servidor decide no pedido (subtotal >= valor vigente => `frete = 0`; senão `NULL` = a combinar) e grava; o total não muda. Mudar o valor depois não altera pedidos antigos. O navegador só exibe. Sem valor configurado, nada muda.
+**Pendente desta frente (não construído):** caixa "é presente" + mensagem do cartão no checkout (precisa de coluna no pedido e aparecer em "Pedidos da loja"); garantia nos Termos de uso (texto jurídico a validar).
+
+Desenho original:
 - **ERP** (mesma tela da seção de presentes): `garantia_texto`, `embalagem_presente_texto` e `frete_gratis_acima` (valor em R$; vazio = desligado). Nada preenchido pelo sistema.
 - **Loja:** mostra a garantia na página da peça e na página de termos; a embalagem como linha informativa na peça e no checkout; o frete grátis como barra no carrinho ("faltam R$ X para frete grátis") e linha "Frete: grátis" no checkout quando o subtotal passa do valor, senão "a combinar" como hoje.
 - **Opção de presente no checkout (fase seguinte):** caixa "é presente" + mensagem do cartão (até 200 caracteres), gravadas no pedido e mostradas em "Pedidos da loja" para a separação. Cobrança de embalagem só se o PO definir preço.
