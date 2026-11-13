@@ -13,7 +13,11 @@ O que existe no código:
 O que **não** existe e precisa ser configurado fora do código:
 1. **Monitor de uptime externo** (UptimeRobot, Better Stack ou similar, plano gratuito serve) em `https://<api>/health/ready`, a cada 1–5 min, com aviso por e-mail ou WhatsApp. [CONFIRMAR: criado em __/__/____]
 2. **Alertas do Render** (falha de deploy e serviço reiniciando) para o e-mail do responsável. [CONFIRMAR]
-3. **Coleta de erros** (ex.: Sentry): decisão pendente do PO. Se for adotada, entra atrás de variável de ambiente (sem a variável, nada é enviado), sem dados pessoais nos eventos, e o provedor precisa constar na Política de privacidade.
+3. **Coleta de erros (Sentry)**: implementada e **desligada por padrão**; só liga com a variável `SENTRY_DSN`.
+   - O que é enviado: tipo e mensagem do erro (com e-mail, CPF, CNPJ, telefone, token e URL de banco **mascarados**), pilha de chamadas, versão (commit do Render), ambiente e duas etiquetas (rota em formato de modelo, como `/vendas/:id`, e método HTTP). **Não** é enviado: corpo, cabeçalhos, cookies, query string, usuário, IP nem logs.
+   - O que dispara: só erro inesperado (5xx), falha ao subir o servidor e falha do cron das reservas da loja (o que cobre "pagamento pago que não virou venda por erro"). Erros de entrada do usuário (4xx) não são enviados.
+   - Como ligar: criar uma conta e um projeto Node no Sentry; copiar o DSN; no Render, definir `SENTRY_DSN` nos serviços `cherry-backend` **e** `cherry-loja-cron` (e, se quiser, no staging); no Sentry, criar uma regra de alerta por e-mail para "novo erro". [CONFIRMAR: ligado em __/__/____]
+   - Ao ligar, o provedor já consta na Política de privacidade da loja (seção "Com quem compartilhamos").
 4. **Logs**: hoje são `console.*` no stdout do Render (retenção do plano do Render [CONFIRMAR]). Nunca registrar token, senha, DATABASE_URL nem dado de cartão.
 
 Rotina semanal sugerida (5 minutos): abrir "Pagamentos a devolver" e o sino do ERP; conferir no painel do Mercado Pago as entregas de webhook (status 200; 401 repetido = assinatura divergente).
@@ -52,10 +56,21 @@ Registro dos testes:
 
 ## 3. Deploy e migrations
 
-- `npm start` roda `node src/database/migrate.js && node src/server.js`: as migrations pendentes rodam antes de o servidor subir. Se uma migration falhar, o processo encerra com código 1 e **o servidor novo não sobe**; no Render o deploy é marcado como falho e a versão anterior continua atendendo [CONFIRMAR: comportamento do seu plano com health check configurado em `/health`].
-- As migrations agora usam uma **trava no banco** (transação): dois processos subindo juntos não aplicam a mesma migration duas vezes.
-- Para separar migrations do boot (recomendado quando houver mais de uma loja pagando): no Render, definir o **Pre-Deploy Command** como `npm run db:migrate` e o **Start Command** como `node src/server.js`. [Decisão do PO; recurso do Render depende do plano, CONFIRMAR]. Até lá, o comportamento atual continua válido.
+Situação verificada no Render em 13/11/2026 (serviço `cherry-backend`, plano Starter `0.5c-512mb`, 1 instância): **Start Command** `node src/server.js`; **Health Check Path vazio**; **sem Pre-Deploy Command**. O `src/server.js` aplica as migrations pendentes antes de abrir a porta; se uma falhar, o processo encerra com código 1 e o deploy falha, mantendo a versão anterior no ar (fonte: documentação do Render sobre deploys, https://render.com/docs/deploys).
+
+Migrations em etapa própria do deploy (recomendado). O Pre-Deploy Command existe em serviços pagos (o seu é pago) e roda em uma instância separada; se falhar, o deploy inteiro falha e a versão anterior continua atendendo. Fazer **nesta ordem**:
+1. Mergear e deixar o deploy que traz a chave `MIGRATIONS_NO_BOOT` (sem a variável, tudo continua como hoje).
+2. No Render, serviço `cherry-backend` → Settings → **Pre-Deploy Command**: `npm run db:migrate`.
+3. No mesmo serviço → Environment: `MIGRATIONS_NO_BOOT=true`.
+4. No mesmo serviço → **Health Check Path**: `/health` (só o processo). Use `/health/ready` apenas no monitor externo: se o Neon oscilar, o Render não deve reiniciar a API por causa disso.
+5. Próximo deploy: conferir nos logs "Database atualizado até migration ..." na etapa de Pre-Deploy e o servidor subindo sem rodar migrations.
+
+Com `MIGRATIONS_NO_BOOT=true` o servidor **só confere** (SELECT em `schema_migrations`) e recusa subir se faltar migration ("Migrations pendentes (...)"), em vez de rodar código novo em schema antigo. Para voltar ao comportamento anterior, remover a variável.
+
+Observações:
+- As migrations usam uma **trava no banco** (transação): dois processos subindo juntos não aplicam a mesma migration duas vezes.
 - Migration nova: revisável e reversível (regra do projeto); só aplicada em produção pelo PO.
+- O staging (`cherry-backend-staging`, plano gratuito) pode continuar rodando migrations no boot; Pre-Deploy não existe no plano gratuito.
 
 ## 4. Limites conhecidos
 

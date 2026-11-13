@@ -1,20 +1,33 @@
+const { iniciarMonitoramento, registrarErro, encerrarMonitoramento } = require('./config/monitoramento');
+
+// Antes de tudo: erros ao subir também são coletados (só se SENTRY_DSN estiver definido).
+iniciarMonitoramento();
+
 const app = require('./app');
 const { validarRuntime } = require('./config/runtimeConfig');
-const { main: executarMigrations } = require('./database/migrate');
+const { main: executarMigrations, verificarMigrationsAplicadas } = require('./database/migrate');
 
 validarRuntime();
 
 const PORT = process.env.PORT || 3000;
 
 async function iniciarServidor() {
-  await executarMigrations();
+  // Padrão (sem a variável): aplica as migrations pendentes ao subir, como sempre. Com MIGRATIONS_NO_BOOT=true elas
+  // rodam em etapa própria do deploy (npm run db:migrate) e aqui só se confere que não falta nenhuma.
+  if (process.env.MIGRATIONS_NO_BOOT === 'true') {
+    await verificarMigrationsAplicadas();
+  } else {
+    await executarMigrations();
+  }
 
   app.listen(PORT, () => {
     console.log('Servidor rodando na porta ' + PORT);
   });
 }
 
-iniciarServidor().catch((error) => {
+iniciarServidor().catch(async (error) => {
   console.error('Falha ao iniciar o servidor:', error.message);
+  registrarErro(error, { rota: 'inicializacao' });
+  await encerrarMonitoramento();
   process.exit(1);
 });
