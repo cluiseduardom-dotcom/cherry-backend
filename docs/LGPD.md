@@ -64,4 +64,4 @@ Pedido de **cópia dos dados** (acesso): ainda manual, feito pelo PO com consult
 2. Aviso interno aos colaboradores sobre CPF, endereço e foto.
 3. Plano de incidente: quem avisa a ANPD e os titulares, e em quanto tempo.
 4. Validar os prazos da seção 3 com contador/advogado.
-5. Rotina mensal: a conferência (`--retencao --todas-empresas`) pode rodar agendada; **aplicar** (`--executar`) continua sendo ato humano, por empresa, depois de conferir os números e de os prazos terem sido validados.
+5. Rotina mensal: **a conferência já roda sozinha** todo dia 1, entre 09:00 e 09:09 UTC (06:00 em Brasília), dentro do cron das reservas da loja (`cherry-loja-cron`), em modo simulação (não grava nada). Se algo venceu, o Sentry recebe um aviso "LGPD: N pedido(s) da loja e M colaborador(es) com prazo de retenção vencido" e o alerta por e-mail dispara; se nada venceu, só aparece uma linha no log do cron. **Aplicar** (`--executar`) continua sendo ato humano, por empresa, depois de conferir os números e de os prazos terem sido validados. Uma falha na conferência nunca afeta o trabalho de pagamentos e reservas do mesmo cron.

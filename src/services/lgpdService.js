@@ -1,6 +1,7 @@
 const AppError = require('../errors/AppError');
 const lgpdRepository = require('../repositories/lgpdRepository');
 const storage = require('./storage/imagensStorage');
+const { registrarErro } = require('../config/monitoramento');
 
 // Orquestra a anonimização (LGPD). Quem chama é um script administrativo (nunca uma rota pública): `empresa_id` é
 // informado explicitamente por quem opera e toda consulta é filtrada por ele. Simulação por padrão.
@@ -79,4 +80,24 @@ async function simularRetencaoTodasEmpresas() {
     return { empresas: empresas.length, total, por_empresa: porEmpresa.filter((e) => e.pedidos_vencidos || e.colaboradores_vencidos) };
 }
 
-module.exports = { simularRetencaoTodasEmpresas, anonimizarPedidoLoja, anonimizarColaborador, aplicarRetencao, MOTIVO_RETENCAO };
+// Conferência mensal AUTOMÁTICA (só simulação). Roda no cron das reservas da loja (a cada minuto) e só age na janela do dia 1,
+// 09:00-09:09 UTC (06:00 em Brasília). Se algo venceu, avisa pelo Sentry (que já manda e-mail); aplicar a anonimização continua
+// sendo ato humano (docs/LGPD.md). A mensagem é estável dentro da janela: o Sentry agrupa as repetições em um único aviso.
+const ehJanelaDaConferenciaMensal = (agora) => agora.getUTCDate() === 1 && agora.getUTCHours() === 9 && agora.getUTCMinutes() < 10;
+
+async function conferenciaMensal(agora = new Date()) {
+    if (!ehJanelaDaConferenciaMensal(agora)) return null;
+
+    const r = await simularRetencaoTodasEmpresas();
+
+    if (r.total.pedidos_vencidos > 0 || r.total.colaboradores_vencidos > 0) {
+        registrarErro(
+            new Error(`LGPD: ${r.total.pedidos_vencidos} pedido(s) da loja e ${r.total.colaboradores_vencidos} colaborador(es) com prazo de retenção vencido. Confira e anonimize (docs/LGPD.md).`),
+            { rota: 'lgpd-retencao-mensal', metodo: 'CRON' }
+        );
+    }
+
+    return r;
+}
+
+module.exports = { conferenciaMensal, ehJanelaDaConferenciaMensal, simularRetencaoTodasEmpresas, anonimizarPedidoLoja, anonimizarColaborador, aplicarRetencao, MOTIVO_RETENCAO };
