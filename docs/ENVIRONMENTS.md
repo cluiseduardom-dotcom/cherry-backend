@@ -101,6 +101,10 @@ Toda conexão — API (`src/config/db.js`), migrations (`src/database/migrate.js
 
 - **Rate limit em memória:** os limitadores (`express-rate-limit`) guardam a contagem na memória de cada processo. Com mais de uma instância do backend o limite efetivo deixa de valer (cada instância conta separado). Hoje o serviço roda com uma instância; antes de escalar, trocar por um repositório compartilhado (ex.: Redis). Detalhes operacionais em `docs/OPERACAO.md`.
 
+## SESSAO_RENOVAVEL (opcional)
+
+Sem a variável (padrão), o token de login dura 8 h. Com `SESSAO_RENOVAVEL=true`, dura 1 h e o ERP o renova (`POST /auth/renovar`) enquanto a pessoa usa o sistema; o teto de 8 h desde o login vale nos dois modos. Só ativar depois do deploy do ERP com a renovação (ver `docs/OPERACAO.md`).
+
 ## MIGRATIONS_NO_BOOT (opcional)
 
 Sem a variável (padrão), `src/server.js` aplica as migrations pendentes antes de abrir a porta. Com `MIGRATIONS_NO_BOOT=true`, o servidor não aplica nada: só confere que não falta migration e recusa subir se faltar. Usar junto com o Pre-Deploy Command `npm run db:migrate` do Render (passo a passo em `docs/OPERACAO.md`, seção 3).

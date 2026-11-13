@@ -75,5 +75,8 @@ Observações:
 ## 4. Limites conhecidos
 
 - **Rate limit em memória** (`express-rate-limit` sem repositório compartilhado): vale por instância. Com **mais de uma instância** do backend, cada uma conta separado e o limite efetivo fica maior. Antes de escalar horizontalmente, trocar por repositório compartilhado (ex.: Redis). Hoje: 1 instância.
-- **Sessão**: token de 8 h, sem renovação; a cada requisição o banco confere usuário ativo e revogação. Política de renovação/inatividade: pendente.
+- **Sessão**: a cada requisição o banco confere usuário ativo, empresa ativa e revogação. Política de renovação:
+  - Padrão (sem variável): token de 8 h, como sempre.
+  - `SESSAO_RENOVAVEL=true`: token curto de **1 h**, renovado pelo ERP (`POST /auth/renovar`) enquanto a pessoa está usando. Parou de usar por mais de 1 h: a sessão vence sozinha. Em qualquer modo existe um **teto de 8 h desde o login** (claim `sa`, assinada no token); depois disso é preciso entrar de novo.
+  - **Ordem para ativar**: (1) deploy do backend e do ERP com o código novo; (2) só então definir `SESSAO_RENOVAVEL=true` no Render (`cherry-backend`). Ativar antes de o ERP novo estar no ar faria as pessoas serem desconectadas a cada hora. Para desativar, remover a variável.
 - **Listas paginadas**: o servidor entrega no máximo 100 produtos por página; telas que montam lista completa devem juntar as páginas (`listarTodosProdutos` no ERP). Produtos, Venda (PDV) e Detalhe da Compra ainda leem só a primeira página.

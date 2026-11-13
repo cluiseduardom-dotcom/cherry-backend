@@ -108,8 +108,26 @@ async function alterarPropriaSenha(ator, senhaAtual, novaSenha) {
     return { token: tokenService.emitirToken(atualizado) };
 }
 
+// Renovação da sessão: só para quem já passou pelo authMiddleware (usuário e empresa ativos, token não revogado).
+// Mantém o início da sessão: depois do teto de 8 h desde o login é preciso entrar de novo.
+function renovarSessao(usuario, sessao) {
+    const idade = Math.floor(Date.now() / 1000) - sessao.inicio;
+
+    if (idade >= tokenService.SESSAO_MAXIMA_SEGUNDOS) {
+        throw new AppError('Sessão expirada. Entre novamente.', 401);
+    }
+
+    return {
+        token: tokenService.emitirToken(
+            { id: usuario.id, papel: sessao.papel, empresa_id: usuario.empresa_id, token_version: sessao.token_version },
+            { sa: sessao.inicio }
+        )
+    };
+}
+
 module.exports = {
     login,
     register,
-    alterarPropriaSenha
+    alterarPropriaSenha,
+    renovarSessao
 };

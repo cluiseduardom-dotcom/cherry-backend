@@ -97,9 +97,20 @@ async function alterarSenha(req, res, next) {
 
 }
 
+async function renovar(req, res, next) {
+    try {
+        res.set('Cache-Control', 'no-store');
+
+        return response.success(res, authService.renovarSessao(req.usuario, req.sessao));
+    } catch (error) {
+        next(error);
+    }
+}
+
 module.exports = {
     login,
     register,
     me,
-    alterarSenha
+    alterarSenha,
+    renovar
 };

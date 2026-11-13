@@ -50,9 +50,9 @@ describe('authService.login', () => {
     const result = await authService.login('a@x.com', 'senha123');
 
     expect(jwt.sign).toHaveBeenCalledWith(
-      { id: 1, role: 'admin', empresa_id: undefined, tv: 0 },
+      { id: 1, role: 'admin', empresa_id: undefined, tv: 0, sa: expect.any(Number) },
       process.env.JWT_SECRET,
-      { expiresIn: '8h', algorithm: 'HS256' }
+      { expiresIn: 8 * 60 * 60, algorithm: 'HS256' }
     );
     expect(result).toEqual({
       token: 'signed-token',
@@ -178,9 +178,9 @@ describe('authService.login — identidade visual da empresa', () => {
     await authService.login('a@x.com', 'senha123');
 
     expect(jwt.sign).toHaveBeenCalledWith(
-      { id: 1, role: 'admin', empresa_id: 7, tv: 0 },
+      { id: 1, role: 'admin', empresa_id: 7, tv: 0, sa: expect.any(Number) },
       process.env.JWT_SECRET,
-      { expiresIn: '8h', algorithm: 'HS256' }
+      { expiresIn: 8 * 60 * 60, algorithm: 'HS256' }
     );
   });
 

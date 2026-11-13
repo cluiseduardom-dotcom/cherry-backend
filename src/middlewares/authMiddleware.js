@@ -67,6 +67,9 @@ module.exports = async (req, res, next) => {
         // Admin concedido individualmente soma-se ao cargo (vale já na próxima requisição).
         const permissoes = aplicarConcessoes(base, { administrador_concedido: estado.administrador_concedido === true });
 
+        // Dados da sessão atual (só leitura): início assinado no token e o estado que a renovação reaproveita.
+        req.sessao = { inicio: payload.sa ?? payload.iat, token_version: estado.token_version, papel: estado.papel ?? payload.role };
+
         req.usuario = {
             id: payload.id,
             // Login (e-mail) vindo do banco; vai para o registro de cancelamento de venda.
