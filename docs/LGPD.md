@@ -23,26 +23,42 @@ No modelo multi-tenant, cada loja (empresa) é a **controladora** dos dados dos 
 Dados de cartão **não** são guardados: o pagamento é feito no Mercado Pago.
 Subprocessadores conhecidos (a Política de privacidade da loja já cita): Mercado Pago, Cloudflare (Turnstile), hospedagem e banco de dados (Render, Neon).
 
-## 3. Atendimento a pedidos do titular (acesso, correção, anonimização)
+## 3. Prazos de retenção adotados (padrão sugerido, a validar com contador/advogado)
 
-| Pedido | O que existe hoje | Lacuna |
+| Dado | Prazo | Depois |
 |---|---|---|
-| Cliente cadastrado pede anonimização | Existe: `anonimizar` em `clientesService` (preserva o histórico de vendas) | nenhuma |
-| Cliente da loja online pede anonimização | **Não existe** rotina para `pedidos_loja.cliente_*` | criar procedimento (script administrativo com confirmação, preservando o pedido e a venda) |
-| Colaborador sai | Não há exclusão de usuário: **bloqueia-se** (regra do projeto, por causa da trilha) | definir se `usuarios_dados` (CPF, nascimento) é anonimizado após um prazo |
-| Pessoa retratada retira a autorização | A tela "Retratos da Home" permite desativar | registrar a retirada na trilha e remover o arquivo |
-| Pedido de cópia dos dados | Não há rotina | procedimento manual com consulta por empresa, entregue pelo PO |
+| Comprador de pedido **pago** da loja online (nome, e-mail, telefone) | 5 anos após o pagamento | anonimizado; o pedido, o valor e a venda ficam |
+| Comprador de pedido **nunca pago** (cancelado ou expirado) | 90 dias após encerrado | anonimizado |
+| Colaborador **bloqueado** (CPF, nascimento, endereço, telefone, foto) | 5 anos após o bloqueio | dados e foto removidos; nome e e-mail ficam na trilha de auditoria |
+| Cliente cadastrado no ERP | sem prazo automático | anonimização manual pela tela de Clientes (já existe) |
+| Trilha de auditoria e histórico financeiro | não se apaga | só o dado pessoal é trocado por marcador |
 
-Regra: histórico financeiro e operacional **não é apagado**; anonimiza-se o dado pessoal mantendo o registro.
+Base do prazo de 5 anos: prazo de reclamação do consumidor e guarda de registros de venda (CDC e legislação tributária). **Não é parecer jurídico.** Os valores estão em `src/constants/lgpd.js`.
+Anonimizar **não apaga cópias de segurança** já feitas: o histórico do Neon (7 dias) expira sozinho e as cópias lógicas (`docs/OPERACAO.md`) têm retenção de 4 semanas.
 
-## 4. Decisões que dependem do PO (não definidas no código)
-1. **Prazo de retenção** dos dados de pedidos da loja e de clientes sem compra (a Política da loja tem uma seção "Por quanto tempo guardamos"; conferir se o texto bate com a prática).
-2. **Canal e responsável** para pedidos de titulares (e-mail de contato publicado e prazo de resposta).
-3. **Aviso interno** para colaboradores sobre CPF, endereço e foto.
-4. **Incidente de segurança**: quem avisa a ANPD e os titulares, e em quanto tempo (a lei fala em prazo razoável; ver orientação vigente da ANPD).
-5. Se for adotada coleta de erros (Sentry etc.), incluir o provedor na Política.
+## 4. Como atender um pedido do titular
 
-## 5. Próximos passos técnicos sugeridos
-1. Rotina administrativa para anonimizar dados pessoais de um pedido da loja (com `dry-run`, filtro por `empresa_id` e registro em evento).
-2. Rotina equivalente para `usuarios_dados` de colaborador bloqueado há mais de N meses.
-3. Teste de integração para cada rotina, provando que o histórico financeiro permanece.
+Tudo por `scripts/lgpd-anonimizar.js`, **simulação por padrão** (só `--executar` grava). Nunca imprime dado pessoal (só ids, códigos e contagens). Usar o mesmo `DATABASE_URL` do serviço, de um ambiente de confiança.
+
+```bash
+# Comprador da loja online (código do pedido está na página do pedido)
+node scripts/lgpd-anonimizar.js --empresa <id> --pedido-loja <codigo> --motivo "Pedido do titular em DD/MM/AAAA"
+node scripts/lgpd-anonimizar.js --empresa <id> --pedido-loja <codigo> --motivo "Pedido do titular em DD/MM/AAAA" --executar
+
+# Colaborador (precisa estar bloqueado)
+node scripts/lgpd-anonimizar.js --empresa <id> --colaborador <usuario_id> --executado-por <id-do-admin> --motivo "..." --executar
+
+# Prazos vencidos (rodar mensalmente: primeiro sem --executar, conferir, depois com)
+node scripts/lgpd-anonimizar.js --empresa <id> --retencao --executado-por <id-do-admin> [--executar]
+```
+
+Recusas por segurança: pedido aguardando pagamento; pedido pago com entrega ainda não combinada (precisa do contato); colaborador ainda ativo. Cada anonimização deixa um evento na trilha (`pedidos_loja_eventos` ou `usuarios_eventos`). Repetir é seguro (idempotente).
+
+Pedido de **cópia dos dados** (acesso): ainda manual, feito pelo PO com consulta por empresa; não há rotina.
+
+## 5. O que ainda depende do PO
+1. Canal e responsável para pedidos de titulares (e-mail publicado e prazo de resposta; a Política da loja remete ao contato do rodapé).
+2. Aviso interno aos colaboradores sobre CPF, endereço e foto.
+3. Plano de incidente: quem avisa a ANPD e os titulares, e em quanto tempo.
+4. Validar os prazos da seção 3 com contador/advogado.
+5. Rotina mensal: alguém precisa rodar `--retencao` (hoje é manual; pode virar tarefa agendada depois de validada).

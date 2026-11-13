@@ -165,6 +165,33 @@ async function inicializarBanco(client, migrations) {
     }
 }
 
+// Versões que existem como arquivo mas ainda não estão registradas no banco. Só leitura (SELECT).
+async function migrationsPendentes(client, migrations) {
+    if (!(await tabelaExiste(client, 'schema_migrations'))) return migrations;
+
+    const aplicadas = await obterVersoesAplicadas(client);
+
+    return migrations.filter((migration) => !aplicadas.has(migration.versao));
+}
+
+// Modo "migrations fora do boot" (MIGRATIONS_NO_BOOT=true): as migrations rodam em etapa própria do deploy
+// (Pre-Deploy Command) e o servidor só CONFERE. Se faltar alguma, recusa subir: código novo em schema antigo
+// quebraria em tempo de execução. Usa a conexão normal da API (papel restrito, que só precisa de SELECT).
+async function verificarMigrationsAplicadas() {
+    const migrations = await listarMigrations();
+    const pool = criarPool(process.env.DATABASE_URL);
+
+    try {
+        const pendentes = await migrationsPendentes(pool, migrations);
+
+        if (pendentes.length) {
+            throw new Error('Migrations pendentes (' + pendentes.map((m) => m.versao).join(', ') + '): rode "npm run db:migrate" antes de subir o servidor.');
+        }
+    } finally {
+        await pool.end();
+    }
+}
+
 async function main() {
     const { url, origem } = obterConexaoMigracao();
 
@@ -223,5 +250,7 @@ module.exports = {
     executarArquivoSql,
     aplicarMigration,
     inicializarBanco,
+    migrationsPendentes,
+    verificarMigrationsAplicadas,
     main
 }

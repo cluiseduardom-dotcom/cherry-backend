@@ -12,6 +12,11 @@
 // Varre todas as empresas por desenho (é um job de sistema); cada pedido usa o empresa_id da própria linha.
 require('dotenv').config({ quiet: true });
 
+const { iniciarMonitoramento, registrarErro, encerrarMonitoramento } = require('../src/config/monitoramento');
+
+// Falha desta rotina = pagamento pago sem virar venda: vale avisar (só se SENTRY_DSN estiver definido neste serviço).
+iniciarMonitoramento();
+
 const db = require('../src/config/db');
 const { expirarVencidos, converterPendentes } = require('../src/repositories/lojaPedidosRepository');
 const { reconciliarPendentes } = require('../src/services/lojaPagamentoService');
@@ -29,8 +34,10 @@ const { reconciliarPendentes } = require('../src/services/lojaPagamentoService')
         );
     } catch (error) {
         console.error('Falha ao liberar reservas da loja:', error.message);
+        registrarErro(error, { rota: 'cron-reservas-loja' });
         process.exitCode = 1;
     } finally {
         await db.end();
+        await encerrarMonitoramento();
     }
 })();
