@@ -20,6 +20,7 @@ iniciarMonitoramento();
 const db = require('../src/config/db');
 const { expirarVencidos, converterPendentes } = require('../src/repositories/lojaPedidosRepository');
 const { reconciliarPendentes } = require('../src/services/lojaPagamentoService');
+const { conferenciaMensal } = require('../src/services/lgpdService');
 
 (async () => {
     try {
@@ -32,6 +33,16 @@ const { reconciliarPendentes } = require('../src/services/lojaPagamentoService')
             `Pagamentos reconsultados: ${reconciliacao.pulado ? 'pulado (Mercado Pago não configurado)' : `${reconciliacao.consultadas} (${reconciliacao.pagos} pagos)`}; ` +
             `pedidos pagos convertidos em venda: ${convertidos}; reservas da loja liberadas: ${expirados}`
         );
+
+        // Conferência mensal da LGPD (só simulação; age apenas no dia 1, 09:00 UTC). ISOLADA: falha aqui nunca altera o resultado
+        // do trabalho acima (pagamentos e reservas).
+        try {
+            const lgpd = await conferenciaMensal(new Date());
+            if (lgpd) console.log(`LGPD (conferência mensal): ${lgpd.total.pedidos_vencidos} pedido(s) e ${lgpd.total.colaboradores_vencidos} colaborador(es) vencidos em ${lgpd.empresas} empresa(s).`);
+        } catch (erroLgpd) {
+            console.error('Falha na conferência mensal da LGPD:', erroLgpd.message);
+            registrarErro(erroLgpd, { rota: 'cron-lgpd-mensal', metodo: 'CRON' });
+        }
     } catch (error) {
         console.error('Falha ao liberar reservas da loja:', error.message);
         registrarErro(error, { rota: 'cron-reservas-loja' });
