@@ -13,7 +13,7 @@ const SITUACOES = {
 };
 
 const COLUNAS = `p.id, p.codigo, p.status, p.cliente_nome, p.cliente_telefone, p.cliente_email, p.total, p.criado_em, p.pago_em,
-        p.entrega_combinada_em, p.entrega_observacao,
+        p.entrega_combinada_em, p.entrega_observacao, p.presente, p.mensagem_cartao,
         COALESCE((SELECT json_agg(json_build_object('nome', i.nome, 'quantidade', i.quantidade) ORDER BY i.produto_id)
                     FROM itens_pedido_loja i WHERE i.pedido_id = p.id AND i.empresa_id = p.empresa_id), '[]'::json) AS itens`;
 
@@ -28,7 +28,9 @@ function paraResposta(p) {
         criado_em: p.criado_em,
         pago_em: p.pago_em,
         entrega_combinada_em: p.entrega_combinada_em,
-        entrega_observacao: p.entrega_observacao
+        entrega_observacao: p.entrega_observacao,
+        presente: p.presente === true,
+        mensagem_cartao: p.mensagem_cartao ?? null
     };
 }
 
@@ -85,7 +87,7 @@ async function marcarEntregaCombinada({ empresa_id, codigo, usuario_id, observac
 async function listarParaAvisos(empresa_id) {
     const [{ rows: aCombinar }, { rows: semVenda }, { rows: estornadas }] = await Promise.all([
         db.query(
-            `SELECT p.id, p.codigo, p.cliente_nome, p.cliente_telefone, p.total,
+            `SELECT p.id, p.codigo, p.cliente_nome, p.cliente_telefone, p.total, p.presente,
                     FLOOR(EXTRACT(EPOCH FROM (NOW() - p.pago_em)) / 3600)::int AS horas
                FROM pedidos_loja p
               WHERE p.empresa_id = $1 AND p.status = 'pago' AND p.entrega_combinada_em IS NULL

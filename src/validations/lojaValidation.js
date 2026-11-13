@@ -37,6 +37,7 @@ const marcacaoSchema = z.object({
     ordem: z.number().int('Ordem inválida').min(0, 'Ordem inválida').max(100000, 'Ordem inválida').optional()
 }).strict();
 
+const MAX_MENSAGEM_CARTAO = 200;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 // Pedido do visitante. Estrito: nenhum campo extra (nem empresa_id, nem preço total, nem frete) é aceito.
@@ -57,8 +58,17 @@ const pedidoSchema = z.object({
         .max(MAX_ITENS_POR_PEDIDO, `O pedido aceita no máximo ${MAX_ITENS_POR_PEDIDO} itens`)
         .refine((itens) => new Set(itens.map((i) => i.slug)).size === itens.length, 'Item repetido: some as quantidades'),
     // Token do Turnstile. Não entra na impressão digital do pedido: um retry traz outro token e é o mesmo pedido.
-    captcha_token: z.string().trim().min(1).max(2048, 'Verificação de segurança inválida').optional()
-}).strict();
+    captcha_token: z.string().trim().min(1).max(2048, 'Verificação de segurança inválida').optional(),
+    // Presente: a equipe embala e a mensagem do cartão sai impressa. A mensagem só existe se for presente. Texto puro (sem
+    // caracteres de controle); a tela do ERP e a da loja a mostram como texto, nunca como HTML.
+    presente: z.boolean({ error: 'O campo "é presente" deve ser verdadeiro ou falso' }).optional(),
+    mensagem_cartao: z.string({ error: 'Mensagem do cartão inválida' }).trim().max(MAX_MENSAGEM_CARTAO, `A mensagem do cartão deve ter no máximo ${MAX_MENSAGEM_CARTAO} caracteres`)
+        .transform((v) => v.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').trim() || undefined).optional()
+}).strict().superRefine((d, ctx) => {
+    if (d.mensagem_cartao && d.presente !== true) {
+        ctx.addIssue({ code: 'custom', path: ['mensagem_cartao'], message: 'A mensagem do cartão só vale para pedido de presente' });
+    }
+});
 
 // Pagamento do pedido: só o método. Valor, pedido e loja vêm do servidor.
 const pagamentoSchema = z.object({
@@ -69,16 +79,19 @@ const CHAVE_IDEMPOTENCIA = /^[A-Za-z0-9_-]{8,80}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Impressão digital do conteúdo do pedido (cliente + itens em ordem fixa). Mesma chave com outro hash = recusada.
-function hashDoPedido({ cliente, itens }) {
+function hashDoPedido({ cliente, itens, presente, mensagem_cartao }) {
     const canonico = {
         c: { n: cliente.nome, e: cliente.email, t: cliente.telefone ?? '' },
         i: [...itens].sort((a, b) => a.slug.localeCompare(b.slug)).map((i) => [i.slug, i.quantidade, Number(i.preco_exibido).toFixed(2)])
     };
 
+    // Presente entra na impressão digital só quando existe (pedidos sem presente mantêm o mesmo hash de sempre).
+    if (presente === true) canonico.p = [1, mensagem_cartao ?? ''];
+
     return crypto.createHash('sha256').update(JSON.stringify(canonico)).digest('hex');
 }
 
-module.exports = { catalogoQuerySchema, marcacaoSchema, pedidoSchema, pagamentoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID, ORDENS };
+module.exports = { MAX_MENSAGEM_CARTAO, catalogoQuerySchema, marcacaoSchema, pedidoSchema, pagamentoSchema, hashDoPedido, CHAVE_IDEMPOTENCIA, UUID, ORDENS };
 
 // ---- Gestão dos pedidos pela equipe ----
 const gestaoQuerySchema = z.object({

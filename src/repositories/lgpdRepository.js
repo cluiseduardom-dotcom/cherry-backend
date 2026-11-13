@@ -18,7 +18,7 @@ async function anonimizarPedidoLoja({ empresa_id, codigo, executar, motivo }) {
         if (!executar) return { resultado: 'seria_anonimizado', pedido_id: pedido.id };
 
         await client.query(
-            `UPDATE pedidos_loja SET cliente_nome = $3, cliente_email = $4, cliente_telefone = NULL WHERE id = $1 AND empresa_id = $2`,
+            `UPDATE pedidos_loja SET cliente_nome = $3, cliente_email = $4, cliente_telefone = NULL, mensagem_cartao = NULL WHERE id = $1 AND empresa_id = $2`,
             [pedido.id, empresa_id, ANONIMIZADO.NOME, ANONIMIZADO.EMAIL]
         );
         await client.query(
