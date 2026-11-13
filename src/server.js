@@ -1,3 +1,8 @@
+const { iniciarMonitoramento, registrarErro, encerrarMonitoramento } = require('./config/monitoramento');
+
+// Antes de tudo: erros ao subir também são coletados (só se SENTRY_DSN estiver definido).
+iniciarMonitoramento();
+
 const app = require('./app');
 const { validarRuntime } = require('./config/runtimeConfig');
 const { main: executarMigrations, verificarMigrationsAplicadas } = require('./database/migrate');
@@ -20,7 +25,9 @@ async function iniciarServidor() {
   });
 }
 
-iniciarServidor().catch((error) => {
+iniciarServidor().catch(async (error) => {
   console.error('Falha ao iniciar o servidor:', error.message);
+  registrarErro(error, { rota: 'inicializacao' });
+  await encerrarMonitoramento();
   process.exit(1);
 });
