@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const estoqueRepository = require('./estoqueRepository');
+const lojaCondicoesRepository = require('./lojaCondicoesRepository');
 const vendasRepository = require('./vendasRepository');
 const { RESERVA_MINUTOS, MAX_PEDIDOS_ABERTOS_POR_EMAIL, QUANTIDADE_MAXIMA_EXIBIDA, RESERVA_TETO_MINUTOS, RESERVA_GRACA_MINUTOS, PREPARO_PAGAMENTO_SEGUNDOS } = require('../constants/loja');
 
@@ -215,13 +216,18 @@ async function criarPedido({ empresa_id, chave, hash, cliente, itens }) {
         const subtotal = linhas.reduce((acc, l) => acc + l.quantidade * centavos(l.preco), 0);
         const codigo = crypto.randomUUID();
 
+        // Frete grátis: decidido AQUI, pelo servidor, com o valor vigente da empresa, e gravado no pedido (frete 0). Sem a regra
+        // (ou abaixo do valor), o frete segue NULL = a combinar. Frete 0 não muda o total.
+        const minimoFreteGratis = await lojaCondicoesRepository.freteGratisAcimaEmCentavos(client, empresa_id);
+        const frete = minimoFreteGratis !== null && subtotal >= minimoFreteGratis ? 0 : null;
+
         const { rows: criado } = await client.query(
             `INSERT INTO pedidos_loja
                 (codigo, empresa_id, cliente_nome, cliente_email, cliente_telefone, chave_idempotencia, hash_requisicao,
-                 subtotal, total, reserva_expira_em)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, NOW() + ($9::int * INTERVAL '1 minute'))
+                 subtotal, frete, total, reserva_expira_em)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $8, NOW() + ($9::int * INTERVAL '1 minute'))
              RETURNING id`,
-            [codigo, empresa_id, cliente.nome, cliente.email, cliente.telefone ?? null, chave, hash, reais(subtotal), RESERVA_MINUTOS]
+            [codigo, empresa_id, cliente.nome, cliente.email, cliente.telefone ?? null, chave, hash, reais(subtotal), RESERVA_MINUTOS, frete]
         );
         const pedido_id = criado[0].id;
 

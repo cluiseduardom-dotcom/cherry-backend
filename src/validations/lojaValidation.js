@@ -207,7 +207,26 @@ const homeVendasSchema = z.object({
     home_ajuda_texto: textoLivre(200, 'O texto da ajuda')
 });
 
+// ---- Condições de venda (gestão): frete grátis acima de um valor, garantia e embalagem de presente. Vazio/null desliga. ----
+const condicoesVendaSchema = z.object({
+    frete_gratis_acima: z.union([z.number(), z.string(), z.null()]).transform((v, ctx) => {
+        if (v === null || (typeof v === 'string' && v.trim() === '')) return null;
+
+        const n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'));
+
+        if (!Number.isFinite(n) || n <= 0 || n > 100000) {
+            ctx.addIssue({ code: 'custom', message: 'O valor do frete grátis deve ser maior que zero e no máximo R$ 100.000' });
+            return z.NEVER;
+        }
+
+        return Math.round(n * 100) / 100;
+    }).optional(),
+    garantia_texto: textoLivre(300, 'O texto da garantia'),
+    embalagem_presente_texto: textoLivre(200, 'O texto da embalagem de presente')
+});
+
 module.exports.homeVendasSchema = homeVendasSchema;
+module.exports.condicoesVendaSchema = condicoesVendaSchema;
 module.exports.cnpjValido = cnpjValido;
 
 // ---- Faixas (banners) rotativas da Home (gestão) ----

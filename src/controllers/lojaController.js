@@ -10,6 +10,7 @@ const { catalogoQuerySchema, marcacaoSchema, pedidoSchema, pagamentoSchema, hash
 
 const bannersRepository = require('../repositories/lojaBannersRepository');
 const institucionalRepository = require('../repositories/lojaInstitucionalRepository');
+const lojaCondicoesRepository = require('../repositories/lojaCondicoesRepository');
 const retratosRepository = require('../repositories/lojaRetratosRepository');
 const homeVendasRepository = require('../repositories/lojaHomeVendasRepository');
 const { calcularFaixasDePreco } = require('../utils/lojaFaixasPreco');
@@ -174,6 +175,14 @@ async function institucional(req, res, next) {
             atendimento: d.atendimento, horario_atendimento: d.horario_atendimento, email_contato: d.email_contato, whatsapp: d.whatsapp,
             redes: Object.keys(redes).length ? redes : null, razao_social: d.razao_social, cnpj: d.cnpj, endereco: d.endereco, avisos: avisos.length ? avisos : null
         };
+
+        // Condições de venda (frete grátis, garantia, embalagem): só o que estiver preenchido. Falha aqui não derruba o institucional.
+        try {
+            const c = await lojaCondicoesRepository.buscar(empresa_id);
+            if (c.frete_gratis_acima) saida.frete_gratis_acima = c.frete_gratis_acima;
+            if (c.garantia_texto) saida.garantia = c.garantia_texto;
+            if (c.embalagem_presente_texto) saida.embalagem_presente = c.embalagem_presente_texto;
+        } catch { /* migration 107 ainda não aplicada: segue sem as condições */ }
 
         res.set('Cache-Control', 'public, max-age=60');
         return response.success(res, Object.fromEntries(Object.entries(saida).filter(([, v]) => v !== null && v !== undefined)));
