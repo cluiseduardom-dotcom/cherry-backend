@@ -62,4 +62,21 @@ async function aplicarRetencao({ empresa_id, executar = false, executado_por }) 
     return resumo;
 }
 
-module.exports = { anonimizarPedidoLoja, anonimizarColaborador, aplicarRetencao, MOTIVO_RETENCAO };
+// Simulação de retenção em TODAS as empresas ativas (para a rotina mensal). Nunca grava: aplicar exige rodar por empresa,
+// com --executar e --executado-por, depois de conferir os números. Devolve só contagens por empresa e o total.
+async function simularRetencaoTodasEmpresas() {
+    const empresas = await lgpdRepository.listarEmpresasAtivas();
+    const porEmpresa = [];
+    const total = { pedidos_vencidos: 0, colaboradores_vencidos: 0 };
+
+    for (const empresa_id of empresas) {
+        const r = await aplicarRetencao({ empresa_id, executar: false });
+        porEmpresa.push({ empresa_id, pedidos_vencidos: r.pedidos.vencidos, colaboradores_vencidos: r.colaboradores.vencidos });
+        total.pedidos_vencidos += r.pedidos.vencidos;
+        total.colaboradores_vencidos += r.colaboradores.vencidos;
+    }
+
+    return { empresas: empresas.length, total, por_empresa: porEmpresa.filter((e) => e.pedidos_vencidos || e.colaboradores_vencidos) };
+}
+
+module.exports = { simularRetencaoTodasEmpresas, anonimizarPedidoLoja, anonimizarColaborador, aplicarRetencao, MOTIVO_RETENCAO };
