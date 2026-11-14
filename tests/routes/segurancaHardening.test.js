@@ -1,3 +1,4 @@
+jest.mock('../../src/repositories/empresaRepository');
 jest.mock('../../src/services/clientesService');
 jest.mock('../../src/services/vendasService');
 jest.mock('../../src/services/produtosService');

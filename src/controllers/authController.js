@@ -1,6 +1,7 @@
 const authService = require('../services/authService');
 const usuarioFotosService = require('../services/usuarioFotosService');
 const usuariosFotosRepository = require('../repositories/usuariosFotosRepository');
+const empresaRepository = require('../repositories/empresaRepository');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { loginSchema, registerSchema, alterarSenhaSchema } = require('../validations/authValidation');
@@ -39,7 +40,10 @@ async function me(req, res, next) {
         const foto_url = usuarioFotosService.urlDaChave(await usuariosFotosRepository.buscarChave(id, empresa_id));
 
         // `funcionalidades`: o que o plano da empresa liga (só para o frontend esconder menus; o servidor barra de fato).
-        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades, funcionalidades: funcionalidades ?? [], senha_temporaria: senha_temporaria === true, foto_url });
+        // `rotulo_estoque_vendedor`: como a empresa chama o estoque do vendedor (só vocabulário; o frontend escolhe as palavras).
+        const rotulo_estoque_vendedor = await empresaRepository.obterRotuloEstoqueVendedor(empresa_id);
+
+        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades, funcionalidades: funcionalidades ?? [], senha_temporaria: senha_temporaria === true, foto_url, rotulo_estoque_vendedor: rotulo_estoque_vendedor ?? 'maleta' });
 
     } catch (error) {
 

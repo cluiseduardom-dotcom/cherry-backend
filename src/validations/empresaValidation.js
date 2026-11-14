@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const { cnpjValido, UFS } = require('../utils/documentos');
+const { CHAVES_VOCABULARIO } = require('../constants/vocabularioEstoque');
 
 // Texto vazio vira null (limpar o campo opcional). `strict`: campo desconhecido (empresa_id,
 // status, tema_visual...) é recusado, nunca ignorado.
@@ -20,7 +21,9 @@ const atualizarDadosEmpresaSchema = z.strictObject({
     complemento: opcional(texto('Complemento', 100)),
     bairro: opcional(texto('Bairro', 100)),
     cidade: opcional(texto('Cidade', 100)),
-    uf: opcional(z.string().trim().toUpperCase().refine((v) => UFS.includes(v), 'UF inválida'))
+    uf: opcional(z.string().trim().toUpperCase().refine((v) => UFS.includes(v), 'UF inválida')),
+    // Como a empresa chama o estoque que fica com o vendedor (lista fechada; só muda o vocabulário, não o comportamento).
+    rotulo_estoque_vendedor: z.enum(CHAVES_VOCABULARIO, { error: 'Rótulo do estoque do vendedor inválido' }).optional()
 }).refine((d) => Object.keys(d).length > 0, 'Informe ao menos um campo para atualizar');
 
 module.exports = { atualizarDadosEmpresaSchema };

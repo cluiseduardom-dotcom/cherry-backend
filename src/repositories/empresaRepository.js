@@ -1,6 +1,6 @@
 const db = require('../config/db');
 
-const CAMPOS = ['nome', 'razao_social', 'cnpj', 'telefone', 'email_contato', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf'];
+const CAMPOS = ['nome', 'razao_social', 'cnpj', 'telefone', 'email_contato', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf', 'rotulo_estoque_vendedor'];
 const SELECT = `SELECT id, ${CAMPOS.join(', ')}, atualizado_em FROM empresas`;
 
 async function obterDados(empresa_id) {
@@ -24,4 +24,11 @@ async function atualizarDados(empresa_id, dados, usuario_id) {
     return rows[0] ?? null;
 }
 
-module.exports = { obterDados, atualizarDados };
+// Chave do rótulo do estoque do vendedor ('maleta' | 'estoque_vendedor'). `executor` = pool ou client de uma transação.
+async function obterRotuloEstoqueVendedor(empresa_id, executor = db) {
+    const { rows } = await executor.query('SELECT rotulo_estoque_vendedor FROM empresas WHERE id = $1', [empresa_id]);
+
+    return rows[0]?.rotulo_estoque_vendedor ?? null;
+}
+
+module.exports = { obterDados, atualizarDados, obterRotuloEstoqueVendedor };

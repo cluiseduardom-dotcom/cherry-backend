@@ -1,6 +1,8 @@
 // Regras PURAS dos avisos de maleta no sino (sem banco). Recebem linhas já agregadas por local e devolvem
 // avisos no mesmo formato do sino. Nunca trazem custo, margem ou lucro.
 // Equipe (admin/estoquista) vê todas as maletas; os demais só a própria e as transferências para ela.
+const { vocabularioEstoque } = require('../constants/vocabularioEstoque');
+
 const LIMITES_MALETA = Object.freeze({
     TRANSFERENCIA_PENDENTE_DIAS: 2,
     MALETA_SEM_VENDA_DIAS: 30,
@@ -38,7 +40,8 @@ function aviso(tipo, chaveId, prioridade, titulo, mensagem, acao, extra, dados) 
 //   dias_sem_venda: dias desde a última venda OU o último recebimento (o que for mais recente); null = sem referência.
 //   dias_sem_conferencia: dias desde a última conferência; sem nenhuma, desde o primeiro recebimento; null = sem referência.
 // pendentes: { id, origem_nome, destino_nome, destino_usuario_id, pecas, dias }
-function montarNotificacoesMaleta({ maletas = [], pendentes = [] }, perfil, usuarioId) {
+// `vocabulario`: palavras da empresa para o estoque do vendedor (padrão: maleta). Só muda o TEXTO; tipos e regras são os mesmos.
+function montarNotificacoesMaleta({ maletas = [], pendentes = [] }, perfil, usuarioId, vocabulario = vocabularioEstoque('maleta')) {
     const equipe = Boolean(perfil.administrador || perfil.estoquista);
     const itens = [];
 
@@ -85,9 +88,9 @@ function montarNotificacoesMaleta({ maletas = [], pendentes = [] }, perfil, usua
         if (saldo > 0 && semConferencia !== null && semConferencia >= LIMITES_MALETA.MALETA_SEM_CONFERENCIA_DIAS) {
             itens.push(aviso(
                 TIPOS_MALETA.MALETA_SEM_CONFERENCIA, m.local_id, 'media',
-                'Maleta sem conferência',
+                `${vocabulario.nome} sem conferência`,
                 `${m.nome} tem ${pecas(saldo)} e está há ${semConferencia} dias sem conferência.`,
-                equipe ? 'Conferir a maleta (contagem física).' : 'Combinar a conferência da maleta com a equipe.',
+                equipe ? `Conferir ${vocabulario.da.replace(/^d/, '')} (contagem física).` : `Combinar a conferência ${vocabulario.da} com a equipe.`,
                 extra,
                 { saldo, dias_sem_conferencia: semConferencia }
             ));
@@ -96,7 +99,7 @@ function montarNotificacoesMaleta({ maletas = [], pendentes = [] }, perfil, usua
         if (saldo > 0 && semVenda !== null && semVenda >= LIMITES_MALETA.MALETA_SEM_VENDA_DIAS) {
             itens.push(aviso(
                 TIPOS_MALETA.MALETA_SEM_VENDA, m.local_id, 'media',
-                'Maleta sem vender',
+                `${vocabulario.nome} sem vender`,
                 `${m.nome} tem ${pecas(saldo)} e está há ${semVenda} dias sem vender.`,
                 'Avaliar a troca de peças ou a devolução ao Central.',
                 extra,

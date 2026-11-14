@@ -1,11 +1,16 @@
 const AppError = require('../errors/AppError');
 const repo = require('../repositories/transferenciasEstoqueRepository');
+const empresaRepository = require('../repositories/empresaRepository');
+const { vocabularioEstoque } = require('../constants/vocabularioEstoque');
 
 // Equipe de estoque: administra o Central, os consignados e as transferências de qualquer local.
 const ehEquipe = (usuario) => usuario.role === 'admin' || usuario.role === 'estoquista';
 const ehDono = (local, usuario) => local?.tipo === 'maleta' && local.usuario_id === usuario.id;
 
 async function criar(dados, usuario) {
+    // Palavras da empresa para o estoque do vendedor (só para a mensagem de recusa; a regra é a mesma para todas).
+    const { daSuaPropria } = vocabularioEstoque(await empresaRepository.obterRotuloEstoqueVendedor(usuario.empresa_id));
+
     const id = await repo.criar({
         empresa_id: usuario.empresa_id,
         usuario_id: usuario.id,
@@ -17,7 +22,7 @@ async function criar(dados, usuario) {
         autorizar: (origem, destino) => {
             if (ehEquipe(usuario)) return;
             if (ehDono(origem, usuario) && destino.tipo === 'central') return;
-            throw new AppError('Você só pode devolver mercadoria da sua própria maleta para o Central', 403);
+            throw new AppError(`Você só pode devolver mercadoria ${daSuaPropria} para o Central`, 403);
         }
     });
 
