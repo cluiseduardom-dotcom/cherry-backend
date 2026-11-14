@@ -155,7 +155,7 @@ describe('listarPaginado', () => {
 
         expect(resultado).toEqual({ items: [{ id: 1 }], total: 1 });
         const [sql, params] = db.query.mock.calls[0];
-        expect(sql).toContain('WHERE empresa_id = $1');
+        expect(sql).toContain('WHERE cr.empresa_id = $1');
         expect(params).toEqual([9, 20, 0]);
     });
 
@@ -197,10 +197,13 @@ describe('buscarPorId', () => {
         const resultado = await contasReceberRepository.buscarPorId(1, 9);
 
         expect(resultado).toEqual({ id: 1 });
-        expect(db.query).toHaveBeenCalledWith(
-            'SELECT * FROM contas_receber WHERE id = $1 AND empresa_id = $2',
-            [1, 9]
-        );
+        const [sql, params] = db.query.mock.calls[0];
+        expect(sql).toContain('WHERE cr.id = $1 AND cr.empresa_id = $2');
+        // Traz quanto já entrou e quanto falta (parcial), sem perder as colunas da conta.
+        expect(sql).toContain('cr.*');
+        expect(sql).toContain('valor_recebido');
+        expect(sql).toContain('valor_restante');
+        expect(params).toEqual([1, 9]);
     });
 
     test('returns null when not found', async () => {

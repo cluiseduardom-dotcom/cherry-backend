@@ -1,7 +1,7 @@
 const contasReceberService = require('../services/contasReceberService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
-const { listarContasReceberSchema } = require('../validations/contasReceberValidation');
+const { listarContasReceberSchema, receberContaSchema, CHAVE_IDEMPOTENCIA } = require('../validations/contasReceberValidation');
 
 function parseId(value) {
     const id = Number(value);
@@ -73,8 +73,46 @@ async function marcarComoRecebida(req, res, next) {
     }
 }
 
+// Recebimento total ou parcial. Idempotency-Key obrigatório: o mesmo clique repetido nunca lança o dinheiro duas vezes.
+async function receber(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+        const chave = (req.get('Idempotency-Key') ?? '').trim();
+
+        if (!CHAVE_IDEMPOTENCIA.test(chave)) {
+            throw new AppError('Cabeçalho Idempotency-Key obrigatório (8 a 80 letras, números, hífen ou sublinhado)', 400);
+        }
+
+        const corpo = receberContaSchema.safeParse(req.body ?? {});
+
+        if (!corpo.success) throw new AppError(corpo.error.issues[0].message, 400);
+
+        const resultado = await contasReceberService.receber(id, { ...corpo.data, chave }, req.usuario);
+
+        res.set('Cache-Control', 'no-store');
+        if (resultado.reaproveitado) res.set('Idempotent-Replayed', 'true');
+
+        return response.success(res, { conta: resultado.conta, recebimento: resultado.recebimento }, resultado.reaproveitado ? 200 : 201);
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function listarRecebimentos(req, res, next) {
+    try {
+        const id = parseId(req.params.id);
+
+        res.set('Cache-Control', 'no-store');
+        return response.success(res, await contasReceberService.listarRecebimentos(id, req.usuario.empresa_id));
+    } catch (error) {
+        next(error);
+    }
+}
+
 module.exports = {
     listar,
     buscarPorId,
-    marcarComoRecebida
+    marcarComoRecebida,
+    receber,
+    listarRecebimentos
 };

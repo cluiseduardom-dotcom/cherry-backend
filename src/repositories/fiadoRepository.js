@@ -226,13 +226,15 @@ async function extrato({ empresa_id, cliente_id, limit, offset, escopo }) {
     );
     const { rows: [{ total }] } = await db.query('SELECT COUNT(*)::int AS total FROM fiado_lancamentos WHERE empresa_id = $1 AND cliente_id = $2', [empresa_id, cliente_id]);
     const { rows: parcelas } = await db.query(
-        `SELECT cr.id, cr.descricao, cr.valor, to_char(cr.data_vencimento, 'YYYY-MM-DD') AS data_vencimento
+        `SELECT cr.id, cr.descricao, cr.valor, GREATEST(cr.valor - COALESCE(pp.valor_pago, 0), 0) AS restante,
+                to_char(cr.data_vencimento, 'YYYY-MM-DD') AS data_vencimento
            FROM contas_receber cr JOIN vendas v ON v.id = cr.venda_id AND v.empresa_id = cr.empresa_id
+           LEFT JOIN parcelas_pagamento pp ON pp.id = cr.parcela_id AND pp.empresa_id = cr.empresa_id
           WHERE cr.empresa_id = $1 AND v.cliente_id = $2 AND cr.status = 'pendente'
           ORDER BY cr.data_vencimento ASC, cr.id ASC`,
         [empresa_id, cliente_id]
     );
-    const totalCrediario = parcelas.reduce((acc, p) => acc + centavos(p.valor), 0);
+    const totalCrediario = parcelas.reduce((acc, p) => acc + centavos(p.restante), 0);
 
     return {
         cliente: { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone },
@@ -241,7 +243,7 @@ async function extrato({ empresa_id, cliente_id, limit, offset, escopo }) {
         total_lancamentos: total,
         crediario: {
             total: reais(totalCrediario),
-            parcelas: parcelas.map((p) => ({ id: p.id, descricao: p.descricao, valor: Number(p.valor), data_vencimento: p.data_vencimento }))
+            parcelas: parcelas.map((p) => ({ id: p.id, descricao: p.descricao, valor: Number(p.valor), valor_restante: Number(p.restante), data_vencimento: p.data_vencimento }))
         }
     };
 }
@@ -269,8 +271,9 @@ async function resumo({ empresa_id, de = null, ate = null, escopo }) {
         [empresa_id, escopo ?? null, de, ate]
     );
     const { rows: [crediario] } = await db.query(
-        `SELECT COALESCE(SUM(cr.valor), 0) AS total
+        `SELECT COALESCE(SUM(GREATEST(cr.valor - COALESCE(pp.valor_pago, 0), 0)), 0) AS total
            FROM contas_receber cr JOIN vendas v ON v.id = cr.venda_id AND v.empresa_id = cr.empresa_id
+           LEFT JOIN parcelas_pagamento pp ON pp.id = cr.parcela_id AND pp.empresa_id = cr.empresa_id
            LEFT JOIN clientes c ON c.id = v.cliente_id AND c.empresa_id = v.empresa_id
           WHERE cr.empresa_id = $1 AND cr.status = 'pendente' ${escopado}`,
         [empresa_id, escopo ?? null]

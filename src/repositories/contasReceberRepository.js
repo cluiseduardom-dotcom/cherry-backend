@@ -2,38 +2,50 @@ const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { executarComLock, transicionarStatus } = require('./shared/transacoes');
 
+// Quanto já entrou e quanto falta. Conta do fluxo novo (com parcela): vem da parcela (`valor_pago`, que só cresce por
+// recebimentos registrados). Conta legada (sem parcela): recebida = tudo, pendente = nada. Cancelada não tem restante.
+const JUNCAO_PARCELA = 'LEFT JOIN parcelas_pagamento pp ON pp.id = cr.parcela_id AND pp.empresa_id = cr.empresa_id';
+const COLUNAS_COM_RECEBIMENTO = `cr.*,
+        (CASE WHEN cr.parcela_id IS NOT NULL THEN COALESCE(pp.valor_pago, 0)
+              WHEN cr.status = 'recebido' THEN cr.valor ELSE 0 END)::numeric(15, 2) AS valor_recebido,
+        (CASE WHEN cr.status = 'cancelado' THEN 0
+              WHEN cr.parcela_id IS NOT NULL THEN GREATEST(cr.valor - COALESCE(pp.valor_pago, 0), 0)
+              WHEN cr.status = 'recebido' THEN 0 ELSE cr.valor END)::numeric(15, 2) AS valor_restante,
+        COALESCE(pp.status = 'parcial', false) AS parcial`;
+
 async function listarPaginado({ limit, offset, status, vencimentoDe, vencimentoAte, empresa_id }) {
-    const condicoes = ['empresa_id = $1'];
+    const condicoes = ['cr.empresa_id = $1'];
     const valores = [empresa_id];
 
     if (status !== undefined) {
         valores.push(status);
-        condicoes.push(`status = $${valores.length}`);
+        condicoes.push(`cr.status = $${valores.length}`);
     }
 
     if (vencimentoDe !== undefined) {
         valores.push(vencimentoDe);
-        condicoes.push(`data_vencimento >= $${valores.length}`);
+        condicoes.push(`cr.data_vencimento >= $${valores.length}`);
     }
 
     if (vencimentoAte !== undefined) {
         valores.push(vencimentoAte);
-        condicoes.push(`data_vencimento <= $${valores.length}`);
+        condicoes.push(`cr.data_vencimento <= $${valores.length}`);
     }
 
     const where = `WHERE ${condicoes.join(' AND ')}`;
 
     const valoresListagem = [...valores, limit, offset];
     const { rows } = await db.query(
-        `SELECT * FROM contas_receber
+        `SELECT ${COLUNAS_COM_RECEBIMENTO}
+         FROM contas_receber cr ${JUNCAO_PARCELA}
          ${where}
-         ORDER BY data_vencimento ASC, id ASC
+         ORDER BY cr.data_vencimento ASC, cr.id ASC
          LIMIT $${valoresListagem.length - 1} OFFSET $${valoresListagem.length}`,
         valoresListagem
     );
 
     const { rows: countRows } = await db.query(
-        `SELECT COUNT(*) FROM contas_receber ${where}`,
+        `SELECT COUNT(*) FROM contas_receber cr ${where}`,
         valores
     );
 
@@ -42,10 +54,26 @@ async function listarPaginado({ limit, offset, status, vencimentoDe, vencimentoA
 
 async function buscarPorId(id, empresa_id) {
     const { rows } = await db.query(
-        'SELECT * FROM contas_receber WHERE id = $1 AND empresa_id = $2',
+        `SELECT ${COLUNAS_COM_RECEBIMENTO}
+         FROM contas_receber cr ${JUNCAO_PARCELA}
+         WHERE cr.id = $1 AND cr.empresa_id = $2`,
         [id, empresa_id]
     );
     return rows.length ? rows[0] : null;
+}
+
+// Histórico de recebimentos de uma conta (parcela). Conta legada, sem parcela, não tem histórico detalhado.
+async function listarRecebimentos(id, empresa_id) {
+    const { rows } = await db.query(
+        `SELECT rc.id, rc.valor, rc.forma_pagamento, rc.data_recebimento, rc.observacao, u.nome AS recebido_por
+           FROM contas_receber cr
+           JOIN recebimentos_conta rc ON rc.parcela_id = cr.parcela_id AND rc.empresa_id = cr.empresa_id
+           LEFT JOIN usuarios u ON u.id = rc.usuario_id AND u.empresa_id = rc.empresa_id
+          WHERE cr.id = $1 AND cr.empresa_id = $2
+          ORDER BY rc.data_recebimento ASC, rc.id ASC`,
+        [id, empresa_id]
+    );
+    return rows;
 }
 
 // clienteExterno permite participar da transação de vendasRepository.criar
@@ -126,6 +154,21 @@ async function cancelarPorVendaId(venda_id, empresa_id, clienteExterno) {
                 throw new AppError('Venda com conta a receber já recebida e não pode ser cancelada', 409);
             }
 
+            // Recebimento PARCIAL: o dinheiro já entrou em parte; cancelar a venda por trás dele esconderia o recebimento.
+            const parcelasDasContas = contas.map((conta) => conta.parcela_id).filter((p) => p !== null && p !== undefined);
+
+            if (parcelasDasContas.length) {
+                const { rows: parciais } = await client.query(
+                    `SELECT 1 FROM parcelas_pagamento
+                      WHERE id = ANY($1::int[]) AND empresa_id = $2 AND valor_pago > 0 LIMIT 1`,
+                    [parcelasDasContas, empresa_id]
+                );
+
+                if (parciais.length) {
+                    throw new AppError('Venda com recebimento parcial não pode ser cancelada: o dinheiro já entrou em parte', 409);
+                }
+            }
+
             const pendentes = contas.filter((conta) => conta.status === 'pendente');
             if (!pendentes.length) return contas[0] ?? null;
 
@@ -175,6 +218,7 @@ async function marcarComoRecebida(id, empresa_id) {
 module.exports = {
     listarPaginado,
     buscarPorId,
+    listarRecebimentos,
     criar,
     cancelarPorVendaId,
     buscarPorParcelaId,
