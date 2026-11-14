@@ -2,6 +2,8 @@ const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const estoqueRepository = require('./estoqueRepository');
 const { executarComLock } = require('./shared/transacoes');
+const empresaRepository = require('./empresaRepository');
+const { vocabularioEstoque } = require('../constants/vocabularioEstoque');
 
 const COLUNAS = `t.id, t.status, t.observacao, t.criado_em, t.resolvido_em, t.motivo_resolucao,
         t.origem_local_id, lo.nome AS origem_nome, lo.tipo AS origem_tipo, lo.usuario_id AS origem_usuario_id,
@@ -79,7 +81,7 @@ async function criar({ empresa_id, usuario_id, origem_local_id, destino_local_id
         if (origem.tipo === 'reserva' || destino.tipo === 'reserva') {
             throw new AppError('A Reserva online é controlada pelos pedidos da loja e não participa de transferências', 400);
         }
-        autorizar(origem, destino);
+        await autorizar(origem, destino);
 
         const ordenados = [...itens].sort((a, b) => a.produto_id - b.produto_id);
         // Trava os produtos já aqui, em ordem crescente de id, ANTES de inserir qualquer linha que os
@@ -211,12 +213,15 @@ async function listar({ empresa_id, status, usuario_id, limit, offset }) {
 
 // Cria um local de estoque (maleta de um usuário ou consignado). Central e Em trânsito são automáticos.
 async function criarLocal({ empresa_id, tipo, nome, usuario_id, cliente_id }) {
+    // Palavras da empresa para o estoque do vendedor (nome padrão e mensagens). O tipo técnico segue `maleta`.
+    const vocabulario = tipo === 'maleta' ? vocabularioEstoque(await empresaRepository.obterRotuloEstoqueVendedor(empresa_id)) : null;
+
     try {
         if (tipo === 'maleta') {
             const { rows: u } = await db.query('SELECT id, nome, ativo FROM usuarios WHERE id = $1 AND empresa_id = $2', [usuario_id, empresa_id]);
             if (!u.length) throw new AppError('Usuário não encontrado', 404);
-            if (!u[0].ativo) throw new AppError('Usuário bloqueado não pode ter maleta', 400);
-            nome = nome || `Maleta de ${u[0].nome}`;
+            if (!u[0].ativo) throw new AppError(`Usuário bloqueado não pode ter ${vocabulario.nomeMinusculo}`, 400);
+            nome = nome || vocabulario.daPessoa(u[0].nome);
         }
         if (tipo === 'consignado' && cliente_id) {
             const { rows: c } = await db.query('SELECT id FROM clientes WHERE id = $1 AND empresa_id = $2', [cliente_id, empresa_id]);
@@ -232,7 +237,7 @@ async function criarLocal({ empresa_id, tipo, nome, usuario_id, cliente_id }) {
         return rows[0];
     } catch (error) {
         if (error.code === '23505') {
-            throw new AppError(tipo === 'maleta' ? 'Este usuário já tem maleta' : 'Este cliente já tem local consignado', 409);
+            throw new AppError(tipo === 'maleta' ? `Este usuário já tem ${vocabulario.nomeMinusculo}` : 'Este cliente já tem local consignado', 409);
         }
         throw error;
     }

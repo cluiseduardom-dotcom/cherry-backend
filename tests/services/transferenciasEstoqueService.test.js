@@ -1,3 +1,4 @@
+jest.mock('../../src/repositories/empresaRepository');
 jest.mock('../../src/repositories/transferenciasEstoqueRepository');
 
 const repo = require('../../src/repositories/transferenciasEstoqueRepository');

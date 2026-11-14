@@ -1,3 +1,4 @@
+jest.mock('../../src/repositories/empresaRepository');
 jest.mock('../../src/services/cargosService');
 jest.mock('../../src/repositories/usuariosFotosRepository');
 
@@ -160,7 +161,7 @@ describe('GET /auth/me', () => {
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
             success: true,
-            data: { id: 5, empresa_id: 7, perfil: 'vendedor', cargo: 'gerente', nivel: 70, capacidades: ['ver_custos', 'cancelar_venda'], funcionalidades: [], senha_temporaria: false, foto_url: null }
+            data: { id: 5, empresa_id: 7, perfil: 'vendedor', cargo: 'gerente', nivel: 70, capacidades: ['ver_custos', 'cancelar_venda'], funcionalidades: [], senha_temporaria: false, foto_url: null, rotulo_estoque_vendedor: 'maleta' }
         });
     });
 
@@ -169,6 +170,6 @@ describe('GET /auth/me', () => {
 
         const res = await request(app).get('/auth/me').set('Authorization', `Bearer ${token()}`);
 
-        expect(Object.keys(res.body.data).sort()).toEqual(['capacidades', 'cargo', 'empresa_id', 'foto_url', 'funcionalidades', 'id', 'nivel', 'perfil', 'senha_temporaria']);
+        expect(Object.keys(res.body.data).sort()).toEqual(['capacidades', 'cargo', 'empresa_id', 'foto_url', 'funcionalidades', 'id', 'nivel', 'perfil', 'rotulo_estoque_vendedor', 'senha_temporaria']);
     });
 });

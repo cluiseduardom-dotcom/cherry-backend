@@ -1,6 +1,8 @@
 const notificacoesRepository = require('../repositories/notificacoesRepository');
 const { montarNotificacoes } = require('../utils/notificacoes');
 const { montarNotificacoesMaleta } = require('../utils/notificacoesMaleta');
+const empresaRepository = require('../repositories/empresaRepository');
+const { vocabularioEstoque } = require('../constants/vocabularioEstoque');
 const { montarNotificacoesLoja } = require('../utils/notificacoesLoja');
 const lojaGestaoRepository = require('../repositories/lojaGestaoRepository');
 const { temCapacidade } = require('./permissoesService');
@@ -24,11 +26,12 @@ async function listar(usuario) {
     const comMaletas = Array.isArray(usuario.funcionalidades) && usuario.funcionalidades.includes('maletas');
     let extras = [];
     if (comMaletas) {
-        const [maletas, pendentes] = await Promise.all([
+        const [maletas, pendentes, rotulo] = await Promise.all([
             notificacoesRepository.listarBaseDeMaletas(usuario.empresa_id),
-            notificacoesRepository.listarTransferenciasPendentes(usuario.empresa_id)
+            notificacoesRepository.listarTransferenciasPendentes(usuario.empresa_id),
+            empresaRepository.obterRotuloEstoqueVendedor(usuario.empresa_id)
         ]);
-        extras = montarNotificacoesMaleta({ maletas, pendentes }, perfil, usuario.id);
+        extras = montarNotificacoesMaleta({ maletas, pendentes }, perfil, usuario.id, vocabularioEstoque(rotulo));
     }
     // Avisos da loja online só para empresas com a funcionalidade `loja_online` ligada, e só para quem fala com a cliente
     // (administrador e vendedor): trazem nome e telefone dela.
