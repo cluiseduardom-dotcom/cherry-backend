@@ -1,6 +1,6 @@
 # Meu Fiado dentro do Vertumno (GiroNex)
 
-Estado: **proposta técnica para decisão do PO** (14/11/2026). Nenhum código foi escrito. Base: a especificação "Meu Fiado" (originalmente do micro SaaS independente) e o que o Vertumno **realmente tem hoje**. Onde a especificação dizia GiroOne, leia **GiroNex**.
+Estado: **aprovada pelo PO em 14/11/2026** (módulo no Vertumno; também para a Cherry; cadastro e assinatura automáticos só depois dos 10 primeiros clientes). O **núcleo do backend** está na PR `feat/fiado-nucleo` (contrato em `docs/FIADO_API.md`). O **nome comercial** ainda está em decisão (abaixo); o código usa o termo do domínio, `fiado`. Nenhum código foi escrito. Base: a especificação "Meu Fiado" (originalmente do micro SaaS independente) e o que o Vertumno **realmente tem hoje**. Onde a especificação dizia GiroOne, leia **GiroNex**.
 
 ## 1. Venda em vezes hoje: vai para Contas a pagar?
 **Não. Vai para Contas a receber.** Contas a pagar é só o que a empresa deve (fornecedores, despesas).
@@ -120,8 +120,24 @@ Tamanho: P = pequeno, M = médio, G = grande.
 - **Operação:** R$ 9,99 não paga suporte humano. Só com autoatendimento.
 - **Escopo:** parcelas, juros e multa de atraso **ficam fora** do MVP; para vender em vezes com produto, usar o Crediário do PDV.
 
-## 10. Decisões que preciso de você
-1. **OK para o módulo dentro do Vertumno** (e não produto independente)?
-2. O Fiado entra **também** para a Cherry (revendedoras que pagam em partes)? Se sim, avalio **pagamento parcial em Contas a receber** como melhoria separada.
-3. Preço e limite do plano Fiado.
-4. Cadastro automático e cobrança recorrente: **depois dos 10 primeiros clientes** (recomendado) ou antes?
+## 10. Decisões
+Tomadas pelo PO em 14/11/2026:
+1. **Módulo dentro do Vertumno:** aprovado.
+2. **Também para a Cherry:** aprovado. O extrato do cliente já mostra, só para leitura, as parcelas do crediário do PDV. O **pagamento parcial de uma conta a receber do PDV** segue como melhoria separada, a desenhar.
+3. **Nichos:** todos os de venda por vendedores/revendedores (ver `docs/ESTRATEGIA_AQUISICAO.md`).
+4. **Preço e limite do plano, e condição dos clientes fundadores:** aprovado como proposto (valores finais a fixar antes de abrir para clientes).
+5. **Cadastro e cobrança recorrente automáticos:** depois dos 10 primeiros clientes.
+
+Em aberto: **nome comercial**.
+
+## 11. Nome comercial (sugestões)
+Concorrentes de "fiado" encontrados em lojas de aplicativos: Pindureta, Fiado Fácil, Fiado Zap, Controle de Vendas: Minha Loja e fiado.vip. Nomes com "Fiado" estão **saturados**, e a palavra tem cara de caderno de mercearia, estreita demais para quem vende semijoias ou perfumes.
+
+| Opção | Por quê | Risco |
+|---|---|---|
+| **Colheita** (recomendada) | Combina com a família de nomes do Vertumno (Semente, Cultivo, Pomar): é o momento de **colher o que está a receber**. Curta, positiva, vale para qualquer nicho. | Uma busca não achou app com esse nome, mas **isso não é pesquisa de marca**. |
+| **Caderneta** | Todo comerciante entende na hora. | Palavra comum; provável concorrência e dificuldade de registro (não pesquisei). |
+| **A Receber** | Descritivo, ótimo para busca. | Genérico, não vira marca. |
+| **Safra** | Mesmo universo de Colheita. | Nome muito usado no mercado financeiro/agro. |
+
+**Recomendação:** *Colheita* como nome, com a frase de apoio "fiado e cobranças" para a pessoa entender e para a busca (as pessoas procuram "fiado", não "colheita"). Antes de adotar: **pesquisa de marca no INPI**, **domínio** e **nome nas lojas de aplicativos**. Eu não consigo verificar o INPI.

@@ -24,7 +24,16 @@ Não é "ERP genérico para sacoleira". O diferencial concreto é **a operação
 - **Clientes**, financeiro, análise (ponto de equilíbrio) e plano por funcionalidade.
 - Uma **referência real**: a Cherry Semijoias, que usa tudo isso.
 
-Isso aponta para **um nicho**: **quem vende semijoias, bijuterias e acessórios por revendedoras/maletas** (o ecossistema de Limeira e de marcas que trabalham com revendedoras). É o caso que o produto resolve melhor que planilha, e onde a Cherry pode servir de prova.
+Isso aponta para um **tipo de cliente**: quem **vende produto físico por meio de vendedores ou revendedores que levam a mercadoria consigo e acertam depois**. Semijoias são o caso de referência (a Cherry prova), mas o mesmo modelo vale para roupas, cosméticos, perfumes, artesanato e alimentos caseiros.
+
+**Decisão do PO (14/11/2026):** atender todos esses nichos, e tratar o termo "maleta" como específico de semijoias.
+
+### Vocabulário (maleta × consignado × estoque do vendedor)
+No código, `maleta` e `consignado` são **coisas diferentes**:
+- **Maleta** = estoque que fica com **um usuário do sistema** (tem login e vende pelo PDV, com comissão).
+- **Consignado** = estoque deixado com **um terceiro, ligado a um cliente** (por exemplo, uma loja parceira); hoje **não vende pelo PDV** (venda tentando sair dele dá 403).
+
+Para os nichos fora de semijoias, o conceito certo é o da **maleta** (vendedor com login), não o do consignado. A solução proposta é **só de vocabulário**, sem mudar o modelo: um **rótulo por empresa** para esse tipo de local (padrão neutro **"Estoque do vendedor"**; "Maleta" para semijoias; a empresa pode escolher outro, como "Mostruário" ou "Kit"). O tipo técnico continua `maleta`, então estoque, transferência com aceite, acerto e comissão seguem iguais. **Ainda não construído**; é uma entrega pequena de interface e configuração.
 
 ## 3. O que NÃO prometer (ainda)
 Nota fiscal, integração com maquininha, Mercado Livre, cobrança automática de mensalidade, cadastro por conta própria, "Meu Fiado" (ainda é projeto). Cada promessa que o produto não cumpre vira cancelamento no 1º mês.
@@ -72,7 +81,7 @@ O texto externo usa R$ 79 e R$ 129. Antes de fixar:
 3. Decida **nome dos planos** públicos (Semente, Cultivo, Pomar já existem em `PLANOS_PUBLICOS.md`).
 
 ## 8. Decisões que preciso de você
-1. Nicho único para os 90 dias: **semijoias/acessórios com revendedoras** (recomendado), ou outro?
+1. ~~Nicho único~~ **Decidido: todos os nichos de venda por vendedores/revendedores**, com semijoias como referência. Cuidado: abrir para todos dilui o discurso; mantenha **uma mensagem por conversa** (a do nicho da pessoa) e a Cherry como prova só onde fizer sentido.
 2. Preço e condição dos clientes fundadores.
-3. Posso usar a Cherry como caso (quais números e quais não)?
+3. Posso usar a Cherry como caso (quais números e quais não)? Para nichos fora de semijoias, o caso Cherry é prova de **que o modelo funciona**, não de que serve ao ramo específico.
 4. Cadastro por conta própria e cobrança automática entram antes ou depois dos 10 primeiros? (Recomendo **depois**: com 10 clientes, o cadastro manual basta.)
