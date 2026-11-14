@@ -13,8 +13,10 @@ function hoje() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-async function receberParcela(id, { valor, forma_pagamento = 'dinheiro', observacao = null }, usuario) {
-    const valorInformado = numeroFinito(valor, 'Valor do recebimento inválido');
+// Recebe (total ou parcialmente) uma parcela. `receberRestante` = o servidor calcula o restante DENTRO da trava (a tela nunca
+// decide o valor de "receber tudo"). `chave` = Idempotency-Key: repetir a mesma chave devolve o recebimento original.
+async function receberParcela(id, { valor, forma_pagamento = 'dinheiro', observacao = null, chave = null, receberRestante = false }, usuario) {
+    const valorInformado = receberRestante ? 0 : numeroFinito(valor, 'Valor do recebimento inválido');
     const client = await db.connect();
 
     try {
@@ -36,11 +38,28 @@ async function receberParcela(id, { valor, forma_pagamento = 'dinheiro', observa
             throw new AppError('Parcela não pode receber pagamento neste estado', 409);
         }
 
-        const valorReceber = Number(valorInformado.toFixed(2));
-        if (valorReceber <= 0) throw new AppError('Valor do recebimento deve ser maior que zero', 400);
+        // Repetição (retry, duplo clique): a parcela já está travada, então a conferência da chave é segura.
+        if (chave) {
+            const anterior = await recebimentosRepository.buscarPorChave(usuario.empresa_id, chave, client);
+
+            if (anterior) {
+                const mesmo = Number(anterior.parcela_id) === id && anterior.forma_pagamento === forma_pagamento
+                    && (receberRestante || Number(anterior.valor) === Number(valorInformado.toFixed(2)));
+
+                if (!mesmo) throw new AppError('Idempotency-Key já usada com outro conteúdo', 409);
+
+                await client.query('COMMIT');
+                return { recebimento: anterior, parcela: await parcelasRepository.buscarPorId(id, usuario.empresa_id), reaproveitado: true };
+            }
+        }
 
         const recebidoAnterior = await recebimentosRepository.somarPorParcela(id, usuario.empresa_id, client);
         const restante = Number((Number(parcela.valor) - recebidoAnterior).toFixed(2));
+        const valorReceber = receberRestante ? restante : Number(valorInformado.toFixed(2));
+
+        if (valorReceber <= 0) {
+            throw new AppError(receberRestante ? 'Esta parcela não tem saldo a receber' : 'Valor do recebimento deve ser maior que zero', receberRestante ? 409 : 400);
+        }
 
         if (valorReceber > restante) {
             throw new AppError('Valor do recebimento excede o saldo da parcela', 409);
@@ -53,7 +72,8 @@ async function receberParcela(id, { valor, forma_pagamento = 'dinheiro', observa
             forma_pagamento,
             usuario_id: usuario.id,
             data_recebimento: hoje(),
-            observacao
+            observacao,
+            chave_idempotencia: chave
         }, client);
 
         const novoTotalPago = Number((recebidoAnterior + valorReceber).toFixed(2));
@@ -94,9 +114,13 @@ async function receberParcela(id, { valor, forma_pagamento = 'dinheiro', observa
         }, client);
 
         await client.query('COMMIT');
-        return { recebimento, parcela: parcelaAtualizada };
+        return { recebimento, parcela: parcelaAtualizada, reaproveitado: false };
     } catch (error) {
         await client.query('ROLLBACK');
+        // Mesma chave usada em outra parcela ao mesmo tempo: a unicidade do banco barra.
+        if (error && error.code === '23505' && /uq_recebimentos_conta_chave/.test(error.constraint ?? error.message ?? '')) {
+            throw new AppError('Idempotency-Key já usada com outro conteúdo', 409);
+        }
         throw error;
     } finally {
         client.release();
