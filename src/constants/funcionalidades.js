@@ -19,7 +19,9 @@ const FUNCIONALIDADES = [
     { codigo: 'multi_pdv', tipo: 'modulo', nome: 'Vários PDVs', vendavel: false },
     { codigo: 'servicos_agenda', tipo: 'modulo', nome: 'Serviços e agenda', vendavel: false },
     // Entrou na migration 095 (canal e-commerce). Nenhum plano a inclui; a GiroNex liga avulsa, por empresa.
-    { codigo: 'loja_online', tipo: 'modulo', nome: 'Loja online (e-commerce)', vendavel: true }
+    { codigo: 'loja_online', tipo: 'modulo', nome: 'Loja online (e-commerce)', vendavel: true },
+    // Entrou na migration 109. Nenhum plano a inclui; a GiroNex liga avulsa, por empresa.
+    { codigo: 'fiado', tipo: 'modulo', nome: 'Fiado: dívidas de clientes e cobrança', vendavel: true }
 ];
 
 const CODIGOS_FUNCIONALIDADES = FUNCIONALIDADES.map((f) => f.codigo);

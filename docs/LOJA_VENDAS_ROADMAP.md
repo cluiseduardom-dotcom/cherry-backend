@@ -17,7 +17,8 @@ Regras que valem para todas (do PO): aditivo; funcionalidade desligada por padr�
 ## 1. Garantia, embalagem de presente e frete grátis — ENTREGUE (migration 107)
 **Decisões do PO (13/11/2026):** frete grátis a partir de R$ 300,00 (subtotal das peças, Brasil todo, sem desconto vigente); garantia de 1 ano que não cobre mau uso; embalagem de presente grátis. Os textos finais são digitados pelo admin no ERP ("Institucional da loja" > "Condições de venda").
 **Como funciona:** o servidor decide no pedido (subtotal >= valor vigente => `frete = 0`; senão `NULL` = a combinar) e grava; o total não muda. Mudar o valor depois não altera pedidos antigos. O navegador só exibe. Sem valor configurado, nada muda.
-**Pendente desta frente (não construído):** caixa "é presente" + mensagem do cartão no checkout (precisa de coluna no pedido e aparecer em "Pedidos da loja"); garantia nos Termos de uso (texto jurídico a validar).
+**Opção "é presente" com cartão — ENTREGUE (migration 108):** a caixa só aparece no checkout se a embalagem de presente estiver preenchida no ERP; a mensagem (até 200 caracteres, texto puro, só com presente) vai no pedido, aparece em "Pedidos da loja" e é apagada na anonimização LGPD. Sem cobrança de embalagem (grátis, decisão do PO).
+**Pendente desta frente:** garantia nos Termos de uso (texto jurídico a validar).
 
 Desenho original:
 - **ERP** (mesma tela da seção de presentes): `garantia_texto`, `embalagem_presente_texto` e `frete_gratis_acima` (valor em R$; vazio = desligado). Nada preenchido pelo sistema.
