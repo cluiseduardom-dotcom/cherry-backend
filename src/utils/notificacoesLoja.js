@@ -47,7 +47,7 @@ function montarNotificacoesLoja({ aCombinar = [], semVenda = [], estornadas = []
             TIPOS_LOJA.PEDIDO_PAGO, p,
             horas >= LIMITES_LOJA.PEDIDO_PAGO_ALTA_HORAS ? 'alta' : 'media',
             'Pedido da loja online pago',
-            `Pedido ${curto(p.codigo)} (${moeda(p.total)}) de ${p.cliente_nome} foi pago ${espera}.${contato(p)}`,
+            `Pedido ${curto(p.codigo)} (${moeda(p.total)}) de ${p.cliente_nome} foi pago ${espera}.${p.presente ? ' É PRESENTE: embalar e conferir a mensagem do cartão.' : ''}${contato(p)}`,
             'Combinar o frete e a entrega com a cliente e marcar como combinado.',
             { pedido_id: Number(p.id), total: Number(p.total), horas }
         ));

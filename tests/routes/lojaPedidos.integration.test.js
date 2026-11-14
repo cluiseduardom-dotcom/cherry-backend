@@ -145,7 +145,7 @@ describe('criar pedido: caminho feliz', () => {
         expect(texto).not.toContain(cliente.email);
         expect(texto).not.toContain('987654321');
         expect(texto).not.toMatch(/hash|idempot|chave|empresa_id|custo|"id"/i);
-        expect(Object.keys(res.body.data).sort()).toEqual(['codigo', 'criado_em', 'desconto', 'frete', 'itens', 'pagamento', 'pago_em', 'reserva_expira_em', 'status', 'subtotal', 'total']);
+        expect(Object.keys(res.body.data).sort()).toEqual(['codigo', 'criado_em', 'desconto', 'frete', 'itens', 'mensagem_cartao', 'pagamento', 'pago_em', 'presente', 'reserva_expira_em', 'status', 'subtotal', 'total']);
     });
 
     test('guarda o preço e o nome congelados: mudar o preço depois não altera o pedido', async () => {

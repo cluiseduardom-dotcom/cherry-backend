@@ -254,7 +254,8 @@ async function criarPedido(req, res, next) {
         await varrerVencidos({ empresa_id, limite: 10 });
 
         const { pedido, reaproveitado } = await pedidosRepository.criarPedido({
-            empresa_id, chave, hash, cliente: dados.data.cliente, itens: dados.data.itens
+            empresa_id, chave, hash, cliente: dados.data.cliente, itens: dados.data.itens,
+            presente: dados.data.presente === true, mensagem_cartao: dados.data.mensagem_cartao ?? null
         });
 
         res.set('Cache-Control', 'no-store');
