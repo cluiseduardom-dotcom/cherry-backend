@@ -140,7 +140,7 @@ describe('marcarComoRecebida', () => {
             statusEsperado: 'pendente',
             mensagemNaoEncontrado: 'Conta a receber não encontrada',
             mensagemStatusInvalido: 'Somente contas pendentes podem ser marcadas como recebidas',
-            sets: `status = 'recebido', data_recebimento = CURRENT_DATE`
+            sets: `status = 'recebido', data_recebimento = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`
         });
     });
 });
