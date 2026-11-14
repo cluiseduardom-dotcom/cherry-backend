@@ -70,7 +70,7 @@ describe('marcarComoPaga', () => {
             statusEsperado: 'pendente',
             mensagemNaoEncontrado: 'Conta a pagar não encontrada',
             mensagemStatusInvalido: 'Somente contas pendentes podem ser marcadas como pagas',
-            sets: `status = 'pago', data_pagamento = CURRENT_DATE`
+            sets: `status = 'pago', data_pagamento = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`
         });
     });
 });

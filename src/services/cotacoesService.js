@@ -1,5 +1,6 @@
 const AppError = require('../errors/AppError');
 const repository = require('../repositories/cotacoesRepository');
+const { hojeSP } = require('../utils/dataSaoPaulo');
 
 const STATUS_EDITAVEIS = new Set(['RASCUNHO']);
 const STATUS_OFERTAS = new Set(['ABERTA', 'EM_ANALISE']);
@@ -108,7 +109,7 @@ async function abrir(id, usuario) {
         throw new AppError('Somente cotação em rascunho pode ser aberta', 409);
     }
     return repository.atualizarStatus(id, usuario.empresa_id, 'ABERTA', {
-        data_abertura: new Date().toISOString().slice(0, 10)
+        data_abertura: hojeSP()
     });
 }
 

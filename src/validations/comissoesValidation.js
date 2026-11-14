@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { hojeSP } = require('../utils/dataSaoPaulo');
 
 // Strings 'YYYY-MM-DD' do início ao fim (nunca viram Date): mesma armadilha de
 // fuso horário das demais colunas DATE do projeto.
@@ -46,7 +47,7 @@ const registrarPagamentoComissaoSchema = z.object({
     forma: z.enum(FORMAS_PAGAMENTO_COMISSAO, { error: 'Forma de pagamento inválida' }),
     pago_em: dataISO('Data do pagamento inválida'),
     observacao: z.string().trim().max(300, 'Observação muito longa').optional()
-}).strict().refine((dados) => dados.pago_em <= new Date(Date.now() + 86400000).toISOString().slice(0, 10), {
+}).strict().refine((dados) => dados.pago_em <= hojeSP(), {
     message: 'Data do pagamento não pode ser futura',
     path: ['pago_em']
 });

@@ -1,6 +1,7 @@
 const contasReceberRepository = require('../repositories/contasReceberRepository');
 const comissoesRepository = require('../repositories/comissoesRepository');
 const AppError = require('../errors/AppError');
+const { hojeSP, dataDoBanco } = require('../utils/dataSaoPaulo');
 const pagamentosService = require('./pagamentosService');
 
 // "atrasado" nunca é gravado: é sempre derivado de status + data_vencimento
@@ -8,8 +9,10 @@ const pagamentosService = require('./pagamentosService');
 function comAtraso(conta) {
     if (!conta) return conta;
 
-    const hoje = new Date().toISOString().slice(0, 10);
-    const vencimento = new Date(conta.data_vencimento).toISOString().slice(0, 10);
+    // "Hoje" é o dia de Brasília (o servidor roda em UTC: entre 21h e 23h59 ele já está no dia seguinte e uma conta que
+    // vence hoje apareceria atrasada). O vencimento vem como Date (DATE do pg) ou texto e volta ao mesmo dia gravado.
+    const hoje = hojeSP();
+    const vencimento = dataDoBanco(conta.data_vencimento);
     const atrasado = conta.status === 'pendente' && vencimento < hoje;
 
     return { ...conta, atrasado };

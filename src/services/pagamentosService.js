@@ -7,11 +7,10 @@ const recebimentosRepository = require('../repositories/recebimentosContaReposit
 const estornosRepository = require('../repositories/estornosPagamentoRepository');
 const contasReceberRepository = require('../repositories/contasReceberRepository');
 const comissoesRepository = require('../repositories/comissoesRepository');
+const { hojeSP } = require('../utils/dataSaoPaulo');
 
-function hoje() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+// Data de hoje em São Paulo (o servidor roda em UTC).
+const hoje = () => hojeSP();
 
 // Recebe (total ou parcialmente) uma parcela. `receberRestante` = o servidor calcula o restante DENTRO da trava (a tela nunca
 // decide o valor de "receber tudo"). `chave` = Idempotency-Key: repetir a mesma chave devolve o recebimento original.
