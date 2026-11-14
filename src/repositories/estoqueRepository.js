@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { sqlDiaSP } = require('../utils/dataSaoPaulo');
 
 // Local Central da empresa. Criado sob demanda para empresas novas (a migration 058 já cobre
 // as existentes); ON CONFLICT DO NOTHING + SELECT é seguro com criações concorrentes.
@@ -246,12 +247,12 @@ async function listarMovimentacoesRelatorio({ limit, offset, produto_id, data_de
 
     if (data_de !== undefined) {
         valores.push(data_de);
-        condicoes.push('m.criado_em::date >= $' + valores.length);
+        condicoes.push(sqlDiaSP('m.criado_em') + ' >= $' + valores.length);
     }
 
     if (data_ate !== undefined) {
         valores.push(data_ate);
-        condicoes.push('m.criado_em::date <= $' + valores.length);
+        condicoes.push(sqlDiaSP('m.criado_em') + ' <= $' + valores.length);
     }
 
     const where = 'WHERE ' + condicoes.join(' AND ');

@@ -2,6 +2,7 @@ const db = require('../config/db');
 const estoqueRepository = require('./estoqueRepository');
 const { executarComLock } = require('./shared/transacoes');
 const AppError = require('../errors/AppError');
+const { sqlDiaSP } = require('../utils/dataSaoPaulo');
 
 // Uma única transação: valida produto (tipo 'acabado', ativo) e a existência
 // de uma ficha técnica vigente pra ele; trava (FOR UPDATE) o estoque de cada
@@ -152,12 +153,12 @@ async function listarPaginado({ limit, offset, produto_id, dataDe, dataAte, empr
 
     if (dataDe !== undefined) {
         valores.push(dataDe);
-        condicoes.push(`pr.criado_em::date >= $${valores.length}`);
+        condicoes.push(`${sqlDiaSP('pr.criado_em')} >= $${valores.length}`);
     }
 
     if (dataAte !== undefined) {
         valores.push(dataAte);
-        condicoes.push(`pr.criado_em::date <= $${valores.length}`);
+        condicoes.push(`${sqlDiaSP('pr.criado_em')} <= $${valores.length}`);
     }
 
     const where = `WHERE ${condicoes.join(' AND ')}`;

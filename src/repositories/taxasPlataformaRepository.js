@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { reaisParaCentavos, calcularTaxaPlataformaCentavos, centavosParaReais } = require('../utils/taxaPlataforma');
+const { sqlDiaSP } = require('../utils/dataSaoPaulo');
 
 // "Hoje" é calculado NO BANCO, no fuso do negócio: nada de Date do Node (a
 // serialização do pg usa o fuso local do processo) e uma venda às 22h em
@@ -186,12 +187,12 @@ async function listarPaginado({ limit, offset, empresa_id, data_inicio, data_fim
 
     if (data_inicio !== undefined) {
         valores.push(data_inicio);
-        condicoes.push(`v.data::date >= $${valores.length}`);
+        condicoes.push(`${sqlDiaSP('v.data')} >= $${valores.length}`);
     }
 
     if (data_fim !== undefined) {
         valores.push(data_fim);
-        condicoes.push(`v.data::date <= $${valores.length}`);
+        condicoes.push(`${sqlDiaSP('v.data')} <= $${valores.length}`);
     }
 
     const where = `WHERE ${condicoes.join(' AND ')}`;

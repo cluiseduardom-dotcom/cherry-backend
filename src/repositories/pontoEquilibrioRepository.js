@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { sqlDiaSP } = require('../utils/dataSaoPaulo');
 
 // Só vendas 'finalizada' contam como faturamento — mesmo critério já usado
 // na curva ABC do dashboard (vendas 'aberta' não são venda de fato, e
@@ -8,7 +9,7 @@ async function somarReceita(empresa_id, dataInicio, dataFim) {
         `SELECT COALESCE(SUM(total), 0) AS total
          FROM vendas
          WHERE empresa_id = $1 AND status = 'finalizada'
-           AND data::date >= $2 AND data::date <= $3`,
+           AND ${sqlDiaSP('data')} >= $2 AND ${sqlDiaSP('data')} <= $3`,
         [empresa_id, dataInicio, dataFim]
     );
 
@@ -29,7 +30,7 @@ async function somarCustoVariavelProdutos(empresa_id, dataInicio, dataFim) {
          FROM itens_venda iv
          JOIN vendas v ON v.id = iv.venda_id
          WHERE v.empresa_id = $1 AND v.status = 'finalizada'
-           AND v.data::date >= $2 AND v.data::date <= $3`,
+           AND ${sqlDiaSP('v.data')} >= $2 AND ${sqlDiaSP('v.data')} <= $3`,
         [empresa_id, dataInicio, dataFim]
     );
 
