@@ -18,7 +18,7 @@ describe('migration 110 — idempotência dos recebimentos', () => {
     });
 
     test('a chave nasce NULL e a unicidade vale só quando há chave, por empresa', () => {
-        expect(EXECUTAVEL).not.toMatch(/NOT NULL/i);
+        expect(EXECUTAVEL).not.toMatch(/VARCHAR\(80\)\s*NOT NULL/i);
         expect(EXECUTAVEL).toMatch(/\(empresa_id, chave_idempotencia\)\s+WHERE chave_idempotencia IS NOT NULL/);
     });
 
