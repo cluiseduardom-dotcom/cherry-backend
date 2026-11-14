@@ -42,7 +42,7 @@ async function registrarEvento(client, { empresa_id, pedido_id, tipo, de, para, 
 // O que a cliente pode ver do pedido. Sem e-mail, telefone, id interno, hash nem chave de idempotência.
 async function visao(client, empresa_id, filtro) {
     const { rows } = await client.query(
-        `SELECT id, codigo, status, subtotal, desconto, frete, total, reserva_expira_em, criado_em, pago_em
+        `SELECT id, codigo, status, subtotal, desconto, frete, total, reserva_expira_em, criado_em, pago_em, presente, mensagem_cartao
            FROM pedidos_loja WHERE empresa_id = $1 AND ${filtro.coluna} = $2`,
         [empresa_id, filtro.valor]
     );
@@ -82,6 +82,8 @@ async function visao(client, empresa_id, filtro) {
         desconto: Number(p.desconto),
         frete: p.frete === null ? null : Number(p.frete),
         total: Number(p.total),
+        presente: p.presente === true,
+        mensagem_cartao: p.mensagem_cartao ?? null,
         reserva_expira_em: p.reserva_expira_em,
         criado_em: p.criado_em,
         pago_em: p.pago_em,
@@ -145,7 +147,7 @@ async function travarProdutos(client, empresa_id, ids) {
 
 // itens: [{ slug, quantidade, preco_exibido }]; cliente: { nome, email, telefone }.
 // Devolve { pedido, reaproveitado }.
-async function criarPedido({ empresa_id, chave, hash, cliente, itens }) {
+async function criarPedido({ empresa_id, chave, hash, cliente, itens, presente = false, mensagem_cartao = null }) {
     const client = await db.connect();
 
     try {
@@ -224,10 +226,10 @@ async function criarPedido({ empresa_id, chave, hash, cliente, itens }) {
         const { rows: criado } = await client.query(
             `INSERT INTO pedidos_loja
                 (codigo, empresa_id, cliente_nome, cliente_email, cliente_telefone, chave_idempotencia, hash_requisicao,
-                 subtotal, frete, total, reserva_expira_em)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $8, NOW() + ($9::int * INTERVAL '1 minute'))
+                 subtotal, frete, total, reserva_expira_em, presente, mensagem_cartao)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $8, NOW() + ($9::int * INTERVAL '1 minute'), $11, $12)
              RETURNING id`,
-            [codigo, empresa_id, cliente.nome, cliente.email, cliente.telefone ?? null, chave, hash, reais(subtotal), RESERVA_MINUTOS, frete]
+            [codigo, empresa_id, cliente.nome, cliente.email, cliente.telefone ?? null, chave, hash, reais(subtotal), RESERVA_MINUTOS, frete, presente === true, presente === true ? (mensagem_cartao || null) : null]
         );
         const pedido_id = criado[0].id;
 
