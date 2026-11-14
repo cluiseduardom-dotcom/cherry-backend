@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
+const { SQL_HOJE_SP } = require('../utils/dataSaoPaulo');
 const { executarComLock, transicionarStatus } = require('./shared/transacoes');
 
 // Quanto já entrou e quanto falta. Conta do fluxo novo (com parcela): vem da parcela (`valor_pago`, que só cresce por
@@ -211,7 +212,7 @@ async function marcarComoRecebida(id, empresa_id) {
         statusEsperado: 'pendente',
         mensagemNaoEncontrado: 'Conta a receber não encontrada',
         mensagemStatusInvalido: 'Somente contas pendentes podem ser marcadas como recebidas',
-        sets: `status = 'recebido', data_recebimento = CURRENT_DATE`
+        sets: `status = 'recebido', data_recebimento = ${SQL_HOJE_SP}`
     });
 }
 

@@ -41,7 +41,7 @@ async function pagar(contaId, dados = {}, usuario) {
     }, client);
 
     const { rows: atualizadas } = await client.query(
-      "UPDATE contas_pagar SET status = 'pago', data_pagamento = CURRENT_DATE, transacao_pagamento_id = $1, atualizado_em = NOW() WHERE id = $2 AND empresa_id = $3 RETURNING *",
+      "UPDATE contas_pagar SET status = 'pago', data_pagamento = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date, transacao_pagamento_id = $1, atualizado_em = NOW() WHERE id = $2 AND empresa_id = $3 RETURNING *",
       [transacao.id, contaId, usuario.empresa_id]
     );
     const { rows: liquidada } = await client.query(

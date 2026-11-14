@@ -6,7 +6,7 @@ async function criar(dados, clienteExterno) {
         `INSERT INTO recebimentos
             (empresa_id, filial_id, numero, pedido_compra_id, fornecedor_id,
              data_recebimento, usuario_id, numero_nf, serie_nf, chave_nf, observacoes)
-         VALUES ($1,$2,$3,$4,$5,COALESCE($6,CURRENT_DATE),$7,$8,$9,$10,$11)
+         VALUES ($1,$2,$3,$4,$5,COALESCE($6,(NOW() AT TIME ZONE 'America/Sao_Paulo')::date),$7,$8,$9,$10,$11)
          RETURNING *`,
         [
             dados.empresa_id, dados.filial_id ?? null, dados.numero,

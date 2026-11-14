@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { executarComLock } = require('./shared/transacoes');
+const { sqlDiaSP } = require('../utils/dataSaoPaulo');
 const {
     calcularComissaoCentavos,
     liberadoProporcionalCentavos,
@@ -322,12 +323,12 @@ function filtroPeriodo(valores, { data_inicio, data_fim }) {
 
     if (data_inicio !== undefined) {
         valores.push(data_inicio);
-        condicoes.push(`v.data::date >= $${valores.length}`);
+        condicoes.push(`${sqlDiaSP('v.data')} >= $${valores.length}`);
     }
 
     if (data_fim !== undefined) {
         valores.push(data_fim);
-        condicoes.push(`v.data::date <= $${valores.length}`);
+        condicoes.push(`${sqlDiaSP('v.data')} <= $${valores.length}`);
     }
 
     return condicoes;

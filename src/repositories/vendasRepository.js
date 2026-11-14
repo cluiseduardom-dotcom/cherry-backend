@@ -12,6 +12,7 @@ const comissoesRepository = require('./comissoesRepository');
 const cancelamentosRepository = require('./cancelamentosRepository');
 const { executarComLock } = require('./shared/transacoes');
 const AppError = require('../errors/AppError');
+const { hojeSP, somarMeses, sqlDiaSP } = require('../utils/dataSaoPaulo');
 const { MAX_PARCELAS, MAX_MESES_PRAZO } = require('../constants/limites');
 const { inteiroNoIntervalo } = require('../utils/numeros');
 const { faixaPorDias, faixaPorCodigo } = require('../constants/cancelamento');
@@ -94,11 +95,8 @@ async function getMaisVendidosPeriodo(empresa_id) {
 // instante da baixa. Qualquer falha em qualquer item reverte a venda
 // inteira — nada fica parcialmente criado.
 function dataComMeses(meses) {
-    const hoje = new Date();
-    const alvo = new Date(hoje.getFullYear(), hoje.getMonth() + meses, 1);
-    const ultimoDia = new Date(alvo.getFullYear(), alvo.getMonth() + 1, 0).getDate();
-    const dia = Math.min(hoje.getDate(), ultimoDia);
-    return `${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    // Meses de calendário a partir de HOJE EM SÃO PAULO, com o dia ajustado ao fim do mês quando ele não existe.
+    return somarMeses(hojeSP(), meses);
 }
 
 function dividirEmCentavos(valor, quantidade) {
@@ -465,8 +463,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             }, client);
 
             const valoresParcelas = dividirEmCentavos(valor, parcelas);
-            const hoje = new Date();
-            const hojeLocal = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+            const hojeLocal = hojeSP();
 
             for (let i = 0; i < parcelas; i++) {
                 const numero = i + 1;
@@ -579,12 +576,12 @@ async function listarPaginado({ limit, offset, usuario_id, empresa_id, status, c
 
     if (data_de !== undefined) {
         valores.push(data_de);
-        condicoes.push(`v.data::date >= $${valores.length}`);
+        condicoes.push(`${sqlDiaSP('v.data')} >= $${valores.length}`);
     }
 
     if (data_ate !== undefined) {
         valores.push(data_ate);
-        condicoes.push(`v.data::date <= $${valores.length}`);
+        condicoes.push(`${sqlDiaSP('v.data')} <= $${valores.length}`);
     }
 
     const where = `WHERE ${condicoes.join(' AND ')}`;

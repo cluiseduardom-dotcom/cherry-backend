@@ -2,6 +2,7 @@ const { normalizarLogin, loginValido } = require('../utils/loginUsuario');
 const { z } = require('zod');
 const { CARGOS } = require('../constants/cargos');
 const { cpfValido, UFS } = require('../utils/documentos');
+const { hojeSP } = require('../utils/dataSaoPaulo');
 
 // Mesmas regras de nome/e-mail/senha de POST /auth/register, para não haver dois padrões.
 // `strict`: campo desconhecido (ex.: empresa_id, ativo) é recusado, nunca ignorado.
@@ -11,7 +12,7 @@ const { cpfValido, UFS } = require('../utils/documentos');
 const soDigitos = (v) => v.replace(/\D/g, '');
 const vazioParaNull = (v) => (typeof v === 'string' && v.trim() === '' ? null : v);
 const opcional = (schema) => z.preprocess(vazioParaNull, schema.nullable().optional());
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => hojeSP();
 
 const textoCurto = (rotulo, max) => z.string({ error: `${rotulo} inválido` }).trim().max(max, `${rotulo} muito longo`);
 

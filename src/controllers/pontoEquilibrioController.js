@@ -1,25 +1,14 @@
 const pontoEquilibrioService = require('../services/pontoEquilibrioService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
+const { hojeSP, inicioDoMesSP } = require('../utils/dataSaoPaulo');
 const { periodoPontoEquilibrioSchema } = require('../validations/pontoEquilibrioValidation');
 
-// Mês corrente = do dia 1 do mês até hoje (não o mês inteiro) — usa getters
-// locais do Date (getFullYear/getMonth/getDate), nunca toISOString, mesma
-// armadilha de fuso horário documentada na validação.
-function formatarData(data) {
-    const ano = data.getFullYear();
-    const mes = String(data.getMonth() + 1).padStart(2, '0');
-    const dia = String(data.getDate()).padStart(2, '0');
-    return `${ano}-${mes}-${dia}`;
-}
-
+// Mês corrente = do dia 1 do mês até hoje (não o mês inteiro), no dia de São Paulo (o servidor roda em UTC).
 function periodoPadrao() {
-    const hoje = new Date();
-    const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-
     return {
-        dataInicio: formatarData(inicioMes),
-        dataFim: formatarData(hoje)
+        dataInicio: inicioDoMesSP(),
+        dataFim: hojeSP()
     };
 }
 

@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { executarComLock, transicionarStatus } = require('./shared/transacoes');
+const { SQL_HOJE_SP } = require('../utils/dataSaoPaulo');
 
 async function listarPaginado({ limit, offset, status, vencimentoDe, vencimentoAte, empresa_id }) {
     const condicoes = ['empresa_id = $1'];
@@ -130,7 +131,7 @@ async function marcarComoPaga(id, empresa_id) {
         statusEsperado: 'pendente',
         mensagemNaoEncontrado: 'Conta a pagar não encontrada',
         mensagemStatusInvalido: 'Somente contas pendentes podem ser marcadas como pagas',
-        sets: `status = 'pago', data_pagamento = CURRENT_DATE`
+        sets: `status = 'pago', data_pagamento = ${SQL_HOJE_SP}`
     });
 }
 
