@@ -164,7 +164,10 @@ describe('números não finitos e absurdos (#87 itens 1 e 7)', () => {
     ['numero_parcelas 1e9 (loop de INSERTs)', pagamento({ numero_parcelas: 1000000000, meses_prazo: 1 })],
     ['numero_parcelas 25 (acima do teto)', pagamento({ numero_parcelas: 25, meses_prazo: 1 })],
     ['meses_prazo 1e9', pagamento({ numero_parcelas: 2, meses_prazo: 1000000000 })],
-    ['meses_prazo 25 (acima do teto)', pagamento({ numero_parcelas: 2, meses_prazo: 25 })],
+    ['meses_prazo 7 (acima do teto de 6)', pagamento({ numero_parcelas: 1, meses_prazo: 7 })],
+    ['crediário 12x de 1 mês (último vencimento em 12 meses)', pagamento({ numero_parcelas: 12, meses_prazo: 1 })],
+    ['crediário 4x de 2 meses (último vencimento em 8 meses)', pagamento({ numero_parcelas: 4, meses_prazo: 2 })],
+    ['crediário 7x sem informar prazo (padrão 1 mês = 7 meses)', pagamento({ numero_parcelas: 7 })],
     ['valor 1e15', pagamento({ valor: 1e15 })]
   ])('rejeita %s com 400 sem chamar o serviço', async (_, pag) => {
     const res = await request(app).post('/vendas').set(auth(admin)).send(venda([pag]));
@@ -173,10 +176,24 @@ describe('números não finitos e absurdos (#87 itens 1 e 7)', () => {
     expect(vendasService.criar).not.toHaveBeenCalled();
   });
 
-  test('o teto de parcelas (24) ainda é aceito', async () => {
+  test('o teto de parcelas (24) ainda é aceito no cartão de crédito (o teto de 6 meses é só do crediário)', async () => {
     vendasService.criar.mockResolvedValue({ id: 1, itens: [] });
 
-    const res = await request(app).post('/vendas').set(auth(admin)).send(venda([pagamento({ numero_parcelas: 24, meses_prazo: 24 })]));
+    const res = await request(app).post('/vendas').set(auth(admin)).send(venda([pagamento({ forma_pagamento: 'credito', numero_parcelas: 24 })]));
+
+    expect(res.status).toBe(201);
+  });
+
+  test.each([
+    ['6x de 1 mês', { numero_parcelas: 6, meses_prazo: 1 }],
+    ['3x de 2 meses', { numero_parcelas: 3, meses_prazo: 2 }],
+    ['2x de 3 meses', { numero_parcelas: 2, meses_prazo: 3 }],
+    ['1x em 6 meses', { numero_parcelas: 1, meses_prazo: 6 }],
+    ['1x sem prazo (padrão)', { numero_parcelas: 1 }]
+  ])('crediário dentro do teto de 6 meses é aceito: %s', async (_, extra) => {
+    vendasService.criar.mockResolvedValue({ id: 1, itens: [] });
+
+    const res = await request(app).post('/vendas').set(auth(admin)).send(venda([pagamento(extra)]));
 
     expect(res.status).toBe(201);
   });
