@@ -89,9 +89,10 @@ const enviarWebhook = (dataId, { tipo = 'payment', cabecalhos } = {}) =>
 let idSeq = 900000000 + Math.floor(Math.random() * 1000000);
 const proximoId = () => ++idSeq;
 
-async function criarCobrancaPendente(alvo, valor = 100) {
+// `papel`: quem cria a cobrança (ela é dessa pessoa: outro vendedor da empresa não a consulta nem a usa; admin sim).
+async function criarCobrancaPendente(alvo, valor = 100, papel = 'admin') {
     client.criarPagamentoPix.mockResolvedValueOnce(respostaPix(proximoId()));
-    const res = await auth(request(app).post('/pagamentos-gateway/pix'), alvo).send({ valor });
+    const res = await auth(request(app).post('/pagamentos-gateway/pix'), alvo, papel).send({ valor });
     expect(res.status).toBe(201);
     return cobrancaDoBanco(res.body.data.codigo);
 }
@@ -404,7 +405,7 @@ describe('GET /pagamentos-gateway/:codigo', () => {
     });
 
     test('consulta pendente reconsulta o provedor com o token da loja e vira pago; depois não consulta mais', async () => {
-        const cobranca = await criarCobrancaPendente(A, 250);
+        const cobranca = await criarCobrancaPendente(A, 250, 'vendedor');
         client.buscarPagamento.mockResolvedValue(pagamentoMp(cobranca));
         const res = await auth(request(app).get(`/pagamentos-gateway/${cobranca.codigo}`), A, 'vendedor');
         expect(res.status).toBe(200);
@@ -418,7 +419,7 @@ describe('GET /pagamentos-gateway/:codigo', () => {
     });
 
     test('consultas seguidas de uma cobrança pendente respeitam o intervalo mínimo', async () => {
-        const cobranca = await criarCobrancaPendente(A);
+        const cobranca = await criarCobrancaPendente(A, 100, 'vendedor');
         client.buscarPagamento.mockResolvedValue(pagamentoMp(cobranca, { status: 'pending' }));
         await auth(request(app).get(`/pagamentos-gateway/${cobranca.codigo}`), A, 'vendedor');
         await auth(request(app).get(`/pagamentos-gateway/${cobranca.codigo}`), A, 'vendedor');
@@ -426,7 +427,7 @@ describe('GET /pagamentos-gateway/:codigo', () => {
     });
 
     test('divergência de valor ou de referência no provedor é ignorada (continua pendente)', async () => {
-        const cobranca = await criarCobrancaPendente(A, 100);
+        const cobranca = await criarCobrancaPendente(A, 100, 'vendedor');
         client.buscarPagamento.mockResolvedValue(pagamentoMp(cobranca, { transaction_amount: 1 }));
         expect((await auth(request(app).get(`/pagamentos-gateway/${cobranca.codigo}`), A, 'vendedor')).body.data.status).toBe('pendente');
 
@@ -436,7 +437,7 @@ describe('GET /pagamentos-gateway/:codigo', () => {
     });
 
     test('falha do provedor na leitura devolve o último estado conhecido, sem erro', async () => {
-        const cobranca = await criarCobrancaPendente(A);
+        const cobranca = await criarCobrancaPendente(A, 100, 'vendedor');
         client.buscarPagamento.mockRejectedValue(new Error('fora do ar'));
         const res = await auth(request(app).get(`/pagamentos-gateway/${cobranca.codigo}`), A, 'vendedor');
         expect(res.status).toBe(200);
@@ -444,7 +445,7 @@ describe('GET /pagamentos-gateway/:codigo', () => {
     });
 
     test('QR vencido é sinalizado como expirada', async () => {
-        const cobranca = await criarCobrancaPendente(A);
+        const cobranca = await criarCobrancaPendente(A, 100, 'vendedor');
         await db.query(`UPDATE cobrancas_pagamento SET expira_em = NOW() - INTERVAL '1 minute', consultado_em = NOW() WHERE id = $1`, [cobranca.id]);
         const res = await auth(request(app).get(`/pagamentos-gateway/${cobranca.codigo}`), A, 'vendedor');
         expect(res.body.data.expirada).toBe(true);
