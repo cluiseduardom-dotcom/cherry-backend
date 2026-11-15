@@ -59,3 +59,17 @@ Mesma rota, migration 098. Sem a funcionalidade ligada (lista da sessão) ou par
 |---|---|---|
 | `loja_pedido_pago` | média; alta a partir de 24 h de espera | pedido **pago** cuja entrega ainda não foi combinada. Some quando alguém chama `POST /loja-pedidos/:codigo/entrega-combinada` |
 | `loja_pagamento_sem_venda` | alta | pagamento **recebido** que não virou venda há mais de 5 minutos: pedido expirado e a peça acabou (devolver o pagamento) ou conversão que não concluiu (aguardar e, se persistir, falar com a GiroNex). Some quando a cobrança é estornada ou vira venda |
+
+## Cobrança da plataforma (só administrador, só com a suspensão do Pix ligada)
+Mesma rota, sem migration. É o **único** aviso do sino que fala de cobrança da GiroNex, por isso só o **administrador** da loja o recebe (vendedor e estoquista não). Só existe com `COBRANCA_SUSPENSAO_PIX=ligada` (sem ela o aviso de suspensão seria falso); a conta é a mesma do bloqueio do Pix (`docs/TAXA_PLATAFORMA.md`), feita na hora pela empresa do JWT.
+
+| Tipo | Prioridade | Quando | Texto |
+|---|---|---|---|
+| `cobranca_plataforma` (`titulo`: "Pix da loja será suspenso") | alta | faltam até 5 dias para a suspensão (a partir do dia 15, para carência de 15 dias) | "Há uma pendência de R$ 25,00 com a GiroNex. Se não for paga até 20/11/2026, o Pix da loja será suspenso. Dinheiro e cartão seguem normais." |
+| `cobranca_plataforma` (`titulo`: "Pix da loja suspenso") | alta | o Pix está suspenso | "O Pix da loja está suspenso por uma pendência de R$ 25,00 com a GiroNex. Dinheiro e cartão seguem normais. O Pix volta assim que o pagamento for registrado." |
+
+- `item` = `cobranca`; `produto_id`, `sku` e `nome` vêm `null`. `dados`: só `saldo_vencido` e `suspensao_em` (nunca percentual, taxa por venda nem detalhe de venda).
+- `id` = `cobranca_plataforma:aviso:<AAAA-MM-DD>` ou `cobranca_plataforma:suspenso:<AAAA-MM-DD>` (a data é o início da suspensão): um episódio novo volta como "novo" no sino mesmo que o anterior tenha sido marcado como lido.
+- Vem **antes** dos demais e **fora do teto de 50 itens**: um aviso de suspensão do Pix não pode ser cortado por alertas de estoque. `total` já o conta.
+- Some sozinho quando o pagamento tira a loja da suspensão (ou do aviso). Se a conta falhar, o sino segue sem ele (estoque e giro não dependem disto).
+- Antes dos 5 dias (lembrete, vencido em carência), quem avisa é o operador, por extrato e WhatsApp.

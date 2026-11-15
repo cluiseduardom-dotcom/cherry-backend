@@ -6,6 +6,8 @@ const { vocabularioEstoque } = require('../constants/vocabularioEstoque');
 const { montarNotificacoesLoja } = require('../utils/notificacoesLoja');
 const lojaGestaoRepository = require('../repositories/lojaGestaoRepository');
 const { temCapacidade } = require('./permissoesService');
+const suspensaoPixService = require('./suspensaoPixService');
+const { montarNotificacoesCobranca } = require('../utils/notificacoesCobranca');
 const { CAPACIDADES } = require('../constants/cargos');
 
 // Calculadas na hora (sem tabela): o sino sempre reflete o estoque e as vendas atuais.
@@ -41,7 +43,23 @@ async function listar(usuario) {
     }
     const itens = montarNotificacoes(produtos, perfil, pendencias, extras);
 
-    return { total: itens.length, itens };
+    // Cobrança da plataforma: só o administrador, só com a suspensão do Pix ligada. Vem ANTES e FORA do teto de 50 itens: um
+    // aviso de suspensão do Pix nunca pode ser cortado por alertas de estoque. Opcional: se a conta falhar, o sino segue
+    // sem ele (estoque e giro não dependem disto).
+    const cobranca = await avisosDeCobranca(usuario, perfil);
+
+    return { total: cobranca.length + itens.length, itens: [...cobranca, ...itens] };
+}
+
+async function avisosDeCobranca(usuario, perfil) {
+    if (!perfil.administrador) return [];
+
+    try {
+        return montarNotificacoesCobranca(await suspensaoPixService.situacao(usuario.empresa_id), perfil);
+    } catch (erro) {
+        console.error(`Sino: não foi possível montar o aviso de cobrança da empresa ${usuario.empresa_id}: ${erro.message}`);
+        return [];
+    }
 }
 
 module.exports = { listar };
