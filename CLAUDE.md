@@ -55,6 +55,7 @@ Este arquivo é o contrato operacional do Claude Code para este repositório. De
 
 ### Datas e valores
 - Colunas DATE devem preservar YYYY-MM-DD sem conversão indevida para Date/UTC.
+- O "dia" de negócio é o de São Paulo, nunca o do servidor (UTC): usar `src/utils/dataSaoPaulo.js` (`hojeSP`, `sqlDiaSP`...). Regras e armadilhas em `docs/DATAS_FUSO.md`.
 - Usar nomes de banco/API em português, snake_case, conforme o padrão existente (criado_em, atualizado_em).
 - Valores financeiros devem ser validados como números finitos e tratados de forma consistente.
 
