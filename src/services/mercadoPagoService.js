@@ -4,6 +4,7 @@ const { obterConfigMercadoPago } = require('../config/mercadoPagoConfig');
 const { cifrar, decifrar } = require('../utils/criptografiaToken');
 const mercadoPagoClient = require('../integrations/mercadoPagoClient');
 const mercadoPagoRepository = require('../repositories/mercadoPagoRepository');
+const bloqueiosPixRepository = require('../repositories/bloqueiosPixRepository');
 const { executarComLock } = require('../repositories/shared/transacoes');
 
 const TTL_STATE_MINUTOS = 10;
@@ -40,19 +41,32 @@ async function obterStatus(empresa_id) {
 // Mercado Pago; um token vencido ou recusado ainda aparece como 409 na hora de cobrar.
 async function obterDisponibilidade(empresa_id) {
     const config = obterConfigMercadoPago();
+    const pix_manual = await pixManualPermitido(empresa_id);
 
     if (config === null) {
-        return { pix: false, motivo: 'nao_configurado' };
+        return { pix: false, motivo: 'nao_configurado', pix_manual };
     }
 
     const conexao = await mercadoPagoRepository.buscarConexao(empresa_id);
 
     if (!conexao?.ativo || !conexao.access_token_cifrado) {
-        return { pix: false, motivo: 'loja_nao_conectada' };
+        return { pix: false, motivo: 'loja_nao_conectada', pix_manual };
     }
 
     // parcelas_maximas_link: teto global do link de cartão (o PDV mostra quantas parcelas cabem em cada valor).
-    return { pix: true, motivo: null, parcelas_maximas_link: config.parcelasMaximasLink };
+    return { pix: true, motivo: null, parcelas_maximas_link: config.parcelasMaximasLink, pix_manual };
+}
+
+// Só informa ao PDV se o Pix lançado à mão está liberado (para esconder a opção); nunca o motivo do bloqueio nem
+// taxa. A recusa de verdade continua na criação da venda (vendasRepository). Se a consulta falhar, devolve true:
+// o PDV mostra a opção e o backend recusa se for o caso (nunca esconde Pix por falha de leitura).
+async function pixManualPermitido(empresa_id) {
+    try {
+        return !(await bloqueiosPixRepository.pixManualBloqueado(empresa_id));
+    } catch (error) {
+        console.error('Falha ao consultar bloqueio de Pix manual:', error.message);
+        return true;
+    }
 }
 
 async function iniciarConexao(empresa_id, usuario_id) {
