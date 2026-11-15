@@ -32,8 +32,6 @@ describe('migration 114 — períodos e lançamentos da taxa da plataforma', () 
     test('lista fechada de status e de tipos', () => {
         expect(EXECUTAVEL).toMatch(/status IN \('aberto', 'fechado', 'parcialmente_pago', 'pago'\)/);
         expect(EXECUTAVEL).toMatch(/tipo IN \('pagamento', 'ajuste', 'perdao', 'estorno_venda'\)/);
-        expect(EXECUTAVEL).toMatch(/forma_pagamento IN \('pix', 'transferencia', 'boleto'\)/);
-        expect(EXECUTAVEL).toMatch(/comprovante_chave VARCHAR\(300\)/);
     });
 
     test('lançamentos só-inserção e período protegido por gatilho', () => {

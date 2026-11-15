@@ -123,11 +123,10 @@ CREATE TABLE IF NOT EXISTS lancamentos_taxa (
     -- Efeito no saldo devido pela empresa (negativo reduz).
     valor NUMERIC(15,2) NOT NULL,
     venda_id INTEGER,
-    -- Pagamento (T4): data, forma (lista fechada) e comprovante opcional. O comprovante fica no
-    -- armazenamento de objetos (S3), como as demais imagens/arquivos: aqui só a chave do objeto.
+    -- Pagamento (T4): data, forma e comprovante (opcional).
     data_pagamento DATE,
-    forma_pagamento VARCHAR(20),
-    comprovante_chave VARCHAR(300),
+    forma_pagamento VARCHAR(40),
+    comprovante TEXT,
     justificativa TEXT,
     -- Responsável gravado pelo backend (usuário logado), nunca pelo corpo da requisição.
     responsavel VARCHAR(255) NOT NULL,
@@ -148,11 +147,9 @@ CREATE TABLE IF NOT EXISTS lancamentos_taxa (
     ),
     CONSTRAINT ck_lancamentos_taxa_pagamento CHECK (
         (tipo = 'pagamento'
-            AND data_pagamento IS NOT NULL AND forma_pagamento IS NOT NULL AND venda_id IS NULL)
-        OR (tipo <> 'pagamento' AND data_pagamento IS NULL AND forma_pagamento IS NULL AND comprovante_chave IS NULL)
-    ),
-    CONSTRAINT ck_lancamentos_taxa_forma_pagamento CHECK (
-        forma_pagamento IS NULL OR forma_pagamento IN ('pix', 'transferencia', 'boleto')
+            AND data_pagamento IS NOT NULL AND forma_pagamento IS NOT NULL AND btrim(forma_pagamento) <> ''
+            AND venda_id IS NULL)
+        OR (tipo <> 'pagamento' AND data_pagamento IS NULL AND forma_pagamento IS NULL AND comprovante IS NULL)
     ),
     -- Perdão e ajuste exigem justificativa (T5); estorno de venda exige a venda (T3).
     CONSTRAINT ck_lancamentos_taxa_justificativa CHECK (
