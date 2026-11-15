@@ -6,9 +6,18 @@ const valorPix = z.number('Valor inválido')
     // No máximo 2 casas decimais, sem erro de ponto flutuante.
     .refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-6, 'Valor deve ter no máximo 2 casas decimais');
 
+const idPositivo = (mensagem) => z.number(mensagem).int(mensagem).positive(mensagem);
+
+// `destino` (opcional): Pix para RECEBER, em vez de pagar uma venda do PDV. Fiado (Colheita) do cliente ou conta a receber (parcela).
+const destinoPixSchema = z.discriminatedUnion('tipo', [
+    z.strictObject({ tipo: z.literal('fiado'), cliente_id: idPositivo('Cliente inválido') }),
+    z.strictObject({ tipo: z.literal('conta_receber'), conta_id: idPositivo('Conta inválida') })
+], { error: 'Destino do Pix inválido' });
+
 const criarPixSchema = z.strictObject({
     valor: valorPix,
-    cliente_email: z.string().trim().max(254).email('E-mail do cliente inválido').optional()
+    cliente_email: z.string().trim().max(254).email('E-mail do cliente inválido').optional(),
+    destino: destinoPixSchema.optional()
 });
 
 // `parcelas_maximas` (opcional): teto de parcelas escolhido na venda. Nunca passa do teto global da plataforma

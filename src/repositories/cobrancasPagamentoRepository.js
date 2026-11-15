@@ -5,14 +5,16 @@ const { reaisParaCentavos } = require('../utils/taxaPlataforma');
 
 const COLUNAS = `id, codigo, empresa_id, provedor, metodo, valor, taxa_plataforma, status, id_externo,
                  qr_code, qr_code_base64, ticket_url, expira_em, venda_id, usada_em, consultado_em, criado_em, atualizado_em,
-                 preferencia_id, link_url, tipo_cartao, parcelas, parcelas_maximas, valor_total_pago, criado_por`;
+                 preferencia_id, link_url, tipo_cartao, parcelas, parcelas_maximas, valor_total_pago,
+                 destino_tipo, destino_id, destino_aplicado_em, destino_erro, criado_por`;
 
-async function criar({ codigo, empresa_id, valor, taxa_plataforma, criado_por, metodo = 'pix', parcelas_maximas = null }) {
+// `destino` (opcional, só Pix): { tipo: 'fiado' | 'conta_receber', id } — o que a cobrança quita quando for paga.
+async function criar({ codigo, empresa_id, valor, taxa_plataforma, criado_por, metodo = 'pix', parcelas_maximas = null, destino = null }) {
     const { rows } = await db.query(
-        `INSERT INTO cobrancas_pagamento (codigo, empresa_id, valor, taxa_plataforma, criado_por, metodo, parcelas_maximas)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO cobrancas_pagamento (codigo, empresa_id, valor, taxa_plataforma, criado_por, metodo, parcelas_maximas, destino_tipo, destino_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING ${COLUNAS}`,
-        [codigo, empresa_id, valor, taxa_plataforma, criado_por, metodo, parcelas_maximas]
+        [codigo, empresa_id, valor, taxa_plataforma, criado_por, metodo, parcelas_maximas, destino?.tipo ?? null, destino?.id ?? null]
     );
 
     return rows[0];
@@ -130,6 +132,11 @@ async function consumirParaVenda({ codigo, empresa_id, venda_id, valor, forma_pa
 
         const rotulo = cobranca.metodo === 'pix' ? 'Pix' : 'link de cartão';
 
+        // Pix gerado para receber fiado/parcela tem destino próprio: nunca vira pagamento de venda.
+        if (cobranca.destino_tipo) {
+            throw new AppError(`Esta cobrança (${rotulo}) é de recebimento de fiado ou de parcela e não vale como pagamento de venda`, 409);
+        }
+
         if (usuario_id !== undefined && usuario_id !== null && cobranca.criado_por !== null && Number(cobranca.criado_por) !== Number(usuario_id) && !pode_usar_de_outros) {
             throw new AppError(`Esta cobrança (${rotulo}) foi criada por outro usuário e só ele (ou um administrador) pode usá-la na venda`, 403);
         }
@@ -188,6 +195,27 @@ async function consumirParaVenda({ codigo, empresa_id, venda_id, valor, forma_pa
     });
 }
 
+// Marca o destino como aplicado (uma vez só: a condição `destino_aplicado_em IS NULL` torna a repetição inofensiva).
+async function marcarDestinoAplicado(id, empresa_id) {
+    const { rows } = await db.query(
+        `UPDATE cobrancas_pagamento SET destino_aplicado_em = NOW(), destino_erro = NULL, atualizado_em = NOW()
+         WHERE id = $1 AND empresa_id = $2 AND destino_tipo IS NOT NULL AND destino_aplicado_em IS NULL
+         RETURNING ${COLUNAS}`,
+        [id, empresa_id]
+    );
+
+    return rows[0] ?? null;
+}
+
+// O destino não pôde ser aplicado (ex.: o saldo mudou). Fica o motivo e a cobrança segue em "Pix a devolver".
+async function registrarErroDestino(id, empresa_id, mensagem) {
+    await db.query(
+        `UPDATE cobrancas_pagamento SET destino_erro = $3, atualizado_em = NOW()
+         WHERE id = $1 AND empresa_id = $2 AND destino_tipo IS NOT NULL AND destino_aplicado_em IS NULL`,
+        [id, empresa_id, String(mensagem).slice(0, 200)]
+    );
+}
+
 async function buscarEmailContatoEmpresa(empresa_id) {
     const { rows } = await db.query('SELECT email_contato FROM empresas WHERE id = $1', [empresa_id]);
 
@@ -201,6 +229,8 @@ module.exports = {
     registrarPagamentoCartao,
     registrarTotalPago,
     marcarFalhou,
+    marcarDestinoAplicado,
+    registrarErroDestino,
     buscarPorCodigo,
     buscarPorIdExterno,
     atualizarStatus,

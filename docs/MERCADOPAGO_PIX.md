@@ -68,6 +68,23 @@ Erro do provedor responde **424** (o `errorHandler` esconde a mensagem de 5xx; o
 - A cobrança recebe `venda_id`/`usada_em` e não entra em outra venda.
 - **Cancelar a venda não estorna o Pix no Mercado Pago.** A devolução é um pedido explícito do financeiro (ver "Devolução de Pix" abaixo).
 
+## Pix para receber fiado e parcelas (migration 112)
+
+O Pix também serve para **receber** uma dívida, não só para pagar venda no PDV. O dinheiro cai na conta Mercado Pago da empresa (a revendedora não precisa de acesso à conta).
+
+`POST /pagamentos-gateway/pix` aceita `destino` (opcional):
+
+| `destino` | Quem pode | Conferido antes de gerar o QR |
+|---|---|---|
+| `{ "tipo": "fiado", "cliente_id": N }` | admin e vendedor, com a funcionalidade `fiado` ligada | cliente da empresa do JWT e dentro do escopo (`ver_todos_clientes`), ativo, `valor` ≤ saldo devedor |
+| `{ "tipo": "conta_receber", "conta_id": N }` | só administrador (mesma regra de `/contas-receber`) | conta da empresa, com parcela, pendente, `valor` ≤ restante |
+
+- Quando o Mercado Pago confirma (webhook ou consulta), o servidor aplica **sozinho e uma vez só**: fiado → lançamento `pagamento` (forma `pix`) no livro; conta → recebimento da parcela (forma `pix`, parcial se for o caso, com a comissão liberada proporcionalmente). A chave de idempotência nos dois livros é `pix-<codigo>`; consulta, webhook e retry repetidos devolvem o lançamento original.
+- A resposta da cobrança traz `destino: { tipo, aplicado, erro }`. Se o Pix foi pago mas não pôde ser aplicado (ex.: o saldo mudou no meio), `aplicado` fica `false`, `erro` traz o motivo e a cobrança **continua em "Pix a devolver"**. Falha inesperada (rede/banco) não grava erro: a próxima consulta tenta de novo.
+- Cobrança com destino **não entra em venda** (409) e, depois de aplicada, **não aparece em "a devolver" nem pode ser devolvida** por `/devolucao` (409): o lançamento é desfeito pelo estorno do próprio módulo, não pela devolução do Pix.
+- Colunas novas em `cobrancas_pagamento`: `destino_tipo`, `destino_id`, `destino_aplicado_em`, `destino_erro` (CHECK: destino nunca convive com `venda_id`).
+- Vale a mesma validade de 30 minutos do Pix do PDV. Taxa da plataforma sobre o Pix segue a regra de sempre (condição individual > plano > padrão).
+
 ## Venda da revendedora: a cobrança é de quem a criou
 - `cobrancas_pagamento.criado_por` guarda quem gerou o Pix/link. **A cobrança é desse usuário:** outra vendedora da mesma empresa **não a consulta** (`GET /pagamentos-gateway/:codigo` responde **404**, sem revelar que existe) e **não a usa em venda** (`POST /vendas` com `cobranca_codigo` de outro usuário responde **403** e nada é gravado; a cobrança continua livre).
 - Podem usar/consultar cobrança de outros: **admin** e quem tem a capacidade `gerir_financeiro`. Cobrança sem dono (criada pela loja online, `criado_por` nulo) não é afetada.
