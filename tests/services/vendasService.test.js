@@ -28,7 +28,8 @@ describe('criar', () => {
       canal_id: 1,
       usuario_id: 7,
       empresa_id: 9,
-      itens: [{ produto_id: 1, quantidade: 3 }]
+      itens: [{ produto_id: 1, quantidade: 3 }],
+      pode_usar_cobranca_de_outros: false
     });
     expect(result).toEqual({ id: 1, total: '30.00' });
   });
@@ -45,7 +46,8 @@ describe('criar', () => {
       canal_id: 2,
       usuario_id: 7,
       empresa_id: 9,
-      itens: [{ produto_id: 1, quantidade: 1 }]
+      itens: [{ produto_id: 1, quantidade: 1 }],
+      pode_usar_cobranca_de_outros: false
     });
   });
 

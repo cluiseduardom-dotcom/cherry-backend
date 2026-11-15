@@ -68,6 +68,11 @@ Erro do provedor responde **424** (o `errorHandler` esconde a mensagem de 5xx; o
 - A cobrança recebe `venda_id`/`usada_em` e não entra em outra venda.
 - **Cancelar a venda não estorna o Pix no Mercado Pago.** A devolução é um pedido explícito do financeiro (ver "Devolução de Pix" abaixo).
 
+## Venda da revendedora: a cobrança é de quem a criou
+- `cobrancas_pagamento.criado_por` guarda quem gerou o Pix/link. **A cobrança é desse usuário:** outra vendedora da mesma empresa **não a consulta** (`GET /pagamentos-gateway/:codigo` responde **404**, sem revelar que existe) e **não a usa em venda** (`POST /vendas` com `cobranca_codigo` de outro usuário responde **403** e nada é gravado; a cobrança continua livre).
+- Podem usar/consultar cobrança de outros: **admin** e quem tem a capacidade `gerir_financeiro`. Cobrança sem dono (criada pela loja online, `criado_por` nulo) não é afetada.
+- Cenário coberto em `tests/routes/revendedoraPix.integration.test.js`: vendedora com estoque próprio (maleta) vende com a cobrança paga; a peça sai da maleta, o pagamento nasce `gateway/mercadopago` e a comissão é dela; o dinheiro cai na conta Mercado Pago da empresa (ela não tem acesso a ela).
+
 ## Taxas a receber (`GET /plataforma/taxas`)
 
 O ledger `taxas_venda` continua registrando a taxa de toda venda. A comissão que o Mercado Pago já reteve (`cobrancas_pagamento.taxa_plataforma` das cobranças pagas ligadas à venda apurada) é abatida para não cobrar duas vezes:

@@ -5,7 +5,8 @@ const AppError = require('../errors/AppError');
 const { criarVendaSchema } = require('../validations/vendasValidation');
 const { cancelarVendaSchema } = require('../validations/cancelamentosValidation');
 const { listarVendasSchema } = require('../validations/listarVendasValidation');
-const { podeVerCustosOperacionais } = require('../services/permissoesService');
+const { podeVerCustosOperacionais, temCapacidade } = require('../services/permissoesService');
+const { CAPACIDADES } = require('../constants/cargos');
 const { escopoDeClientes } = require('../services/clientesService');
 
 function parseId(value) {
@@ -96,7 +97,9 @@ async function criar(req, res, next) {
             req.usuario.id,
             req.usuario.empresa_id,
             idempotencyKey,
-            escopoDeClientes(req.usuario)
+            escopoDeClientes(req.usuario),
+            // Pix/link de cartão cobrado por outro usuário: só admin e quem gere o financeiro usam na venda de outra pessoa.
+            { podeUsarCobrancaDeOutros: temCapacidade(req.usuario, CAPACIDADES.GERIR_FINANCEIRO) }
         );
 
         return response.success(res, filtrarParaRole(venda, req.usuario), 201);

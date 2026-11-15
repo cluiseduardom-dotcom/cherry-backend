@@ -183,7 +183,7 @@ function criarResolvedorDeLocal(client, { empresa_id, usuario_id }) {
 //    Com ele, esta função não abre, confirma, desfaz nem libera a conexão: quem abriu é quem fecha.
 //  * `precosFixos`: { [produto_id]: preco_venda }. Vale o preço CONGELADO no pedido, não o vigente de hoje (a cliente
 //    pagou aquele valor). Produto sem preço no mapa é recusado como "sem preço definido".
-async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null, somente_clientes_do_usuario, clienteExterno = null, precosFixos = null }) {
+async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null, somente_clientes_do_usuario, clienteExterno = null, precosFixos = null, pode_usar_cobranca_de_outros = false }) {
     validarLimitesDeParcelamento(pagamentos, meses_prazo);
 
     const client = clienteExterno || await db.connect();
@@ -442,7 +442,9 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
             const cobranca = pagamentoInput.cobranca_codigo
                 ? await cobrancasPagamentoRepository.consumirParaVenda({
                     codigo: pagamentoInput.cobranca_codigo, empresa_id, venda_id: venda.id, valor,
-                    forma_pagamento: forma, numero_parcelas: pagamentoInput.numero_parcelas
+                    forma_pagamento: forma, numero_parcelas: pagamentoInput.numero_parcelas,
+                    // A cobrança é de quem a criou: venda do PDV só usa a própria (admin e financeiro podem usar de outros).
+                    usuario_id, pode_usar_de_outros: pode_usar_cobranca_de_outros
                 }, client)
                 : null;
 
