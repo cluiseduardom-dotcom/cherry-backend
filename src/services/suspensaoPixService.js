@@ -24,7 +24,7 @@ async function situacao(empresa_id, { client, hoje = hojeSP(), env = process.env
     const periodos = linhas.map((l) => ({ competencia: l.competencia, vencimento: l.vencimento, saldo: Number(l.saldo) }));
     const ciclo = avaliarCiclo({ periodos, hoje, config });
 
-    return { ativa: true, suspenso: ciclo.suspender, desde: ciclo.suspensao_em };
+    return { ativa: true, suspenso: ciclo.suspender, desde: ciclo.suspensao_em, ciclo };
 }
 
 // Recusa (403) quando a loja está com o Pix suspenso. A mensagem não cita taxa, valor nem motivo: taxa nunca aparece na API

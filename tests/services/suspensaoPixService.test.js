@@ -51,6 +51,9 @@ describe('suspensão do Pix por taxa em atraso', () => {
 
     test('informa desde quando está suspenso', async () => {
         cobrancaTaxaRepository.periodosComSaldo.mockResolvedValue([OUTUBRO()]);
-        expect(await situacao(7, { env: LIGADA, hoje: '2026-12-02' })).toEqual({ ativa: true, suspenso: true, desde: '2026-11-21' });
+        const r = await situacao(7, { env: LIGADA, hoje: '2026-12-02' });
+        expect(r).toMatchObject({ ativa: true, suspenso: true, desde: '2026-11-21' });
+        // devolve também o ciclo: o aviso do sino precisa do valor e das datas
+        expect(r.ciclo).toMatchObject({ saldo_vencido: 25, suspensao_em: '2026-11-21', estagio: 'suspensao_devida' });
     });
 });
