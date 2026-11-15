@@ -101,7 +101,9 @@ afterAll(async () => {
 
 const pagar = (alvo, quem, corpo) => request(app).post('/comissoes/pagamentos').set(auth(alvo, quem)).send(corpo);
 const aPagar = (alvo, quem) => request(app).get('/comissoes/a-pagar').set(auth(alvo, quem));
-const hoje = () => new Date().toISOString().slice(0, 10);
+const { hojeSP } = require('../../src/utils/dataSaoPaulo');
+// Dia de Brasília (o servidor roda em UTC): entre 21h e 23h59 o dia em UTC já é o seguinte e viraria "data futura".
+const hoje = () => hojeSP();
 const pagamento = (vendedor, valor, extra = {}) => ({ vendedor_id: A.u[vendedor], valor_esperado: valor, forma: 'pix', pago_em: hoje(), ...extra });
 const linhaDo = (res, vendedor) => res.body.data.items.find((i) => i.vendedor_id === A.u[vendedor]);
 // Produto custa 100: valor 200 = 2 unidades.

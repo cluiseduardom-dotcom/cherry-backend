@@ -122,7 +122,9 @@ async function registrarConsulta(id, empresa_id) {
 // Consome a cobrança paga numa venda, DENTRO da transação da venda (client dela): trava a linha,
 // confere empresa (pelo filtro do lock), status pago, valor idêntico e que ainda não foi usada.
 // Uma cobrança só entra em uma venda; qualquer divergência derruba a venda inteira (ROLLBACK).
-async function consumirParaVenda({ codigo, empresa_id, venda_id, valor, forma_pagamento, numero_parcelas }, client) {
+// `usuario_id` + `pode_usar_de_outros` (opcionais): quem está vendendo. A cobrança criada por um usuário é DELE: outro vendedor
+// da mesma empresa não a usa (admin e quem gere o financeiro podem). Sem `usuario_id` (fluxo da loja online) a regra não se aplica.
+async function consumirParaVenda({ codigo, empresa_id, venda_id, valor, forma_pagamento, numero_parcelas, usuario_id, pode_usar_de_outros = false }, client) {
     return executarComLock('cobrancas_pagamento', { coluna: 'codigo', valor: codigo }, empresa_id, client, async (cobranca, tx) => {
         if (!cobranca) {
             throw new AppError('Cobrança não encontrada', 404);
@@ -133,6 +135,10 @@ async function consumirParaVenda({ codigo, empresa_id, venda_id, valor, forma_pa
         // Pix gerado para receber fiado/parcela tem destino próprio: nunca vira pagamento de venda.
         if (cobranca.destino_tipo) {
             throw new AppError(`Esta cobrança (${rotulo}) é de recebimento de fiado ou de parcela e não vale como pagamento de venda`, 409);
+        }
+
+        if (usuario_id !== undefined && usuario_id !== null && cobranca.criado_por !== null && Number(cobranca.criado_por) !== Number(usuario_id) && !pode_usar_de_outros) {
+            throw new AppError(`Esta cobrança (${rotulo}) foi criada por outro usuário e só ele (ou um administrador) pode usá-la na venda`, 403);
         }
 
         if (cobranca.venda_id !== null) {

@@ -4,6 +4,8 @@ const mercadoPagoService = require('../services/mercadoPagoService');
 const cobrancasService = require('../services/cobrancasPagamentoService');
 const destinoCobranca = require('../services/destinoCobrancaService');
 const { obterConfigMercadoPago } = require('../config/mercadoPagoConfig');
+const { temCapacidade } = require('../services/permissoesService');
+const { CAPACIDADES } = require('../constants/cargos');
 const { assinaturaValida } = require('../utils/mercadoPagoAssinatura');
 const { criarPixSchema, criarLinkCartaoSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema, aDevolverSchema } = require('../validations/mercadoPagoValidation');
 
@@ -185,7 +187,10 @@ async function consultarCobranca(req, res, next) {
 
         res.set('Cache-Control', 'no-store');
 
-        return response.success(res, await cobrancasService.consultar(req.usuario.empresa_id, codigo.data));
+        // Cobrança criada por um usuário é dele: outro vendedor da empresa recebe 404 (não revela que existe).
+        const dono = temCapacidade(req.usuario, CAPACIDADES.GERIR_FINANCEIRO) ? undefined : req.usuario.id;
+
+        return response.success(res, await cobrancasService.consultar(req.usuario.empresa_id, codigo.data, { apenasDoUsuario: dono }));
     } catch (error) {
         next(error);
     }

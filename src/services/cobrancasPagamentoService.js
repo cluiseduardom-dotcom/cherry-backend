@@ -344,10 +344,15 @@ async function aposSincronizar(cobranca) {
     return lojaPedidosRepository.converterPedidoPago(cobranca);
 }
 
-async function consultar(empresa_id, codigo) {
+async function consultar(empresa_id, codigo, { apenasDoUsuario } = {}) {
     let cobranca = await cobrancasRepository.buscarPorCodigo(codigo, empresa_id);
 
     if (!cobranca) {
+        throw new AppError('Cobrança não encontrada', 404);
+    }
+
+    // `apenasDoUsuario`: cobrança criada por outro usuário não é visível (cobrança da loja online, sem dono, segue visível).
+    if (apenasDoUsuario !== undefined && cobranca.criado_por !== null && Number(cobranca.criado_por) !== Number(apenasDoUsuario)) {
         throw new AppError('Cobrança não encontrada', 404);
     }
 

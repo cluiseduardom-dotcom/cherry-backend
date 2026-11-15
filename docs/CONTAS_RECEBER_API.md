@@ -8,6 +8,9 @@ Base: migrations `009`, `021` (parcelas e recebimentos) e `110` (idempotência).
 - A conta fica **`pendente`** até o restante zerar; então vira **`recebido`**. A parcela passa por `pendente` → `parcial` → `recebida`. O pagamento da venda acompanha (`pendente`/`parcial`/`pago`), e a **comissão libera na proporção do que já foi pago**.
 - Conta **legada** (venda a prazo anterior às parcelas, sem `parcela_id`): só pode ser recebida **por inteiro**.
 
+## Crediário: teto de 6 meses (decisão do PO, 15/11/2026)
+A parcela N vence em **N × `meses_prazo`** meses a partir da venda. O **último vencimento** (parcelas × `meses_prazo`) fica a no máximo **6 meses**: `6x de 1 mês`, `3x de 2`, `2x de 3` e `1x em 6` cabem; `12x de 1 mês` e `4x de 2` não (400, e a tela já barra antes). `meses_prazo` vai de 1 a 6 (venda a prazo legada também). Não vale para cartão de crédito (até 24x).
+
 ## Rotas
 | Método | Rota | Corpo | Resposta |
 |---|---|---|---|
