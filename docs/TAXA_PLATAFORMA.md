@@ -100,7 +100,9 @@ ajuste com sinal). `a_receber` = saldo, nunca abaixo de zero. Retido maior que o
 | `GET /painel/taxas/cobranca?competencia=AAAA-MM[&empresa_id][&status]` | por empresa: status, vencimento, devido, retido, pagamentos, perdões, ajustes, estornos, saldo. Mês aberto = valores vivos |
 | `POST /painel/taxas/periodos/fechar` `{ competencia, empresa_id? }` | congela devido e retido do mês (só mês já terminado, horário de Brasília); vencimento dia 05 do mês seguinte. Sem `empresa_id`: todas com taxa no mês. Repetir é seguro |
 | `GET /painel/taxas/periodos/:id` | período e lançamentos (com responsável e data) |
-| `POST /painel/taxas/periodos/:id/pagamentos` `{ valor, data_pagamento, forma_pagamento, chave_idempotencia? }` | só período fechado; parcial aceito; acima do saldo → 409; forma `pix`/`transferencia`/`boleto` |
+| `POST /painel/taxas/periodos/:id/pagamentos` `{ valor, data_pagamento, forma_pagamento, comprovante_chave?, chave_idempotencia? }` | só período fechado; parcial aceito; acima do saldo → 409; forma `pix`/`transferencia`/`boleto` |
+| `POST /painel/taxas/periodos/:id/comprovantes` (multipart, campo `arquivo`) | envia o comprovante (PDF/JPEG/PNG pelo conteúdo, até 5 MB) ao bucket **privado**; devolve `comprovante_chave` para usar no pagamento. Só período fechado |
+| `GET /painel/taxas/lancamentos/:id/comprovante` | baixa o comprovante (só operador, sem URL pública, `no-store`); cada download grava `taxa_comprovante_baixado` |
 | `POST /painel/taxas/periodos/:id/perdoes` `{ valor, justificativa, chave_idempotencia? }` | idem, com justificativa |
 | `POST /painel/empresas/:id/taxas/ajustes` `{ valor (±), justificativa, venda_id?, chave_idempotencia? }` | sempre no período aberto do mês corrente (fechado não muda) |
 
@@ -112,3 +114,16 @@ no Mercado Pago vira lançamento `estorno_venda` no período aberto do mês corr
 `sistema: cancelamento da venda #<id> por <login>`). Mês ainda aberto: nada a lançar, o fechamento já não soma a taxa
 estornada. A linha do período é o ponto de serialização entre fechamento e cancelamento (teste de corrida em
 `tests/routes/painelCobrancaTaxa.integration.test.js`).
+
+### Comprovantes (bucket privado)
+Separado das fotos (que são públicas). Sem estas variáveis o envio responde **412** e o pagamento é registrado sem anexo.
+
+| Variável | Valor |
+|---|---|
+| `R2_ACCOUNT_ID` | a mesma conta das fotos |
+| `R2_COMPROVANTES_BUCKET` | bucket **sem acesso público** (sem r2.dev nem domínio público) |
+| `R2_COMPROVANTES_ACCESS_KEY_ID` / `R2_COMPROVANTES_SECRET_ACCESS_KEY` | token R2 **restrito a este bucket** (Object Read & Write); nunca o token das fotos |
+
+A chave é gerada pelo backend (`taxas/<empresa>/<período>/<uuid>.<ext>`); o pagamento só aceita comprovante do próprio
+período e que exista no bucket. Como o lançamento é imutável, o comprovante é enviado antes do pagamento. Arquivo enviado
+e nunca usado em pagamento fica órfão no bucket (sem dado sensível exposto; limpeza manual se necessário).

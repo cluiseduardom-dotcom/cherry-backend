@@ -2,6 +2,7 @@ const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const painelRepository = require('./painelRepository');
 const { executarComLock } = require('./shared/transacoes');
+const { chaveDoPeriodo } = require('../utils/comprovanteTaxa');
 const { INICIO_SQL, FIM_SQL, RETIDO_MP_DA_VENDA_SQL } = require('./plataformaRepository');
 
 // Cobrança da taxa da plataforma (Painel GiroNex): fechamento do período e lançamentos.
@@ -187,12 +188,12 @@ async function inserirLancamento(client, l) {
     const { rows } = await client.query(
         `INSERT INTO lancamentos_taxa
             (empresa_id, periodo_id, tipo, valor, venda_id, data_pagamento, forma_pagamento,
-             justificativa, responsavel, operador_id, chave_idempotencia)
-         VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, $9, $10, $11)
+             justificativa, responsavel, operador_id, chave_idempotencia, comprovante_chave)
+         VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, $9, $10, $11, $12)
          RETURNING id`,
         [l.empresa_id, l.periodo_id, l.tipo, l.valor, l.venda_id ?? null, l.data_pagamento ?? null,
             l.forma_pagamento ?? null, l.justificativa ?? null, l.responsavel, l.operador_id ?? null,
-            l.chave_idempotencia ?? null]
+            l.chave_idempotencia ?? null, l.comprovante_chave ?? null]
     );
 
     return rows[0].id;
@@ -219,7 +220,7 @@ const formatarReais = (valor) => num(valor).toFixed(2).replace('.', ',');
 
 // Pagamento (T4) ou perdão (T5): só em período fechado, nunca acima do saldo.
 async function lancarEmPeriodoFechado({ periodo_id, tipo, valor, data_pagamento, forma_pagamento, justificativa,
-    chave_idempotencia, responsavel, operador_id, ip }) {
+    comprovante_chave, chave_idempotencia, responsavel, operador_id, ip }) {
     const { rows } = await db.query('SELECT empresa_id FROM periodos_taxa WHERE id = $1', [periodo_id]);
     if (!rows.length) throw new AppError('Período não encontrado', 404);
 
@@ -241,6 +242,11 @@ async function lancarEmPeriodoFechado({ periodo_id, tipo, valor, data_pagamento,
             throw new AppError('O período ainda está aberto: feche o período antes de registrar pagamento ou perdão.', 409);
         }
 
+        // Comprovante só do próprio período e empresa (a chave é gerada pelo backend no envio do arquivo).
+        if (comprovante_chave && !chaveDoPeriodo(comprovante_chave, { empresa_id: periodo.empresa_id, periodo_id })) {
+            throw new AppError('Comprovante não pertence a este período.', 400);
+        }
+
         const saldo = num(await saldoDoPeriodo(client, periodo.id));
 
         if (saldo <= 0) throw new AppError('Este período não tem saldo a receber.', 409);
@@ -250,7 +256,7 @@ async function lancarEmPeriodoFechado({ periodo_id, tipo, valor, data_pagamento,
 
         const lancamento_id = await inserirLancamento(client, {
             empresa_id: periodo.empresa_id, periodo_id, tipo, valor: valorLancado, data_pagamento, forma_pagamento,
-            justificativa, responsavel, operador_id, chave_idempotencia
+            justificativa, comprovante_chave, responsavel, operador_id, chave_idempotencia
         });
 
         const novo = await atualizarStatusPeloSaldo(client, periodo, 'parcialmente_pago');
@@ -261,7 +267,7 @@ async function lancarEmPeriodoFechado({ periodo_id, tipo, valor, data_pagamento,
             alvo_empresa_id: periodo.empresa_id,
             detalhe: {
                 periodo_id, lancamento_id, valor,
-                ...(tipo === 'pagamento' ? { data_pagamento, forma_pagamento } : { justificativa }),
+                ...(tipo === 'pagamento' ? { data_pagamento, forma_pagamento, com_comprovante: Boolean(comprovante_chave) } : { justificativa }),
                 saldo_anterior: saldo, saldo: num(novo.saldo), status: novo.status, responsavel
             },
             ip
@@ -482,7 +488,7 @@ async function detalhePeriodo(periodo_id, client = db) {
 
     const { rows: lancamentos } = await client.query(
         `SELECT id, tipo, valor, venda_id, to_char(data_pagamento, 'YYYY-MM-DD') AS data_pagamento, forma_pagamento,
-                justificativa, responsavel, criado_em
+                justificativa, responsavel, criado_em, (comprovante_chave IS NOT NULL) AS tem_comprovante
          FROM lancamentos_taxa WHERE periodo_id = $1 ORDER BY id`,
         [periodo_id]
     );
@@ -522,7 +528,33 @@ async function detalhePeriodo(periodo_id, client = db) {
     };
 }
 
+// Período que vai receber um comprovante: precisa existir e estar fechado (pagamento só em período fechado).
+async function periodoParaComprovante(periodo_id) {
+    const { rows } = await db.query('SELECT id, empresa_id, status FROM periodos_taxa WHERE id = $1', [periodo_id]);
+    const periodo = rows[0];
+
+    if (!periodo) throw new AppError('Período não encontrado', 404);
+    if (periodo.status === 'aberto') throw new AppError('O período ainda está aberto: feche o período antes do pagamento.', 409);
+
+    return periodo;
+}
+
+// Comprovante de um lançamento (para o download pelo operador).
+async function comprovanteDoLancamento(lancamento_id) {
+    const { rows } = await db.query(
+        'SELECT id, empresa_id, periodo_id, comprovante_chave FROM lancamentos_taxa WHERE id = $1',
+        [lancamento_id]
+    );
+    const lancamento = rows[0];
+
+    if (!lancamento || !lancamento.comprovante_chave) throw new AppError('Comprovante não encontrado', 404);
+
+    return lancamento;
+}
+
 module.exports = {
+    periodoParaComprovante,
+    comprovanteDoLancamento,
     competenciaCorrente,
     fecharCompetencia,
     lancarEmPeriodoFechado,
