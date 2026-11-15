@@ -60,9 +60,18 @@ Filtros: empresa, competência, status. Cartões: devido, retido no MP, a recebe
 - Bloqueio de Pix da empresa: estado com motivo (suspensao_taxa | pix_manual_sinalizado), data e responsável da liberação; o backend de tenant consulta esse estado e recusa o Pix (a validação é no backend, nunca só no frontend).
 - NUMERIC com 2 casas para valores; NUMERIC(7,4) para percentual.
 
-> Implementado na migration `114_periodos_lancamentos_taxa.sql` (etapa 1). Convenção de sinal: `valor` é o
+> Implementado nas migrations `114_periodos_lancamentos_taxa.sql` (etapa 1) e `115_lancamentos_taxa_forma_comprovante.sql`. Convenção de sinal: `valor` é o
 > efeito no saldo devido pela empresa; saldo do período = `total_calculado − total_retido_mp + Σ valor`.
 > Pagamento, perdão e estorno de venda são negativos; ajuste é ± (nunca zero).
+>
+> Decisões do PO em 15/11/2026, complementares à v3:
+> - Retido no MP maior que o calculado: **só sinaliza** (divergência T6); não vira crédito automático.
+>   Correção, se houver, é ajuste ou perdão manual com justificativa.
+> - Forma de pagamento em **lista fechada**: `pix`, `transferencia`, `boleto` (migration 115).
+> - Comprovante armazenado no **S3** (`comprovante_chave` guarda a chave do objeto) (migration 115).
+> - Pagamento/perdão **só em período fechado** (sem pagamento antecipado em período aberto).
+> - Pendente: se o Mercado Pago devolve o `application_fee` quando o Pix é devolvido (define o estorno de
+>   venda Pix MP após o fechamento).
 
 ## 8. Testes obrigatórios
 - Pix MP e manual entram; dinheiro e cartão não.
