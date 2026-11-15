@@ -85,3 +85,30 @@ Histórico de `empresa_planos` e `condicoes_comerciais_empresa` é protegido por
 Só pode haver uma política ativa por plano (e uma condição ativa por empresa) em cada período (constraint de exclusão).
 
 Depois de alterar, conferir na primeira venda que `taxas_venda.percentual` gravou o valor novo.
+
+## Cobrança: fechamento e lançamentos (Painel GiroNex)
+SPEC: `docs/SPEC_Taxas_a_Receber_Painel_GiroNex.md`. Tabelas `periodos_taxa` e `lancamentos_taxa` (migrations 114 e 115).
+Só operador do painel; o responsável gravado é sempre o da sessão (`painel:<email> (#id)`), e cada ação grava
+`plataforma_eventos` na mesma transação.
+
+**Saldo do período** = devido − retido no Mercado Pago + Σ lançamentos (pagamento, perdão e estorno entram negativos;
+ajuste com sinal). `a_receber` = saldo, nunca abaixo de zero. Retido maior que o devido só é **sinalizado**
+(`retido_maior_que_devido`), nunca vira crédito automático.
+
+| Rota | O que faz |
+|---|---|
+| `GET /painel/taxas/cobranca?competencia=AAAA-MM[&empresa_id][&status]` | por empresa: status, vencimento, devido, retido, pagamentos, perdões, ajustes, estornos, saldo. Mês aberto = valores vivos |
+| `POST /painel/taxas/periodos/fechar` `{ competencia, empresa_id? }` | congela devido e retido do mês (só mês já terminado, horário de Brasília); vencimento dia 05 do mês seguinte. Sem `empresa_id`: todas com taxa no mês. Repetir é seguro |
+| `GET /painel/taxas/periodos/:id` | período e lançamentos (com responsável e data) |
+| `POST /painel/taxas/periodos/:id/pagamentos` `{ valor, data_pagamento, forma_pagamento, chave_idempotencia? }` | só período fechado; parcial aceito; acima do saldo → 409; forma `pix`/`transferencia`/`boleto` |
+| `POST /painel/taxas/periodos/:id/perdoes` `{ valor, justificativa, chave_idempotencia? }` | idem, com justificativa |
+| `POST /painel/empresas/:id/taxas/ajustes` `{ valor (±), justificativa, venda_id?, chave_idempotencia? }` | sempre no período aberto do mês corrente (fechado não muda) |
+
+Status: `aberto` → `fechado` (com saldo) → `parcialmente_pago` → `pago` (saldo zero; um mês todo retido no MP já fecha pago).
+Atraso é calculado pela data (etapa 5), não é status.
+
+**Venda cancelada depois do fechamento:** na própria transação do cancelamento, a parte da taxa que **não** foi retida
+no Mercado Pago vira lançamento `estorno_venda` no período aberto do mês corrente (responsável
+`sistema: cancelamento da venda #<id> por <login>`). Mês ainda aberto: nada a lançar, o fechamento já não soma a taxa
+estornada. A linha do período é o ponto de serialização entre fechamento e cancelamento (teste de corrida em
+`tests/routes/painelCobrancaTaxa.integration.test.js`).

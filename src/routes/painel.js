@@ -6,6 +6,7 @@ const comercial = require('../controllers/plataformaComercialController');
 const identidade = require('../controllers/plataformaIdentidadeController');
 const funcionalidades = require('../controllers/funcionalidadesPainelController');
 const limiteUsuarios = require('../controllers/limiteUsuariosPainelController');
+const cobrancaTaxa = require('../controllers/cobrancaTaxaPainelController');
 const requirePainel = require('../middlewares/requirePainel');
 const registrar = require('../middlewares/registrarEventoPainel');
 const { criarLoginRateLimiter, criarLimiterPorIp } = require('../middlewares/loginRateLimiter');
@@ -30,6 +31,14 @@ router.post('/auth/senha', requirePainel({ permitirTemporaria: true }), painel.t
 const op = requirePainel();
 
 router.get('/taxas', op, plataforma.taxasPorEmpresa);
+// Taxas a receber: fechamento do período e lançamentos (pagamento, perdão, ajuste). A trilha é gravada
+// pelo repository, na mesma transação, com o detalhe (sem registrar()).
+router.get('/taxas/cobranca', op, cobrancaTaxa.resumo);
+router.post('/taxas/periodos/fechar', op, cobrancaTaxa.fechar);
+router.get('/taxas/periodos/:id', op, cobrancaTaxa.detalhe);
+router.post('/taxas/periodos/:id/pagamentos', op, cobrancaTaxa.pagamento);
+router.post('/taxas/periodos/:id/perdoes', op, cobrancaTaxa.perdao);
+router.post('/empresas/:id/taxas/ajustes', op, cobrancaTaxa.ajuste);
 router.get('/planos', op, comercial.listarPlanos);
 router.get('/empresas/comercial', op, comercial.listarEmpresas);
 router.get('/empresas/identidade', op, identidade.listar);

@@ -67,7 +67,9 @@ tela de identidade.
 
 ## Rotas
 
-`/painel/auth/{login,2fa/iniciar,2fa/confirmar,me,renovar,senha}`, `GET /painel/taxas`, `GET /painel/planos`,
+`/painel/auth/{login,2fa/iniciar,2fa/confirmar,me,renovar,senha}`, `GET /painel/taxas`, `GET /painel/taxas/cobranca`,
+`POST /painel/taxas/periodos/fechar`, `GET /painel/taxas/periodos/:id`, `POST /painel/taxas/periodos/:id/{pagamentos,perdoes}`,
+`POST /painel/empresas/:id/taxas/ajustes`, `GET /painel/planos`,
 `GET /painel/empresas/comercial`, `GET /painel/empresas/identidade`, `GET /painel/empresas/:id/{comercial,identidade}/historico`,
 `POST /painel/empresas`, `POST /painel/empresas/:id/{plano,condicao,condicao/encerrar}`,
 `PATCH /painel/empresas/:id/identidade`, `GET /painel/eventos`,

@@ -7,6 +7,7 @@ const pagamentosVendaRepository = require('./pagamentosVendaRepository');
 const parcelasPagamentoRepository = require('./parcelasPagamentoRepository');
 const estornosPagamentoRepository = require('./estornosPagamentoRepository');
 const taxasPlataformaRepository = require('./taxasPlataformaRepository');
+const cobrancaTaxaRepository = require('./cobrancaTaxaRepository');
 const cobrancasPagamentoRepository = require('./cobrancasPagamentoRepository');
 const comissoesRepository = require('./comissoesRepository');
 const cancelamentosRepository = require('./cancelamentosRepository');
@@ -705,8 +706,15 @@ async function cancelar(id, usuario_id, empresa_id, opcoes) {
         await contasReceberRepository.cancelarPorVendaId(id, empresa_id, client);
 
         // Taxa interna da plataforma: estornada, nunca apagada. Venda histórica
-        // sem taxa é no-op.
-        await taxasPlataformaRepository.estornarPorVendaId(id, empresa_id, client);
+        // sem taxa é no-op. Se o mês da venda já foi fechado na cobrança da
+        // plataforma, o estorno vira lançamento no período aberto (T2/T3).
+        const taxasEstornadas = await taxasPlataformaRepository.estornarPorVendaId(id, empresa_id, client);
+
+        if (taxasEstornadas > 0) {
+            await cobrancaTaxaRepository.estornarAposFechamento(client, {
+                venda_id: id, empresa_id, responsavel: `sistema: cancelamento da venda #${id} por ${login}`
+            });
+        }
 
         // Comissão do vendedor: estornada, nunca apagada. Venda sem comissão é no-op.
         await comissoesRepository.estornarPorVendaId(id, empresa_id, client);
