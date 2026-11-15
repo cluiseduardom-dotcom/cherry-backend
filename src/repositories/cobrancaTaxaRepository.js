@@ -28,6 +28,22 @@ const paraData = (competencia) => `${competencia}-01`;
 
 const num = (valor) => Number(valor ?? 0);
 
+// Conciliação com o Mercado Pago (T6), por linha de taxas_venda (alias `tv`): o que o MP DEVERIA ter retido.
+// Cada cobrança Pix paga reteve application_fee = valor × percentual, arredondado ao centavo (metade para cima,
+// como calcularTaxaPlataformaCentavos; ROUND de NUMERIC no PostgreSQL arredonda metade para longe de zero).
+const RETIDO_ESPERADO_DA_VENDA_SQL = `COALESCE((
+        SELECT SUM(ROUND(cp.valor * tv.percentual / 100, 2))
+        FROM cobrancas_pagamento cp
+        WHERE cp.venda_id = tv.venda_id AND cp.empresa_id = tv.empresa_id AND cp.status = 'pago' AND cp.metodo = 'pix'
+    ), 0)`;
+
+// Parte da venda paga em Pix por origem: pelo Mercado Pago (gateway) ou lançada manualmente.
+const PIX_DA_VENDA_SQL = (origemMp) => `COALESCE((
+        SELECT SUM(pv.valor) FROM pagamentos_venda pv
+        WHERE pv.venda_id = tv.venda_id AND pv.empresa_id = tv.empresa_id AND pv.forma_pagamento = 'pix'
+          AND pv.origem ${origemMp ? "= 'gateway'" : "<> 'gateway'"}
+    ), 0)`;
+
 const COLUNAS_PERIODO = `p.id, p.empresa_id, to_char(p.competencia, 'YYYY-MM') AS competencia, p.status,
        p.total_calculado, p.total_retido_mp, to_char(p.vencimento, 'YYYY-MM-DD') AS vencimento,
        p.fechado_em, p.fechado_por`;
@@ -396,7 +412,11 @@ function montarLinha(r) {
         saldo,
         a_receber: Math.max(0, saldo),
         // Retido no MP maior que o calculado: só sinaliza (decisão do PO), nunca vira crédito automático.
-        retido_maior_que_devido: num(r.retido_mp) > num(r.devido)
+        retido_maior_que_devido: num(r.retido_mp) > num(r.devido),
+        // Conciliação (T6): vendas apuradas do mês em que o retido no MP difere do esperado.
+        qtd_divergencias: num(r.qtd_divergencias),
+        pix_mp: num(r.pix_mp),
+        pix_manual: num(r.pix_manual)
     };
 }
 
@@ -408,6 +428,89 @@ const SOMA_LANCAMENTOS_SQL = `
            COALESCE(SUM(l.valor) FILTER (WHERE l.tipo = 'ajuste'), 0) AS ajustes,
            COALESCE(SUM(l.valor) FILTER (WHERE l.tipo = 'estorno_venda'), 0) AS estornos
     FROM lancamentos_taxa l GROUP BY l.periodo_id`;
+
+// Detalhe por venda de uma empresa na competência, com a conciliação do retido no Mercado Pago (T6).
+// Só o necessário (SPEC §6): nada de cliente, produto, vendedor ou total da venda. Vendas sem Pix (taxa zero e
+// nada retido) ficam de fora. Estornadas aparecem (situação 'estornada'), mas não entram nos totais.
+async function vendasDaCompetencia({ competencia, empresa_id, somente_divergentes = false, limit = 100, offset = 0 }) {
+    await exigirEmpresa(db, empresa_id);
+
+    const linhasSql = (soApuradas) => `
+             SELECT tv.venda_id, v.data, tv.status AS status_taxa, tv.percentual, tv.base_calculo, tv.valor AS taxa,
+                    ${PIX_DA_VENDA_SQL(true)} AS pix_mp,
+                    ${PIX_DA_VENDA_SQL(false)} AS pix_manual,
+                    ${RETIDO_MP_DA_VENDA_SQL} AS retido,
+                    ${RETIDO_ESPERADO_DA_VENDA_SQL} AS retido_esperado
+             FROM taxas_venda tv
+             JOIN vendas v ON v.id = tv.venda_id AND v.empresa_id = tv.empresa_id
+             WHERE tv.empresa_id = $2 ${soApuradas ? "AND tv.status = 'apurada'" : ''}
+               AND v.data >= ${INICIO_SQL} AND v.data < ${FIM_SQL}`;
+
+    const { rows } = await db.query(
+        `WITH linhas AS (${linhasSql(false)}),
+         r AS (
+             SELECT l.*, l.retido - l.retido_esperado AS divergencia
+             FROM linhas l
+             WHERE l.base_calculo > 0 OR l.retido > 0
+         )
+         SELECT r.*, COUNT(*) OVER () AS total_linhas
+         FROM r
+         WHERE NOT $3::boolean OR (r.divergencia <> 0 AND r.status_taxa = 'apurada')
+         ORDER BY r.data, r.venda_id
+         LIMIT $4 OFFSET $5`,
+        [paraData(competencia), empresa_id, somente_divergentes, limit, offset]
+    );
+
+    const { rows: [t] } = await db.query(
+        `WITH linhas AS (${linhasSql(true)})
+         SELECT COUNT(*) FILTER (WHERE base_calculo > 0 OR retido > 0)::int AS qtd_vendas,
+                COALESCE(SUM(base_calculo), 0) AS base, COALESCE(SUM(pix_mp), 0) AS pix_mp,
+                COALESCE(SUM(pix_manual), 0) AS pix_manual, COALESCE(SUM(taxa), 0) AS taxa,
+                COALESCE(SUM(retido), 0) AS retido, COALESCE(SUM(retido_esperado), 0) AS retido_esperado,
+                COUNT(*) FILTER (WHERE retido <> retido_esperado)::int AS qtd_divergentes
+         FROM linhas`,
+        [paraData(competencia), empresa_id]
+    );
+
+    const items = rows.map((r) => {
+        const pixMp = num(r.pix_mp);
+        const pixManual = num(r.pix_manual);
+        const divergencia = num(r.divergencia);
+
+        return {
+            venda_id: r.venda_id,
+            data: r.data,
+            valor_pix: num(r.base_calculo),
+            pix_mp: pixMp,
+            pix_manual: pixManual,
+            origem: pixMp > 0 && pixManual > 0 ? 'misto' : pixMp > 0 ? 'mp' : 'manual',
+            percentual: num(r.percentual),
+            taxa: num(r.taxa),
+            retido: num(r.retido),
+            retido_esperado: num(r.retido_esperado),
+            divergencia,
+            situacao: r.status_taxa === 'estornada' ? 'estornada' : divergencia !== 0 ? 'divergente' : 'ok'
+        };
+    });
+
+    return {
+        competencia,
+        empresa_id,
+        items,
+        total: rows.length ? Number(rows[0].total_linhas) : 0,
+        totais: {
+            qtd_vendas: t.qtd_vendas,
+            valor_pix: num(t.base),
+            pix_mp: num(t.pix_mp),
+            pix_manual: num(t.pix_manual),
+            taxa: num(t.taxa),
+            retido: num(t.retido),
+            retido_esperado: num(t.retido_esperado),
+            divergencia: Math.round((num(t.retido) - num(t.retido_esperado)) * 100) / 100,
+            qtd_divergentes: t.qtd_divergentes
+        }
+    };
+}
 
 // Uma competência, por empresa: período (se existir) e valores. Aberto/sem período = valores vivos.
 async function resumoCompetencia({ competencia, empresa_id, status }) {
@@ -426,7 +529,9 @@ async function resumoCompetencia({ competencia, empresa_id, status }) {
 
     const { rows } = await db.query(
         `WITH vivos AS (
-             SELECT tv.empresa_id, SUM(tv.valor) AS calculado, SUM(${RETIDO_MP_DA_VENDA_SQL}) AS retido, COUNT(*) AS qtd
+             SELECT tv.empresa_id, SUM(tv.valor) AS calculado, SUM(${RETIDO_MP_DA_VENDA_SQL}) AS retido, COUNT(*) AS qtd,
+                    COUNT(*) FILTER (WHERE ${RETIDO_MP_DA_VENDA_SQL} <> ${RETIDO_ESPERADO_DA_VENDA_SQL}) AS qtd_divergencias,
+                    SUM(${PIX_DA_VENDA_SQL(true)}) AS pix_mp, SUM(${PIX_DA_VENDA_SQL(false)}) AS pix_manual
              FROM taxas_venda tv
              JOIN vendas v ON v.id = tv.venda_id AND v.empresa_id = tv.empresa_id
              WHERE tv.status = 'apurada' AND v.data >= ${INICIO_SQL} AND v.data < ${FIM_SQL}
@@ -437,7 +542,8 @@ async function resumoCompetencia({ competencia, empresa_id, status }) {
                     p.id AS periodo_id, to_char($1::date, 'YYYY-MM') AS competencia,
                     COALESCE(p.status, 'aberto') AS status,
                     to_char(p.vencimento, 'YYYY-MM-DD') AS vencimento, p.fechado_em,
-                    COALESCE(vv.qtd, 0) AS qtd_vendas,
+                    COALESCE(vv.qtd, 0) AS qtd_vendas, COALESCE(vv.qtd_divergencias, 0) AS qtd_divergencias,
+                    COALESCE(vv.pix_mp, 0) AS pix_mp, COALESCE(vv.pix_manual, 0) AS pix_manual,
                     CASE WHEN COALESCE(p.status, 'aberto') = 'aberto' THEN COALESCE(vv.calculado, 0) ELSE p.total_calculado END AS devido,
                     CASE WHEN COALESCE(p.status, 'aberto') = 'aberto' THEN COALESCE(vv.retido, 0) ELSE p.total_retido_mp END AS retido_mp,
                     COALESCE(l.pagamentos, 0) AS pagamentos, COALESCE(l.perdoes, 0) AS perdoes,
@@ -553,6 +659,7 @@ async function comprovanteDoLancamento(lancamento_id) {
 }
 
 module.exports = {
+    vendasDaCompetencia,
     periodoParaComprovante,
     comprovanteDoLancamento,
     competenciaCorrente,
