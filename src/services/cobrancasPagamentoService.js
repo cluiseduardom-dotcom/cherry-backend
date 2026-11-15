@@ -9,6 +9,7 @@ const devolucoesRepository = require('../repositories/cobrancaDevolucoesReposito
 const taxasPlataformaRepository = require('../repositories/taxasPlataformaRepository');
 const empresaRepository = require('../repositories/empresaRepository');
 const lojaPedidosRepository = require('../repositories/lojaPedidosRepository');
+const destinoCobranca = require('./destinoCobrancaService');
 const db = require('../config/db');
 const { reaisParaCentavos, calcularTaxaPlataformaCentavos, centavosParaReais } = require('../utils/taxaPlataforma');
 
@@ -84,6 +85,11 @@ function paraResposta(cobranca) {
         expirada: Boolean(expirada)
     };
 
+    // Pix de recebimento (fiado/parcela): o painel só precisa saber se já foi lançado. Nunca devolve ids internos do provedor.
+    if (cobranca.destino_tipo) {
+        resposta.destino = { tipo: cobranca.destino_tipo, aplicado: Boolean(cobranca.destino_aplicado_em), erro: cobranca.destino_erro ?? null };
+    }
+
     if (cobranca.metodo === 'cartao_link') {
         // Cartão: o PDV recebe o link e, depois de pago, o tipo e as parcelas lidos do Mercado Pago.
         return {
@@ -136,7 +142,8 @@ async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }, op
         empresa_id,
         valor: centavosParaReais(valorCentavos),
         taxa_plataforma: centavosParaReais(taxaCentavos),
-        criado_por: usuario_id ?? null
+        criado_por: usuario_id ?? null,
+        destino: opcoes.destino ?? null
     });
 
     const expiraEm = new Date(Date.now() + VALIDADE_PIX_MS);
@@ -329,6 +336,9 @@ async function sincronizar(cobrancaInicial) {
 // repetido ou consulta repetida não vende de novo). Cobrança do PDV não tem pedido e passa direto. Só roda para
 // cobrança paga e ainda sem venda; falha sobe para quem chamou (o webhook responde 500 e o Mercado Pago repete).
 async function aposSincronizar(cobranca) {
+    // Pix de recebimento (fiado/parcela): lança o pagamento. Devolve a linha atualizada (ou a mesma, se não houve mudança).
+    if (cobranca?.destino_tipo) return (await destinoCobranca.aplicarSePago(cobranca)) ?? cobranca;
+
     if (cobranca?.status !== 'pago' || cobranca.venda_id) return null;
 
     return lojaPedidosRepository.converterPedidoPago(cobranca);
@@ -352,6 +362,18 @@ async function consultar(empresa_id, codigo) {
             // Leitura não falha por instabilidade do provedor: devolve o último estado conhecido.
             console.error(`Mercado Pago: falha ao consultar a cobrança ${cobranca.codigo} (${error.message})`);
         }
+    }
+
+    // Pix de recebimento já pago e ainda não lançado (a aplicação falhou por instabilidade, ou acabou de ser feita acima):
+    // tenta de novo (idempotente) e devolve o estado gravado, com o resultado da aplicação.
+    if (cobranca.destino_tipo && cobranca.status === 'pago') {
+        try {
+            await destinoCobranca.aplicarSePago(cobranca);
+        } catch (error) {
+            console.error(`Mercado Pago: falha ao aplicar a cobrança ${cobranca.codigo} no destino (${error.message})`);
+        }
+
+        cobranca = await cobrancasRepository.buscarPorCodigo(codigo, empresa_id) ?? cobranca;
     }
 
     return paraResposta(cobranca);

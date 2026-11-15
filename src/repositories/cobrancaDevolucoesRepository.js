@@ -39,6 +39,10 @@ async function reservar({ empresa_id, codigo, motivo, solicitado_por }) {
             throw new AppError('Só é possível devolver um Pix que foi pago.', 409);
         }
 
+        if (cobranca.destino_aplicado_em) {
+            throw new AppError('Este Pix já quitou um fiado ou uma parcela e não pode ser devolvido por aqui.', 409);
+        }
+
         if (cobranca.venda_id !== null) {
             const { rows } = await client.query(
                 'SELECT status FROM vendas WHERE id = $1 AND empresa_id = $2',
@@ -100,6 +104,7 @@ async function marcarFalhou({ id, empresa_id, erro }) {
 async function listarADevolver({ empresa_id, limit = LIMITE_PADRAO, offset = 0, metodo = 'pix' }) {
     const filtro = `c.empresa_id = $1 AND c.metodo = $2 AND c.status = 'pago'
                     AND (c.venda_id IS NULL OR v.status = 'cancelada')
+                    AND c.destino_aplicado_em IS NULL
                     AND NOT EXISTS (
                         SELECT 1 FROM cobranca_devolucoes d
                          WHERE d.cobranca_id = c.id AND d.empresa_id = c.empresa_id AND d.status IN ('solicitada', 'concluida')

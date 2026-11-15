@@ -2,6 +2,7 @@ const AppError = require('../errors/AppError');
 const response = require('../utils/response');
 const mercadoPagoService = require('../services/mercadoPagoService');
 const cobrancasService = require('../services/cobrancasPagamentoService');
+const destinoCobranca = require('../services/destinoCobrancaService');
 const { obterConfigMercadoPago } = require('../config/mercadoPagoConfig');
 const { assinaturaValida } = require('../utils/mercadoPagoAssinatura');
 const { criarPixSchema, criarLinkCartaoSchema, codigoCobrancaSchema, devolucaoSchema, paginacaoDevolucoesSchema, aDevolverSchema } = require('../validations/mercadoPagoValidation');
@@ -79,9 +80,16 @@ async function criarPix(req, res, next) {
 
         res.set('Cache-Control', 'no-store');
 
+        const { destino, ...dados } = parsed.data;
+        // Pix para receber fiado/parcela: acesso, escopo e valor são conferidos ANTES de gerar o QR (o que vem do cliente não decide nada).
+        const destinoValidado = destino ? await destinoCobranca.validarDestino({ usuario: req.usuario, destino, valor: dados.valor }) : null;
+
         return response.success(res, await cobrancasService.criarPix(
             { empresa_id: req.usuario.empresa_id, usuario_id: req.usuario.id },
-            parsed.data
+            dados,
+            destinoValidado
+                ? { destino: destinoValidado, descricao: destinoValidado.tipo === 'fiado' ? 'Pagamento da Colheita (fiado)' : 'Pagamento de parcela' }
+                : {}
         ), 201);
     } catch (error) {
         next(error);
