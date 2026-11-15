@@ -98,6 +98,7 @@ ajuste com sinal). `a_receber` = saldo, nunca abaixo de zero. Retido maior que o
 | Rota | O que faz |
 |---|---|
 | `GET /painel/taxas/cobranca?competencia=AAAA-MM[&empresa_id][&status]` | por empresa: status, vencimento, devido, retido, pagamentos, perdões, ajustes, estornos, saldo. Mês aberto = valores vivos |
+| `GET /painel/taxas/vendas?competencia=AAAA-MM&empresa_id=N[&somente_divergentes=true][&limit][&offset]` | detalhe por venda com a **conciliação do MP (T6)**: valor Pix (MP × manual), percentual, taxa, retido, retido esperado, divergência e situação (`ok`/`divergente`/`estornada`). Sem cliente, produto, vendedor ou total da venda |
 | `POST /painel/taxas/periodos/fechar` `{ competencia, empresa_id? }` | congela devido e retido do mês (só mês já terminado, horário de Brasília); vencimento dia 05 do mês seguinte. Sem `empresa_id`: todas com taxa no mês. Repetir é seguro |
 | `GET /painel/taxas/periodos/:id` | período e lançamentos (com responsável e data) |
 | `POST /painel/taxas/periodos/:id/pagamentos` `{ valor, data_pagamento, forma_pagamento, comprovante_chave?, chave_idempotencia? }` | só período fechado; parcial aceito; acima do saldo → 409; forma `pix`/`transferencia`/`boleto` |
@@ -127,3 +128,10 @@ Separado das fotos (que são públicas). Sem estas variáveis o envio responde *
 A chave é gerada pelo backend (`taxas/<empresa>/<período>/<uuid>.<ext>`); o pagamento só aceita comprovante do próprio
 período e que exista no bucket. Como o lançamento é imutável, o comprovante é enviado antes do pagamento. Arquivo enviado
 e nunca usado em pagamento fica órfão no bucket (sem dado sensível exposto; limpeza manual se necessário).
+
+### Conciliação com o Mercado Pago (T6)
+Por venda: **retido esperado** = Σ, por cobrança Pix paga da venda, `ROUND(valor da cobrança × percentual da venda / 100, 2)`
+(a mesma conta do `application_fee` na criação da cobrança). **Divergência** = retido − esperado; diferente de zero = venda
+`divergente`, contada em `qtd_divergencias` no resumo do mês. A diferença é só **sinalizada** (decisão do PO): correção, se
+houver, é ajuste ou perdão manual com justificativa. Causas prováveis: percentual da empresa mudou entre a cobrança e a venda,
+ou a comissão do MP não corresponde à registrada (conferir no extrato do Mercado Pago).

@@ -109,6 +109,16 @@ const cobrancaTaxaQuerySchema = z.strictObject({
     status: z.enum(STATUS_PERIODO_TAXA, { error: 'Status inválido' }).optional()
 });
 
+// Detalhe por venda (T6): uma empresa por vez, paginado.
+const vendasTaxaQuerySchema = z.strictObject({
+    competencia,
+    empresa_id: z.coerce.number({ error: 'Empresa é obrigatória' }).int().positive('Empresa inválida'),
+    somente_divergentes: z.enum(['true', 'false'], { error: 'somente_divergentes deve ser true ou false' }).optional()
+        .transform((v) => v === 'true'),
+    limit: z.coerce.number().int().min(1, 'limit deve estar entre 1 e 500').max(500, 'limit deve estar entre 1 e 500').optional(),
+    offset: z.coerce.number().int().min(0, 'offset inválido').optional()
+});
+
 const periodoIdParamSchema = z.strictObject({
     id: z.coerce.number().int().positive('Período inválido')
 });
@@ -150,6 +160,7 @@ const ajusteTaxaSchema = z.strictObject({
 });
 
 module.exports = {
+    vendasTaxaQuerySchema,
     lancamentoIdParamSchema,
     cobrancaTaxaQuerySchema,
     periodoIdParamSchema,

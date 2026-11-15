@@ -8,6 +8,7 @@ const AppError = require('../errors/AppError');
 const { hojeSP } = require('../utils/dataSaoPaulo');
 const {
     cobrancaTaxaQuerySchema,
+    vendasTaxaQuerySchema,
     periodoIdParamSchema,
     lancamentoIdParamSchema,
     empresaIdParamSchema,
@@ -37,6 +38,17 @@ async function resumo(req, res, next) {
         const filtros = validar(cobrancaTaxaQuerySchema, req.query);
         res.set('Cache-Control', 'no-store');
         return response.success(res, await repository.resumoCompetencia(filtros));
+    } catch (error) {
+        next(error);
+    }
+}
+
+// Detalhe por venda com a conciliação do retido no Mercado Pago (T6).
+async function vendas(req, res, next) {
+    try {
+        const filtros = validar(vendasTaxaQuerySchema, req.query);
+        res.set('Cache-Control', 'no-store');
+        return response.success(res, await repository.vendasDaCompetencia(filtros));
     } catch (error) {
         next(error);
     }
@@ -171,4 +183,4 @@ async function baixarComprovante(req, res, next) {
     }
 }
 
-module.exports = { resumo, detalhe, fechar, pagamento, perdao, ajuste, enviarComprovante, baixarComprovante };
+module.exports = { resumo, vendas, detalhe, fechar, pagamento, perdao, ajuste, enviarComprovante, baixarComprovante };
