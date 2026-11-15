@@ -7,6 +7,7 @@ const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { hojeSP } = require('../utils/dataSaoPaulo');
 const { obterInstrucaoPagamento } = require('../config/cobrancaTaxaConfig');
+const cicloCobrancaService = require('../services/cicloCobrancaService');
 const {
     cobrancaTaxaQuerySchema,
     vendasTaxaQuerySchema,
@@ -50,6 +51,17 @@ function instrucoesPagamento(req, res, next) {
         const instrucao = obterInstrucaoPagamento();
         res.set('Cache-Control', 'no-store');
         return response.success(res, instrucao ? { configurado: true, ...instrucao } : { configurado: false, chave_pix: null, favorecido: null });
+    } catch (error) {
+        next(error);
+    }
+}
+
+// Ciclo de cobrança: em que ponto está cada loja com saldo a receber (a vencer, vencido, aviso, suspensão devida,
+// abaixo do piso). Só leitura: nada é suspenso nem avisado por esta rota.
+async function ciclo(req, res, next) {
+    try {
+        res.set('Cache-Control', 'no-store');
+        return response.success(res, await cicloCobrancaService.avaliarEmpresas());
     } catch (error) {
         next(error);
     }
@@ -195,4 +207,4 @@ async function baixarComprovante(req, res, next) {
     }
 }
 
-module.exports = { resumo, vendas, instrucoesPagamento, detalhe, fechar, pagamento, perdao, ajuste, enviarComprovante, baixarComprovante };
+module.exports = { resumo, vendas, ciclo, instrucoesPagamento, detalhe, fechar, pagamento, perdao, ajuste, enviarComprovante, baixarComprovante };

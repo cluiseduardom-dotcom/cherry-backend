@@ -100,6 +100,7 @@ ajuste com sinal). `a_receber` = saldo, nunca abaixo de zero. Retido maior que o
 | `GET /painel/taxas/cobranca?competencia=AAAA-MM[&empresa_id][&status]` | por empresa: status, vencimento, devido, retido, pagamentos, perdões, ajustes, estornos, saldo. Mês aberto = valores vivos |
 | `GET /painel/taxas/vendas?competencia=AAAA-MM&empresa_id=N[&somente_divergentes=true][&limit][&offset]` | detalhe por venda com a **conciliação do MP (T6)**: valor Pix (MP × manual), percentual, taxa, retido, retido esperado, divergência e situação (`ok`/`divergente`/`estornada`). Sem cliente, produto, vendedor ou total da venda |
 | `GET /painel/taxas/instrucoes-pagamento` | `{ configurado, chave_pix, favorecido }` lidos do ambiente (abaixo); sai no extrato e na mensagem de cobrança |
+| `GET /painel/taxas/ciclo` | em que ponto do ciclo está cada loja com saldo a receber (`a_vencer`, `vencido`, `aviso_suspensao`, `suspensao_devida`, `abaixo_do_piso`), com a configuração em vigor. **Só leitura: nada é suspenso nem avisado por esta rota** |
 | `POST /painel/taxas/periodos/fechar` `{ competencia, empresa_id? }` | congela devido e retido do mês (só mês já terminado, horário de Brasília); vencimento dia 05 do mês seguinte. Sem `empresa_id`: todas com taxa no mês. Repetir é seguro |
 | `GET /painel/taxas/periodos/:id` | período e lançamentos (com responsável e data) |
 | `POST /painel/taxas/periodos/:id/pagamentos` `{ valor, data_pagamento, forma_pagamento, comprovante_chave?, chave_idempotencia? }` | só período fechado; parcial aceito; acima do saldo → 409; forma `pix`/`transferencia`/`boleto` |
@@ -144,3 +145,29 @@ ou a comissão do MP não corresponde à registrada (conferir no extrato do Merc
 | `TAXA_COBRANCA_FAVORECIDO` | nome do favorecido como aparece no Pix (opcional, até 100 caracteres) |
 
 Não são segredos (o lojista precisa ver), mas ficam no ambiente do Render, não no código.
+
+### Ciclo de cobrança (SPEC §4 e T8) — parte 1: cálculo e leitura
+Código: `src/config/cicloCobrancaConfig.js` (parâmetros), `src/utils/cicloCobranca.js` (regra pura) e `src/services/cicloCobrancaService.js`.
+**Esta parte só calcula e mostra.** O bloqueio do Pix e os avisos à loja entram em PRs seguintes.
+
+| Variável | Valor |
+|---|---|
+| `COBRANCA_CARENCIA_DIAS` | dias de carência depois do vencimento (0 a 90; padrão **15**: vence dia 05, carência até o dia 20). Único lugar do parâmetro; a futura mensalidade deve usar o mesmo |
+| `COBRANCA_PISO` | piso de cobrança em reais (0 a 1000; padrão **10,00**). Valor inválido volta ao padrão |
+
+Linha do tempo de um período de R$ 25,00 do mês M (vence dia 05 de M+1):
+
+| Dia | Situação |
+|---|---|
+| 4 e 5 | `a_vencer`, com `lembrete` (1 dia antes do vencimento; sugestão da SPEC) |
+| 6 a 14 | `vencido` (em carência) |
+| 15 a 20 | `aviso_suspensao` (5 dias antes do fim da carência; sugestão da SPEC) |
+| 21 em diante | `suspensao_devida` (a regra diz que o Pix deve estar suspenso; **ainda não aplicada**) |
+
+**Como o T8 foi interpretado** (a SPEC deixa em aberto; confirmar com o PO antes de aplicar a suspensão):
+- *Saldo vencido* = soma dos saldos dos períodos com vencimento já passado: acumula de um mês para o outro.
+- *Cobrável* (lembrete, aviso, cobrança) = saldo vencido ≥ piso (inclusivo), **ou** saldo vencido > 0 e abaixo do piso há 3 ou mais meses **consecutivos** (cobra mesmo assim, mas nunca suspende).
+- *Suspensão devida* = o que **já passou da carência**, período a período, soma pelo menos o piso. Assim um resíduo abaixo do piso nunca suspende, e um mês novo ainda em carência não suspende por causa de um mês antigo pequeno.
+- *Aviso* só quando a suspensão realmente vai acontecer no próximo fim de carência (a soma do que terá passado da carência até lá chega ao piso).
+- `suspensao_em` = dia seguinte ao fim da carência que fecha o piso, se nada for pago.
+- Em centavos inteiros; `hoje` é o dia de São Paulo.
