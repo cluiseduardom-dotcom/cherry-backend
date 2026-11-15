@@ -1,5 +1,6 @@
 const AppError = require('../errors/AppError');
 const cobrancasService = require('./cobrancasPagamentoService');
+const { MENSAGEM_CLIENTE: MENSAGEM_PIX_SUSPENSO_CLIENTE } = require('./suspensaoPixService');
 const pedidosRepository = require('../repositories/lojaPedidosRepository');
 const { obterConfigMercadoPago } = require('../config/mercadoPagoConfig');
 
@@ -57,7 +58,11 @@ async function iniciarPagamento({ empresa_id, codigoPedido, metodo }) {
 
         // A mensagem do provedor e a da conexão da loja são para o caixa, não para a cliente: vão ao log.
         console.error(`Loja online: falha ao criar a cobrança do pedido ${pedido.id}: ${error.message}`);
-        const indisponivel = new AppError('Não foi possível gerar o pagamento agora. Tente novamente em instantes.', 503);
+        // Pix suspenso na loja: "tente novamente" enganaria a cliente (não vai passar). Diz a verdade, sem motivo nem taxa.
+        const texto = error.codigo === 'PIX_SUSPENSO'
+            ? MENSAGEM_PIX_SUSPENSO_CLIENTE
+            : 'Não foi possível gerar o pagamento agora. Tente novamente em instantes.';
+        const indisponivel = new AppError(texto, 503);
         indisponivel.codigo = 'PAGAMENTO_INDISPONIVEL';
         throw indisponivel;
     }

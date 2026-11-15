@@ -150,12 +150,13 @@ Não são segredos (o lojista precisa ver), mas ficam no ambiente do Render, nã
 
 ### Ciclo de cobrança (SPEC §4 e T8) — parte 1: cálculo e leitura
 Código: `src/config/cicloCobrancaConfig.js` (parâmetros), `src/utils/cicloCobranca.js` (regra pura) e `src/services/cicloCobrancaService.js`.
-**Esta parte só calcula e mostra.** O bloqueio do Pix e os avisos à loja entram em PRs seguintes.
+A **suspensão do Pix** (abaixo) é aplicada pelo backend das lojas e fica **desligada por padrão**. O aviso à loja dentro do ERP ainda não existe.
 
 | Variável | Valor |
 |---|---|
 | `COBRANCA_CARENCIA_DIAS` | dias de carência depois do vencimento (0 a 90; padrão **15**: vence dia 05, carência até o dia 20). Único lugar do parâmetro; a futura mensalidade deve usar o mesmo |
 | `COBRANCA_PISO` | piso de cobrança em reais (0 a 1000; padrão **10,00**). Valor inválido volta ao padrão |
+| `COBRANCA_SUSPENSAO_PIX` | **só a palavra `ligada`** liga a suspensão do Pix das lojas em atraso. Padrão **desligada**; qualquer outro valor (vazio, `true`, `1`) mantém desligada |
 
 Linha do tempo de um período de R$ 25,00 do mês M (vence dia 05 de M+1):
 
@@ -164,7 +165,7 @@ Linha do tempo de um período de R$ 25,00 do mês M (vence dia 05 de M+1):
 | 4 e 5 | `a_vencer`, com `lembrete` (1 dia antes do vencimento; sugestão da SPEC) |
 | 6 a 14 | `vencido` (em carência) |
 | 15 a 20 | `aviso_suspensao` (5 dias antes do fim da carência; sugestão da SPEC) |
-| 21 em diante | `suspensao_devida` (a regra diz que o Pix deve estar suspenso; **ainda não aplicada**) |
+| 21 em diante | `suspensao_devida`: a regra manda suspender o Pix. Vale de fato só com `COBRANCA_SUSPENSAO_PIX=ligada` (`pix_suspenso`) |
 
 **Como o T8 foi interpretado** (a SPEC deixa em aberto; confirmar com o PO antes de aplicar a suspensão):
 - *Saldo vencido* = soma dos saldos dos períodos com vencimento já passado: acumula de um mês para o outro.
@@ -186,3 +187,18 @@ Como funciona:
 - O responsável é sempre o operador da sessão; bloquear e liberar vão para `plataforma_eventos` (`pix_manual_bloqueado`, `pix_manual_liberado`) na mesma transação.
 - Corrida: um bloqueio criado no mesmo instante de uma venda em andamento vale a partir da próxima venda (é uma decisão de autorização, não um saldo; não há lock).
 - Lacuna conhecida (fora do escopo): o PDV ainda oferece o Pix manual; o caixa só descobre ao finalizar. Esconder a opção quando bloqueado é melhoria do ERP.
+
+### Suspensão do Pix por taxa em atraso — etapa 5, parte 2
+Código: `src/services/suspensaoPixService.js`. **Desligada por padrão**: sem `COBRANCA_SUSPENSAO_PIX=ligada` o código vai para produção inerte (nem consulta o banco). Ligar é decisão do PO, depois de conferir a lista de atrasos do painel.
+
+- **Calculada, não armazenada.** A cada tentativa de Pix, a regra do ciclo é aplicada aos meses fechados da loja. Não há rotina agendada nem estado velho: **pagar reativa na hora** (SPEC §4, "reativação automática"). A tabela `bloqueios_pix_empresa` continua sendo só do bloqueio do operador (T7); o motivo `suspensao_taxa` fica reservado e não é usado.
+- **Só atinge quem o operador já cobrou:** a suspensão depende de **mês FECHADO** (o fechamento é ação do operador). Loja sem mês fechado, com tudo pago ou com saldo abaixo do piso nunca é suspensa.
+- **Onde recusa** (sempre **403**, nunca 409: o PDV lê 409 como "Mercado Pago indisponível" e cairia sozinho para o Pix manual):
+  1. venda no PDV com **Pix manual** (`vendasRepository.criar`, junto do bloqueio de T7; a suspensão é conferida primeiro);
+  2. **criação de cobrança Pix** no Mercado Pago (`cobrancasPagamentoService.criarPix`): PDV, recebimento de fiado/parcela e loja online.
+- **Não recusa:** dinheiro, débito, crédito, crediário, link de cartão, e **Pix JÁ PAGO pelo Mercado Pago** (`cobranca_codigo`): o dinheiro entrou e a venda precisa poder ser registrada. Webhooks e devoluções seguem. Recebimento de conta a receber com Pix manual não é bloqueado (mesmo alcance do T7).
+- **Mensagens** (não citam taxa, valor nem motivo; a taxa nunca aparece na API de vendas):
+  - caixa/ERP: *"O Pix está indisponível para esta empresa no momento. Use dinheiro, cartão ou crediário, ou fale com o administrador do sistema."*
+  - loja online (cliente final): *"O Pix está indisponível nesta loja no momento. Escolha outra forma de pagamento."* (503, `PAGAMENTO_INDISPONIVEL`)
+- `GET /painel/taxas/ciclo` passa a trazer `config.suspensao_ativa`, `pix_suspenso` por loja e `totais.pix_suspenso`; `suspensao_em` fica preenchido também depois de a suspensão valer (desde quando).
+- **Limitação conhecida:** o PDV ainda oferece o Pix; o caixa só descobre ao tentar (melhoria do ERP, `cherry-frontend`).

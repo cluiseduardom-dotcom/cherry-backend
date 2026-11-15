@@ -676,8 +676,8 @@ async function comprovanteDoLancamento(lancamento_id) {
 
 // Períodos FECHADOS com saldo a receber (> 0) das empresas ativas, para o ciclo de cobrança. O saldo é o mesmo
 // do restante da tela: devido congelado − retido no MP + lançamentos. Só leitura.
-async function periodosComSaldo() {
-    const { rows } = await db.query(
+async function periodosComSaldo({ empresa_id = null, client = db } = {}) {
+    const { rows } = await client.query(
         `SELECT p.empresa_id, e.nome AS empresa_nome, p.id AS periodo_id,
                 to_char(p.competencia, 'YYYY-MM') AS competencia,
                 to_char(p.vencimento, 'YYYY-MM-DD') AS vencimento,
@@ -687,7 +687,9 @@ async function periodosComSaldo() {
          LEFT JOIN (SELECT periodo_id, SUM(valor) AS total FROM lancamentos_taxa GROUP BY periodo_id) l ON l.periodo_id = p.id
          WHERE p.status IN ('fechado', 'parcialmente_pago') AND e.status = 'ativa'
            AND p.total_calculado - p.total_retido_mp + COALESCE(l.total, 0) > 0
-         ORDER BY p.empresa_id, p.competencia`
+           AND ($1::int IS NULL OR p.empresa_id = $1)
+         ORDER BY p.empresa_id, p.competencia`,
+        [empresa_id]
     );
 
     return rows;

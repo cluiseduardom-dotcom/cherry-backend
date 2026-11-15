@@ -9,6 +9,7 @@ const estornosPagamentoRepository = require('./estornosPagamentoRepository');
 const taxasPlataformaRepository = require('./taxasPlataformaRepository');
 const cobrancaTaxaRepository = require('./cobrancaTaxaRepository');
 const bloqueiosPixRepository = require('./bloqueiosPixRepository');
+const suspensaoPixService = require('../services/suspensaoPixService');
 const cobrancasPagamentoRepository = require('./cobrancasPagamentoRepository');
 const comissoesRepository = require('./comissoesRepository');
 const cancelamentosRepository = require('./cancelamentosRepository');
@@ -231,11 +232,17 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
         // cobrança do Mercado Pago, dinheiro, cartão e crediário seguem. A mensagem não diz o motivo nem cita taxa:
         // taxa e motivo nunca aparecem na API de vendas. Na mesma transação, antes de criar a venda e de travar estoque.
         const lancaPixManual = (pagamentos ?? []).some((p) => p.forma_pagamento === 'pix' && !p.cobranca_codigo);
-        if (lancaPixManual && await bloqueiosPixRepository.pixManualBloqueado(empresa_id, client)) {
-            throw new AppError(
-                'O Pix manual está indisponível para esta empresa. Use o Pix pelo Mercado Pago ou outra forma de pagamento, ou fale com o administrador do sistema.',
-                403
-            );
+        if (lancaPixManual) {
+            // Suspensão do Pix por taxa em atraso (atinge todo o Pix; ver suspensaoPixService). Pix JÁ PAGO pelo Mercado Pago
+            // (cobranca_codigo) nunca passa por aqui: o dinheiro entrou e a venda precisa poder ser registrada.
+            await suspensaoPixService.exigirPixLiberado(empresa_id, { client });
+
+            if (await bloqueiosPixRepository.pixManualBloqueado(empresa_id, client)) {
+                throw new AppError(
+                    'O Pix manual está indisponível para esta empresa. Use o Pix pelo Mercado Pago ou outra forma de pagamento, ou fale com o administrador do sistema.',
+                    403
+                );
+            }
         }
 
         if (cliente_id != null) {

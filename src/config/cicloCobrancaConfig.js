@@ -3,6 +3,8 @@
 //   COBRANCA_CARENCIA_DIAS  dias de carência depois do vencimento (padrão 15: vence dia 05, carência até o dia 20)
 //   COBRANCA_PISO           piso de cobrança em reais (padrão 10,00): saldo vencido abaixo disso não aciona lembrete,
 //                           aviso nem suspensão (T8)
+//   COBRANCA_SUSPENSAO_PIX  só a palavra `ligada` liga a suspensão do Pix das lojas em atraso (padrão: DESLIGADA). Qualquer
+//                           outro valor, inclusive vazio ou `true`, mantém desligada: ligar é um ato deliberado.
 // Valor inválido volta ao padrão (nunca derruba a API nem zera a carência por engano).
 // Os demais marcos (lembrete 1 dia antes do vencimento, aviso 5 dias antes do fim da carência, 3 períodos abaixo do
 // piso) são sugestões da SPEC e ficam fixos aqui.
@@ -43,7 +45,8 @@ function obterCicloCobranca(env = process.env) {
         pisoCentavos: Math.round(pisoReais * 100),
         antecedenciaLembreteDias: PADRAO.antecedenciaLembreteDias,
         antecedenciaAvisoDias: PADRAO.antecedenciaAvisoDias,
-        periodosAbaixoDoPiso: PADRAO.periodosAbaixoDoPiso
+        periodosAbaixoDoPiso: PADRAO.periodosAbaixoDoPiso,
+        suspensaoAtiva: String(env.COBRANCA_SUSPENSAO_PIX ?? '').trim().toLowerCase() === 'ligada'
     };
 }
 

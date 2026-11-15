@@ -12,6 +12,15 @@ describe('ciclo de cobrança — parâmetros', () => {
         expect(obterCicloCobranca({ COBRANCA_PISO: '12.3' }).pisoCentavos).toBe(1230);
     });
 
+    test('suspensão do Pix: desligada por padrão; só a palavra "ligada" liga (ligar é ato deliberado)', () => {
+        expect(obterCicloCobranca({}).suspensaoAtiva).toBe(false);
+        for (const v of ['', 'true', '1', 'sim', 'on', 'desligada', undefined]) {
+            expect(obterCicloCobranca({ COBRANCA_SUSPENSAO_PIX: v }).suspensaoAtiva).toBe(false);
+        }
+        expect(obterCicloCobranca({ COBRANCA_SUSPENSAO_PIX: 'ligada' }).suspensaoAtiva).toBe(true);
+        expect(obterCicloCobranca({ COBRANCA_SUSPENSAO_PIX: ' Ligada ' }).suspensaoAtiva).toBe(true);
+    });
+
     test('valor inválido ou fora do limite volta ao padrão, sem derrubar nada', () => {
         for (const v of ['abc', '', '-1', '91', '1.5', '15 dias', undefined]) {
             expect(obterCicloCobranca({ COBRANCA_CARENCIA_DIAS: v }).carenciaDias).toBe(15);
