@@ -53,11 +53,11 @@ async function lancar(campos) {
     const c = { empresa_id: empresaA, responsavel: RESPONSAVEL, ...campos };
     const { rows } = await db.query(
         `INSERT INTO lancamentos_taxa
-            (empresa_id, periodo_id, tipo, valor, venda_id, data_pagamento, forma_pagamento, comprovante,
+            (empresa_id, periodo_id, tipo, valor, venda_id, data_pagamento, forma_pagamento, comprovante_chave,
              justificativa, responsavel, chave_idempotencia)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
         [c.empresa_id, c.periodo_id, c.tipo, c.valor, c.venda_id ?? null, c.data_pagamento ?? null,
-            c.forma_pagamento ?? null, c.comprovante ?? null, c.justificativa ?? null, c.responsavel,
+            c.forma_pagamento ?? null, c.comprovante_chave ?? null, c.justificativa ?? null, c.responsavel,
             c.chave_idempotencia ?? null]
     );
     return rows[0];
@@ -148,6 +148,16 @@ describe('lancamentos_taxa', () => {
         await expect(lancar({ periodo_id: fechado.id, tipo: 'pagamento', valor: '-1.00' })).rejects.toMatchObject({ code: '23514' });
         await expect(pagamento(fechado.id, '1.00')).rejects.toMatchObject({ code: '23514' });
         await expect(pagamento(aberto.id, '-1.00')).rejects.toThrow(/só em período fechado/);
+    });
+
+    test('forma de pagamento em lista fechada; comprovante é chave do objeto e só em pagamento', async () => {
+        const p = await fechar((await criarPeriodo(empresaA, '2026-11-01')).id, '50.00', '0.00');
+        await expect(pagamento(p.id, '-1.00', { forma_pagamento: 'cheque' })).rejects.toMatchObject({ code: '23514' });
+        for (const forma of ['pix', 'transferencia', 'boleto']) {
+            await pagamento(p.id, '-1.00', { forma_pagamento: forma, comprovante_chave: `comprovantes/${sufixo}/${forma}.pdf` });
+        }
+        await expect(lancar({ periodo_id: aberto.id, tipo: 'ajuste', valor: '1.00', justificativa: 'com anexo',
+            comprovante_chave: 'comprovantes/x.pdf' })).rejects.toMatchObject({ code: '23514' });
     });
 
     test('perdão exige justificativa (T5) e respeita o saldo', async () => {
