@@ -84,6 +84,18 @@ describe('iniciarPagamento', () => {
         expect(pedidosRepository.liberarPagamentoNaoCriado).toHaveBeenCalledWith({ empresa_id: 3, pedido_id: 9, cobrancaCodigo: 'c-novo' });
         expect(pedidosRepository.estenderReserva).not.toHaveBeenCalled();
     });
+
+    test('Pix suspenso na loja: a cliente é avisada com a verdade (sem "tente novamente"), sem motivo nem taxa', async () => {
+        pedidosRepository.prepararPagamento.mockResolvedValue({ acao: 'criar', pedido: PEDIDO, cobrancaCodigo: 'c-novo' });
+        const suspenso = Object.assign(new Error('O Pix está indisponível para esta empresa no momento.'), { codigo: 'PIX_SUSPENSO', statusCode: 403 });
+        cobrancasService.criarPix.mockRejectedValue(suspenso);
+
+        const erro = await iniciarPagamento({ empresa_id: 3, codigoPedido: CODIGO_PEDIDO, metodo: 'pix' }).catch((e) => e);
+
+        expect(erro).toMatchObject({ statusCode: 503, codigo: 'PAGAMENTO_INDISPONIVEL', message: 'O Pix está indisponível nesta loja no momento. Escolha outra forma de pagamento.' });
+        expect(erro.message).not.toMatch(/taxa|atraso|empresa|administrador/i);
+        expect(pedidosRepository.liberarPagamentoNaoCriado).toHaveBeenCalled();
+    });
 });
 
 describe('pagamentoSchema', () => {

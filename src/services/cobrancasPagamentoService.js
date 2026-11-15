@@ -10,6 +10,7 @@ const taxasPlataformaRepository = require('../repositories/taxasPlataformaReposi
 const empresaRepository = require('../repositories/empresaRepository');
 const lojaPedidosRepository = require('../repositories/lojaPedidosRepository');
 const destinoCobranca = require('./destinoCobrancaService');
+const suspensaoPixService = require('./suspensaoPixService');
 const db = require('../config/db');
 const { reaisParaCentavos, calcularTaxaPlataformaCentavos, centavosParaReais } = require('../utils/taxaPlataforma');
 
@@ -111,6 +112,10 @@ function paraResposta(cobranca) {
 // `opcoes` (todas opcionais; o PDV não passa nenhuma): `codigo` fixo (a loja online o grava no pedido ANTES de chamar
 // o provedor, para nunca haver duas cobranças por pedido) e `descricao`. `usuario_id` pode ser null: cobrança da loja.
 async function criarPix({ empresa_id, usuario_id }, { valor, cliente_email }, opcoes = {}) {
+    // Suspensão do Pix por taxa em atraso: 403 com mensagem clara. NUNCA 409: o PDV lê 409 como "Mercado Pago indisponível"
+    // e cairia sozinho para o Pix manual. Antes de qualquer consulta ao provedor.
+    await suspensaoPixService.exigirPixLiberado(empresa_id);
+
     const config = mercadoPagoService.exigirConfig();
     const valorCentavos = reaisParaCentavos(valor);
 

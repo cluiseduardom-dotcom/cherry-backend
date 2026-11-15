@@ -5,6 +5,7 @@ jest.mock('../../src/repositories/contasReceberRepository');
 jest.mock('../../src/repositories/taxasPlataformaRepository');
 jest.mock('../../src/repositories/cobrancaTaxaRepository');
 jest.mock('../../src/repositories/bloqueiosPixRepository');
+jest.mock('../../src/services/suspensaoPixService');
 jest.mock('../../src/repositories/comissoesRepository');
 jest.mock('../../src/repositories/pagamentosVendaRepository');
 jest.mock('../../src/repositories/parcelasPagamentoRepository');
@@ -17,6 +18,7 @@ const estoqueRepository = require('../../src/repositories/estoqueRepository');
 const precosRepository = require('../../src/repositories/precosRepository');
 const taxasPlataformaRepository = require('../../src/repositories/taxasPlataformaRepository');
 const bloqueiosPixRepository = require('../../src/repositories/bloqueiosPixRepository');
+const suspensaoPixService = require('../../src/services/suspensaoPixService');
 const pagamentosVendaRepository = require('../../src/repositories/pagamentosVendaRepository');
 const parcelasPagamentoRepository = require('../../src/repositories/parcelasPagamentoRepository');
 const cobrancasPagamentoRepository = require('../../src/repositories/cobrancasPagamentoRepository');
@@ -56,6 +58,7 @@ beforeEach(() => {
   parcelasPagamentoRepository.criar.mockResolvedValue({ id: 1 });
   parcelasPagamentoRepository.listarPorPagamento.mockResolvedValue([]);
   bloqueiosPixRepository.pixManualBloqueado.mockResolvedValue(false);
+  suspensaoPixService.exigirPixLiberado.mockResolvedValue(undefined);
 });
 
 describe('criar — bloqueio de Pix manual', () => {
@@ -105,5 +108,39 @@ describe('criar — bloqueio de Pix manual', () => {
   test('venda sem pagamentos[] (legado: dinheiro/crediário) não consulta o bloqueio', async () => {
     await vendasRepository.criar({ canal_id: 1, usuario_id: 2, empresa_id: 9, itens: [{ produto_id: 1, quantidade: 1 }] });
     expect(bloqueiosPixRepository.pixManualBloqueado).not.toHaveBeenCalled();
+  });
+});
+
+describe('criar — suspensão do Pix por taxa em atraso', () => {
+  const suspenso = () => Object.assign(new Error('O Pix está indisponível para esta empresa no momento.'), { statusCode: 403, codigo: 'PIX_SUSPENSO' });
+
+  test('Pix manual de loja suspensa: recusado antes de criar a venda, no mesmo client da transação', async () => {
+    suspensaoPixService.exigirPixLiberado.mockRejectedValue(suspenso());
+
+    await expect(vendasRepository.criar(venda([{ forma_pagamento: 'pix', valor: 100 }]))).rejects.toMatchObject({ statusCode: 403, codigo: 'PIX_SUSPENSO' });
+
+    expect(suspensaoPixService.exigirPixLiberado).toHaveBeenCalledWith(9, { client });
+    expect(sqls(client).some((s) => s.includes('INSERT INTO vendas'))).toBe(false);
+    expect(estoqueRepository.criarMovimentacao).not.toHaveBeenCalled();
+    expect(sqls(client)).toContain('ROLLBACK');
+  });
+
+  test('a suspensão é conferida antes do bloqueio do operador (mensagens diferentes, mesma recusa)', async () => {
+    suspensaoPixService.exigirPixLiberado.mockRejectedValue(suspenso());
+    await vendasRepository.criar(venda([{ forma_pagamento: 'pix', valor: 100 }])).catch(() => {});
+    expect(bloqueiosPixRepository.pixManualBloqueado).not.toHaveBeenCalled();
+  });
+
+  test('Pix já pago pelo Mercado Pago (cobranca_codigo) NUNCA passa pela suspensão: o dinheiro entrou e a venda tem de registrar', async () => {
+    cobrancasPagamentoRepository.consumirParaVenda.mockResolvedValue({ provedor: 'mercadopago', id_externo: 'mp-1' });
+    await vendasRepository.criar(venda([{ forma_pagamento: 'pix', valor: 100, cobranca_codigo: COBRANCA }]));
+    expect(suspensaoPixService.exigirPixLiberado).not.toHaveBeenCalled();
+    expect(sqls(client)).toContain('COMMIT');
+  });
+
+  test.each([['dinheiro'], ['debito'], ['credito']])('%s não consulta a suspensão (só o Pix é atingido)', async (forma) => {
+    await vendasRepository.criar(venda([{ forma_pagamento: forma, valor: 100, numero_parcelas: 1 }]));
+    expect(suspensaoPixService.exigirPixLiberado).not.toHaveBeenCalled();
+    expect(sqls(client)).toContain('COMMIT');
   });
 });

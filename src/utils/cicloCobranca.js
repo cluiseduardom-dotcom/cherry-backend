@@ -69,9 +69,10 @@ function avaliarCiclo({ periodos, hoje, config }) {
         && ateProximoFim >= config.pisoCentavos
         && hoje >= somarDias(proximoFim, -config.antecedenciaAvisoDias);
 
-    // Quando a suspensão começa se nada for pago: o dia seguinte ao fim da carência que fecha o piso.
+    // Dia em que a suspensão começa (ou começou) se nada for pago: o dia seguinte ao fim da carência que fecha o piso.
+    // Equivale a `suspender` (hoje >= suspensao_em); fica preenchido também depois que a suspensão já vale.
     let suspensaoEm = null;
-    if (porPiso && !suspender) {
+    if (porPiso) {
         let acumulado = 0;
         for (const i of [...vencidos].sort((a, b) => (a.fimCarencia < b.fimCarencia ? -1 : 1))) {
             acumulado += i.c;

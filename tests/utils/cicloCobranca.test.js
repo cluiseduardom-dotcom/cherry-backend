@@ -30,9 +30,11 @@ describe('linha do tempo de um período (R$ 25,00)', () => {
         expect(avaliar([outubro(25)], '2026-11-21').suspender).toBe(true);
     });
 
-    test('quando a suspensão começa, se nada for pago', () => {
+    test('o dia em que a suspensão começa fica informado antes e depois de valer', () => {
         expect(avaliar([outubro(25)], '2026-11-10').suspensao_em).toBe('2026-11-21');
-        expect(avaliar([outubro(25)], '2026-11-21').suspensao_em).toBeNull();
+        expect(avaliar([outubro(25)], '2026-11-21').suspensao_em).toBe('2026-11-21');
+        expect(avaliar([outubro(25)], '2026-12-30').suspensao_em).toBe('2026-11-21');
+        expect(avaliar([outubro(9)], '2026-12-30').suspensao_em).toBeNull(); // abaixo do piso: nunca
     });
 
     test('sem saldo: em dia', () => {
@@ -130,5 +132,33 @@ describe('arredondamento', () => {
         // 0,1 + 0,2 não pode virar 0,30000000000000004 nem deixar o piso torto.
         const r = avaliar([setembro(0.1), outubro(0.2)], '2026-11-25');
         expect(r.saldo_vencido).toBe(0.3);
+    });
+});
+
+describe('suspensao_em é consistente com suspender (amostragem)', () => {
+    // suspender  <=>  suspensao_em preenchido e hoje >= suspensao_em. Garante que o painel (que mostra a data) e o
+    // bloqueio (que usa suspender) nunca discordam. Pseudoaleatório com semente fixa: reproduzível.
+    function gerador(semente) {
+        let s = semente;
+        return () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
+    }
+
+    test('em 4.000 cenários de meses, saldos e datas', () => {
+        const rnd = gerador(20261115);
+        const meses = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
+        const vence = (m) => { const [a, mm] = m.split('-').map(Number); const d = mm === 12 ? `${a + 1}-01` : `${a}-${String(mm + 1).padStart(2, '0')}`; return `${d}-05`; };
+        let suspensos = 0;
+
+        for (let i = 0; i < 4000; i += 1) {
+            const periodos = meses.filter(() => rnd() < 0.5).map((m) => ({ competencia: m, vencimento: vence(m), saldo: Math.round(rnd() * 2500) / 100 }));
+            const dia = 1 + Math.floor(rnd() * 120);
+            const hoje = new Date(Date.UTC(2026, 9, 1 + dia)).toISOString().slice(0, 10);
+            const r = avaliar(periodos, hoje);
+
+            expect(r.suspender).toBe(r.suspensao_em !== null && hoje >= r.suspensao_em);
+            if (r.suspender) { suspensos += 1; expect(r.saldo_apos_carencia).toBeGreaterThanOrEqual(10); }
+            if (r.saldo_vencido < 10) expect(r.suspender).toBe(false); // abaixo do piso nunca suspende
+        }
+        expect(suspensos).toBeGreaterThan(100); // o cenário exercita mesmo a suspensão
     });
 });

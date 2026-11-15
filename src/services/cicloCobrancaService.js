@@ -21,7 +21,11 @@ async function avaliarEmpresas({ hoje = hojeSP(), env = process.env } = {}) {
     }
 
     const items = [...porEmpresa.values()]
-        .map((e) => ({ ...e, ...avaliarCiclo({ periodos: e.periodos, hoje, config }) }))
+        .map((e) => {
+            const ciclo = avaliarCiclo({ periodos: e.periodos, hoje, config });
+            // `suspender` é o que a regra manda; `pix_suspenso` é o que está valendo (só com COBRANCA_SUSPENSAO_PIX=ligada).
+            return { ...e, ...ciclo, pix_suspenso: config.suspensaoAtiva && ciclo.suspender };
+        })
         .sort((a, b) => PRIORIDADE[a.estagio] - PRIORIDADE[b.estagio] || b.saldo_vencido - a.saldo_vencido || a.empresa_nome.localeCompare(b.empresa_nome));
 
     const contar = (estagio) => items.filter((i) => i.estagio === estagio).length;
@@ -34,13 +38,15 @@ async function avaliarEmpresas({ hoje = hojeSP(), env = process.env } = {}) {
             piso: config.pisoReais,
             antecedencia_lembrete_dias: config.antecedenciaLembreteDias,
             antecedencia_aviso_dias: config.antecedenciaAvisoDias,
-            periodos_abaixo_do_piso: config.periodosAbaixoDoPiso
+            periodos_abaixo_do_piso: config.periodosAbaixoDoPiso,
+            suspensao_ativa: config.suspensaoAtiva
         },
         items,
         totais: {
             lojas: items.length,
             saldo_vencido: centavos / 100,
             suspensao_devida: contar('suspensao_devida'),
+            pix_suspenso: items.filter((i) => i.pix_suspenso).length,
             aviso_suspensao: contar('aviso_suspensao'),
             vencido: contar('vencido'),
             abaixo_do_piso: contar('abaixo_do_piso'),
