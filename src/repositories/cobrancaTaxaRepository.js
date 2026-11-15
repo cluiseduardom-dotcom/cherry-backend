@@ -584,7 +584,9 @@ async function resumoCompetencia({ competencia, empresa_id, status }) {
 // Um período com os lançamentos (trilha de cada um: responsável e data).
 async function detalhePeriodo(periodo_id, client = db) {
     const { rows } = await client.query(
-        `SELECT ${COLUNAS_PERIODO}, e.nome AS empresa_nome FROM periodos_taxa p
+        `SELECT ${COLUNAS_PERIODO}, e.nome AS empresa_nome,
+                e.razao_social AS empresa_razao_social, e.cnpj AS empresa_cnpj, e.telefone AS empresa_telefone
+         FROM periodos_taxa p
          JOIN empresas e ON e.id = p.empresa_id WHERE p.id = $1`,
         [periodo_id]
     );
@@ -618,6 +620,10 @@ async function detalhePeriodo(periodo_id, client = db) {
             id: periodo.id,
             empresa_id: periodo.empresa_id,
             empresa_nome: periodo.empresa_nome,
+            // Só o necessário para o extrato e o contato de cobrança (nada além disso do cadastro da loja).
+            empresa_razao_social: periodo.empresa_razao_social ?? null,
+            empresa_cnpj: periodo.empresa_cnpj ?? null,
+            empresa_telefone: periodo.empresa_telefone ?? null,
             competencia: periodo.competencia,
             status: periodo.status,
             vencimento: periodo.vencimento,

@@ -36,6 +36,7 @@ router.get('/taxas', op, plataforma.taxasPorEmpresa);
 // pelo repository, na mesma transação, com o detalhe (sem registrar()).
 router.get('/taxas/cobranca', op, cobrancaTaxa.resumo);
 router.get('/taxas/vendas', op, cobrancaTaxa.vendas);
+router.get('/taxas/instrucoes-pagamento', op, cobrancaTaxa.instrucoesPagamento);
 router.post('/taxas/periodos/fechar', op, cobrancaTaxa.fechar);
 router.get('/taxas/periodos/:id', op, cobrancaTaxa.detalhe);
 router.post('/taxas/periodos/:id/comprovantes', op, uploadComprovanteTaxa, cobrancaTaxa.enviarComprovante);

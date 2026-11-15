@@ -6,6 +6,7 @@ const { detectarTipo, TIPOS, montarChave, tipoDaChave } = require('../utils/comp
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
 const { hojeSP } = require('../utils/dataSaoPaulo');
+const { obterInstrucaoPagamento } = require('../config/cobrancaTaxaConfig');
 const {
     cobrancaTaxaQuerySchema,
     vendasTaxaQuerySchema,
@@ -38,6 +39,17 @@ async function resumo(req, res, next) {
         const filtros = validar(cobrancaTaxaQuerySchema, req.query);
         res.set('Cache-Control', 'no-store');
         return response.success(res, await repository.resumoCompetencia(filtros));
+    } catch (error) {
+        next(error);
+    }
+}
+
+// Instrução de pagamento que sai no extrato e na mensagem de cobrança (configurada no ambiente do backend).
+function instrucoesPagamento(req, res, next) {
+    try {
+        const instrucao = obterInstrucaoPagamento();
+        res.set('Cache-Control', 'no-store');
+        return response.success(res, instrucao ? { configurado: true, ...instrucao } : { configurado: false, chave_pix: null, favorecido: null });
     } catch (error) {
         next(error);
     }
@@ -183,4 +195,4 @@ async function baixarComprovante(req, res, next) {
     }
 }
 
-module.exports = { resumo, vendas, detalhe, fechar, pagamento, perdao, ajuste, enviarComprovante, baixarComprovante };
+module.exports = { resumo, vendas, instrucoesPagamento, detalhe, fechar, pagamento, perdao, ajuste, enviarComprovante, baixarComprovante };
