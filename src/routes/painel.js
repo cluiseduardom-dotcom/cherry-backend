@@ -35,6 +35,7 @@ router.get('/taxas', op, plataforma.taxasPorEmpresa);
 // Taxas a receber: fechamento do período e lançamentos (pagamento, perdão, ajuste). A trilha é gravada
 // pelo repository, na mesma transação, com o detalhe (sem registrar()).
 router.get('/taxas/cobranca', op, cobrancaTaxa.resumo);
+router.get('/taxas/vendas', op, cobrancaTaxa.vendas);
 router.post('/taxas/periodos/fechar', op, cobrancaTaxa.fechar);
 router.get('/taxas/periodos/:id', op, cobrancaTaxa.detalhe);
 router.post('/taxas/periodos/:id/comprovantes', op, uploadComprovanteTaxa, cobrancaTaxa.enviarComprovante);
