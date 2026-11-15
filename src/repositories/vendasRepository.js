@@ -13,7 +13,7 @@ const cancelamentosRepository = require('./cancelamentosRepository');
 const { executarComLock } = require('./shared/transacoes');
 const AppError = require('../errors/AppError');
 const { hojeSP, somarMeses, sqlDiaSP } = require('../utils/dataSaoPaulo');
-const { MAX_PARCELAS, MAX_MESES_PRAZO } = require('../constants/limites');
+const { MAX_PARCELAS, MAX_MESES_PRAZO, MAX_HORIZONTE_CREDIARIO_MESES } = require('../constants/limites');
 const { inteiroNoIntervalo } = require('../utils/numeros');
 const { faixaPorDias, faixaPorCodigo } = require('../constants/cancelamento');
 
@@ -128,6 +128,11 @@ function validarLimitesDeParcelamento(pagamentos, meses_prazo) {
 
         if (pagamento.meses_prazo != null) {
             inteiroNoIntervalo(pagamento.meses_prazo, { min: 1, max: MAX_MESES_PRAZO }, mensagemPrazo);
+        }
+
+        // Crediário: a parcela N vence em N × meses_prazo meses, então o último vencimento é parcelas × meses_prazo.
+        if (pagamento.forma_pagamento === 'crediario' && (pagamento.numero_parcelas ?? 1) * (pagamento.meses_prazo ?? 1) > MAX_HORIZONTE_CREDIARIO_MESES) {
+            throw new AppError(`O último vencimento do crediário não pode passar de ${MAX_HORIZONTE_CREDIARIO_MESES} meses`, 400);
         }
     }
 }

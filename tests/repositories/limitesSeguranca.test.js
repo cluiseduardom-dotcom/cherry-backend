@@ -18,7 +18,11 @@ describe('vendasRepository.criar — teto de parcelas/prazo (defesa além do Zod
     ['numero_parcelas 0', [{ forma_pagamento: 'credito', valor: 10, numero_parcelas: 0 }], undefined],
     ['numero_parcelas fracionário', [{ forma_pagamento: 'credito', valor: 10, numero_parcelas: 1.5 }], undefined],
     ['numero_parcelas Infinity', [{ forma_pagamento: 'credito', valor: 10, numero_parcelas: Infinity }], undefined],
-    ['meses_prazo do pagamento 25', [{ forma_pagamento: 'crediario', valor: 10, numero_parcelas: 2, meses_prazo: 25 }], undefined],
+    ['meses_prazo do pagamento 7', [{ forma_pagamento: 'crediario', valor: 10, numero_parcelas: 1, meses_prazo: 7 }], undefined],
+    ['crediário 12x de 1 mês (horizonte de 12 meses)', [{ forma_pagamento: 'crediario', valor: 10, numero_parcelas: 12, meses_prazo: 1 }], undefined],
+    ['crediário 4x de 2 meses (horizonte de 8 meses)', [{ forma_pagamento: 'crediario', valor: 10, numero_parcelas: 4, meses_prazo: 2 }], undefined],
+    ['crediário 7x sem prazo (padrão 1 mês)', [{ forma_pagamento: 'crediario', valor: 10, numero_parcelas: 7 }], undefined],
+    ['venda a prazo legada em 7 meses', undefined, 7],
     ['meses_prazo legado 1e9', undefined, 1000000000]
   ])('rejeita %s com 400 antes de abrir conexão ou transação', async (_, pagamentos, meses_prazo) => {
     await expect(
