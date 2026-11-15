@@ -119,6 +119,11 @@ const vendasTaxaQuerySchema = z.strictObject({
     offset: z.coerce.number().int().min(0, 'offset inválido').optional()
 });
 
+// Bloqueio e liberação do Pix manual (T7): sempre com justificativa.
+const pixManualAcaoSchema = z.strictObject({
+    justificativa: justificativaLancamento
+});
+
 const periodoIdParamSchema = z.strictObject({
     id: z.coerce.number().int().positive('Período inválido')
 });
@@ -160,6 +165,7 @@ const ajusteTaxaSchema = z.strictObject({
 });
 
 module.exports = {
+    pixManualAcaoSchema,
     vendasTaxaQuerySchema,
     lancamentoIdParamSchema,
     cobrancaTaxaQuerySchema,

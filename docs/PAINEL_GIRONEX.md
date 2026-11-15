@@ -70,7 +70,7 @@ tela de identidade.
 `/painel/auth/{login,2fa/iniciar,2fa/confirmar,me,renovar,senha}`, `GET /painel/taxas`, `GET /painel/taxas/cobranca`, `GET /painel/taxas/vendas`, `GET /painel/taxas/ciclo`, `GET /painel/taxas/instrucoes-pagamento`,
 `POST /painel/taxas/periodos/fechar`, `GET /painel/taxas/periodos/:id`, `POST /painel/taxas/periodos/:id/{comprovantes,pagamentos,perdoes}`,
 `GET /painel/taxas/lancamentos/:id/comprovante`,
-`POST /painel/empresas/:id/taxas/ajustes`, `GET /painel/planos`,
+`POST /painel/empresas/:id/taxas/ajustes`, `POST /painel/empresas/:id/pix-manual/{bloquear,liberar}`, `GET /painel/planos`,
 `GET /painel/empresas/comercial`, `GET /painel/empresas/identidade`, `GET /painel/empresas/:id/{comercial,identidade}/historico`,
 `POST /painel/empresas`, `POST /painel/empresas/:id/{plano,condicao,condicao/encerrar}`,
 `PATCH /painel/empresas/:id/identidade`, `GET /painel/eventos`,

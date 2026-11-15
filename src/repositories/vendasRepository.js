@@ -8,6 +8,7 @@ const parcelasPagamentoRepository = require('./parcelasPagamentoRepository');
 const estornosPagamentoRepository = require('./estornosPagamentoRepository');
 const taxasPlataformaRepository = require('./taxasPlataformaRepository');
 const cobrancaTaxaRepository = require('./cobrancaTaxaRepository');
+const bloqueiosPixRepository = require('./bloqueiosPixRepository');
 const cobrancasPagamentoRepository = require('./cobrancasPagamentoRepository');
 const comissoesRepository = require('./comissoesRepository');
 const cancelamentosRepository = require('./cancelamentosRepository');
@@ -224,6 +225,17 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 if (gerenciaTransacao) await client.query('COMMIT');
                 return existenteRows[0].resposta;
             }
+        }
+
+        // Bloqueio de Pix manual da empresa (decisão do operador da plataforma): recusa só o Pix lançado à mão. Pix com
+        // cobrança do Mercado Pago, dinheiro, cartão e crediário seguem. A mensagem não diz o motivo nem cita taxa:
+        // taxa e motivo nunca aparecem na API de vendas. Na mesma transação, antes de criar a venda e de travar estoque.
+        const lancaPixManual = (pagamentos ?? []).some((p) => p.forma_pagamento === 'pix' && !p.cobranca_codigo);
+        if (lancaPixManual && await bloqueiosPixRepository.pixManualBloqueado(empresa_id, client)) {
+            throw new AppError(
+                'O Pix manual está indisponível para esta empresa. Use o Pix pelo Mercado Pago ou outra forma de pagamento, ou fale com o administrador do sistema.',
+                403
+            );
         }
 
         if (cliente_id != null) {
