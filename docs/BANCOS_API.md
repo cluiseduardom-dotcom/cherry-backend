@@ -72,6 +72,10 @@ Dois passos, ambos `gerir_financeiro`, corpo JSON `{ conta_bancaria_id, conteudo
 - `GET /bancos/movimentos/:id/sugestoes` — até 5 contas a pagar (saída) ou a receber (entrada) **pendentes, de valor
   idêntico**, com vencimento até 15 dias do movimento. É só sugestão: marcar como paga/recebida segue nas telas atuais
   (que não geram movimento bancário, então não há lançamento em dobro).
+  Para **entrada**, cada sugestão traz `valor_restante` e `motivo`: `valor_total` (conta sem nenhum recebimento, valor
+  idêntico, vencimento em até 15 dias), `valor_restante` (conta com recebimento parcial cujo que FALTA é igual ao valor) ou
+  `recebimento_parcial` (houve um recebimento de valor idêntico na parcela, até 3 dias do movimento, em qualquer
+  vencimento; ex.: Pix de R$ 40 numa parcela de R$ 100). Conta já recebida em parte não casa mais pelo valor cheio.
 
 Regras:
 - Movimentos entram com origem `EXTRATO` (migration `087`), valor/tipo pelo sinal, data ao meio-dia de Brasília.
