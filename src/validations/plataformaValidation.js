@@ -79,7 +79,75 @@ const definirLimiteUsuariosSchema = z.strictObject({
 
 const removerLimiteUsuariosSchema = z.strictObject({ justificativa });
 
+// ---- Cobrança da taxa da plataforma (Taxas a receber) ----
+
+const competencia = z.string({ error: 'Competência é obrigatória' })
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'competencia deve estar no formato AAAA-MM');
+
+const STATUS_PERIODO_TAXA = ['aberto', 'fechado', 'parcialmente_pago', 'pago'];
+const FORMAS_PAGAMENTO_TAXA = ['pix', 'transferencia', 'boleto'];
+
+// Valor em reais, positivo, até 2 casas (NUMERIC(15,2)).
+const centavosExatos = (valor) => Math.abs(valor * 100 - Math.round(valor * 100)) < 1e-6;
+const valorPositivo = z.number({ error: 'Valor é obrigatório' })
+    .finite('Valor inválido')
+    .positive('Valor deve ser maior que zero')
+    .max(1e9, 'Valor muito alto')
+    .refine(centavosExatos, 'Valor aceita no máximo 2 casas decimais');
+
+const justificativaLancamento = z.string({ error: 'Justificativa é obrigatória' }).trim()
+    .min(5, 'Justificativa deve ter ao menos 5 caracteres').max(500, 'Justificativa muito longa');
+
+// Retry seguro (duplo clique, reenvio): o painel manda a mesma chave para o mesmo lançamento.
+const chaveIdempotencia = z.string().regex(/^[A-Za-z0-9_-]{8,80}$/, 'Chave de idempotência inválida').optional();
+
+const cobrancaTaxaQuerySchema = z.strictObject({
+    competencia,
+    empresa_id: z.coerce.number().int().positive('Empresa inválida').optional(),
+    status: z.enum(STATUS_PERIODO_TAXA, { error: 'Status inválido' }).optional()
+});
+
+const periodoIdParamSchema = z.strictObject({
+    id: z.coerce.number().int().positive('Período inválido')
+});
+
+const fecharPeriodoSchema = z.strictObject({
+    competencia,
+    empresa_id: z.number().int().positive('Empresa inválida').optional()
+});
+
+const pagamentoTaxaSchema = z.strictObject({
+    valor: valorPositivo,
+    data_pagamento: dataCivil,
+    forma_pagamento: z.enum(FORMAS_PAGAMENTO_TAXA, { error: 'Forma de pagamento deve ser pix, transferencia ou boleto' }),
+    chave_idempotencia: chaveIdempotencia
+});
+
+const perdaoTaxaSchema = z.strictObject({
+    valor: valorPositivo,
+    justificativa: justificativaLancamento,
+    chave_idempotencia: chaveIdempotencia
+});
+
+// Ajuste com sinal: positivo aumenta o devido, negativo reduz. Nunca zero.
+const ajusteTaxaSchema = z.strictObject({
+    valor: z.number({ error: 'Valor é obrigatório' })
+        .finite('Valor inválido')
+        .refine((v) => v !== 0, 'Ajuste não pode ser zero')
+        .refine((v) => Math.abs(v) <= 1e9, 'Valor muito alto')
+        .refine(centavosExatos, 'Valor aceita no máximo 2 casas decimais'),
+    justificativa: justificativaLancamento,
+    venda_id: z.number().int().positive('Venda inválida').optional(),
+    chave_idempotencia: chaveIdempotencia
+});
+
 module.exports = {
+    cobrancaTaxaQuerySchema,
+    periodoIdParamSchema,
+    fecharPeriodoSchema,
+    pagamentoTaxaSchema,
+    perdaoTaxaSchema,
+    ajusteTaxaSchema,
     empresaFuncionalidadeParamSchema,
     definirFuncionalidadeSchema,
     removerFuncionalidadeSchema,

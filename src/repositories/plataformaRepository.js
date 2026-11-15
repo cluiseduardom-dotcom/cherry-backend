@@ -8,6 +8,14 @@ const FIM_SQL = `((($1::date + INTERVAL '1 month'))::timestamp AT TIME ZONE 'Ame
 
 const MES_CORRENTE_SQL = `to_char((NOW() AT TIME ZONE 'America/Sao_Paulo'), 'YYYY-MM')`;
 
+// Comissão que o Mercado Pago já reteve nos Pix de uma venda (application_fee), por linha de taxas_venda
+// (alias `tv`). Fonte única para a tela do mês e para o fechamento do período (cobrancaTaxaRepository).
+const RETIDO_MP_DA_VENDA_SQL = `COALESCE((
+                        SELECT SUM(cp.taxa_plataforma)
+                        FROM cobrancas_pagamento cp
+                        WHERE cp.venda_id = tv.venda_id AND cp.empresa_id = tv.empresa_id AND cp.status = 'pago' AND cp.metodo = 'pix'
+                    ), 0)`;
+
 async function mesCorrente() {
     const { rows } = await db.query(`SELECT ${MES_CORRENTE_SQL} AS mes`);
     return rows[0].mes;
@@ -34,11 +42,7 @@ async function taxasPorEmpresa(mes) {
          LEFT JOIN (
              SELECT tv.id, tv.empresa_id, tv.status, tv.base_calculo, tv.valor, tv.percentual,
                     -- Comissão que o Mercado Pago já reteve nos Pix desta venda (application_fee): não se cobra de novo.
-                    COALESCE((
-                        SELECT SUM(cp.taxa_plataforma)
-                        FROM cobrancas_pagamento cp
-                        WHERE cp.venda_id = tv.venda_id AND cp.empresa_id = tv.empresa_id AND cp.status = 'pago' AND cp.metodo = 'pix'
-                    ), 0) AS cobrada_gateway
+                    ${RETIDO_MP_DA_VENDA_SQL} AS cobrada_gateway
              FROM taxas_venda tv
              JOIN vendas v ON v.id = tv.venda_id AND v.empresa_id = tv.empresa_id
              WHERE v.data >= ${INICIO_SQL}
@@ -53,4 +57,4 @@ async function taxasPorEmpresa(mes) {
     return rows;
 }
 
-module.exports = { mesCorrente, taxasPorEmpresa };
+module.exports = { mesCorrente, taxasPorEmpresa, INICIO_SQL, FIM_SQL, RETIDO_MP_DA_VENDA_SQL };

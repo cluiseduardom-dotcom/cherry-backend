@@ -3,6 +3,7 @@ jest.mock('../../src/repositories/estoqueRepository');
 jest.mock('../../src/repositories/precosRepository');
 jest.mock('../../src/repositories/contasReceberRepository');
 jest.mock('../../src/repositories/taxasPlataformaRepository');
+jest.mock('../../src/repositories/cobrancaTaxaRepository');
 jest.mock('../../src/repositories/comissoesRepository');
 jest.mock('../../src/repositories/pagamentosVendaRepository');
 jest.mock('../../src/repositories/parcelasPagamentoRepository');
@@ -14,6 +15,7 @@ const estoqueRepository = require('../../src/repositories/estoqueRepository');
 const precosRepository = require('../../src/repositories/precosRepository');
 const contasReceberRepository = require('../../src/repositories/contasReceberRepository');
 const taxasPlataformaRepository = require('../../src/repositories/taxasPlataformaRepository');
+const cobrancaTaxaRepository = require('../../src/repositories/cobrancaTaxaRepository');
 const pagamentosVendaRepository = require('../../src/repositories/pagamentosVendaRepository');
 const parcelasPagamentoRepository = require('../../src/repositories/parcelasPagamentoRepository');
 const cancelamentosRepository = require('../../src/repositories/cancelamentosRepository');
@@ -264,6 +266,44 @@ describe('cancelar — taxa interna da plataforma', () => {
 
     expect(taxasPlataformaRepository.estornarPorVendaId).toHaveBeenCalledTimes(1);
     expect(taxasPlataformaRepository.estornarPorVendaId).toHaveBeenCalledWith(1, 5, client);
+  });
+
+  test('taxa estornada: avisa a cobrança da plataforma no MESMO client (mês já fechado vira lançamento)', async () => {
+    const client = clienteDeCancelamento();
+    executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
+      callback({ id: 1, status: 'finalizada' }, client)
+    );
+    taxasPlataformaRepository.estornarPorVendaId.mockResolvedValue(1);
+
+    await vendasRepository.cancelar(1, 9, 5, OPCOES);
+
+    expect(cobrancaTaxaRepository.estornarAposFechamento).toHaveBeenCalledWith(client, {
+      venda_id: 1, empresa_id: 5, responsavel: 'sistema: cancelamento da venda #1 por vendedor@teste.invalid'
+    });
+  });
+
+  test('venda sem taxa a estornar (histórica ou já estornada): não chama a cobrança', async () => {
+    const client = clienteDeCancelamento();
+    executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
+      callback({ id: 1, status: 'finalizada' }, client)
+    );
+    taxasPlataformaRepository.estornarPorVendaId.mockResolvedValue(0);
+
+    await vendasRepository.cancelar(1, 9, 5, OPCOES);
+
+    expect(cobrancaTaxaRepository.estornarAposFechamento).not.toHaveBeenCalled();
+  });
+
+  test('falha no lançamento de estorno aborta o cancelamento inteiro', async () => {
+    const client = clienteDeCancelamento();
+    executarComLock.mockImplementation((tabela, chave, empresa_id, clienteExterno, callback) =>
+      callback({ id: 1, status: 'finalizada' }, client)
+    );
+    taxasPlataformaRepository.estornarPorVendaId.mockResolvedValue(1);
+    cobrancaTaxaRepository.estornarAposFechamento.mockRejectedValue(new Error('falha no estorno'));
+
+    await expect(vendasRepository.cancelar(1, 9, 5, OPCOES)).rejects.toThrow('falha no estorno');
+    expect(sqls(client).some((sql) => sql.includes("UPDATE vendas SET status = 'cancelada'"))).toBe(false);
   });
 
   test('cancelamento bloqueado (conta a receber já recebida) não estorna a taxa', async () => {
