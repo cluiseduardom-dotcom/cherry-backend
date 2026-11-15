@@ -1,6 +1,6 @@
 const { z } = require('zod');
 const {
-    MAX_PARCELAS, MAX_MESES_PRAZO, MAX_ITENS_POR_DOCUMENTO, MAX_PAGAMENTOS_POR_VENDA,
+    MAX_PARCELAS, MAX_MESES_PRAZO, MAX_HORIZONTE_CREDIARIO_MESES, MAX_ITENS_POR_DOCUMENTO, MAX_PAGAMENTOS_POR_VENDA,
     MAX_QUANTIDADE_ITEM, MAX_VALOR_MONETARIO
 } = require('../constants/limites');
 
@@ -77,6 +77,18 @@ const criarVendaSchema = z.object({
             }
 
             codigosCobranca.push(pagamento.cobranca_codigo);
+        }
+
+        if (pagamento.forma_pagamento === 'crediario') {
+            const horizonte = (pagamento.numero_parcelas ?? 1) * (pagamento.meses_prazo ?? 1);
+
+            if (horizonte > MAX_HORIZONTE_CREDIARIO_MESES) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `O último vencimento do crediário não pode passar de ${MAX_HORIZONTE_CREDIARIO_MESES} meses: reduza o número de parcelas ou os meses entre elas`,
+                    path: ['pagamentos', index, 'numero_parcelas']
+                });
+            }
         }
 
         if (pagamento.forma_pagamento === 'crediario' && (pagamento.numero_parcelas ?? 1) > 1 && pagamento.meses_prazo == null) {
