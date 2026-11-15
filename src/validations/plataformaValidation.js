@@ -81,6 +81,8 @@ const removerLimiteUsuariosSchema = z.strictObject({ justificativa });
 
 // ---- Cobrança da taxa da plataforma (Taxas a receber) ----
 
+const { CHAVE_RE: CHAVE_COMPROVANTE_RE } = require('../utils/comprovanteTaxa');
+
 const competencia = z.string({ error: 'Competência é obrigatória' })
     .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'competencia deve estar no formato AAAA-MM');
 
@@ -120,7 +122,13 @@ const pagamentoTaxaSchema = z.strictObject({
     valor: valorPositivo,
     data_pagamento: dataCivil,
     forma_pagamento: z.enum(FORMAS_PAGAMENTO_TAXA, { error: 'Forma de pagamento deve ser pix, transferencia ou boleto' }),
+    // Chave devolvida por POST /painel/taxas/periodos/:id/comprovantes (o backend confere período e existência).
+    comprovante_chave: z.string().max(300).regex(CHAVE_COMPROVANTE_RE, 'Comprovante inválido').optional(),
     chave_idempotencia: chaveIdempotencia
+});
+
+const lancamentoIdParamSchema = z.strictObject({
+    id: z.coerce.number().int().positive('Lançamento inválido')
 });
 
 const perdaoTaxaSchema = z.strictObject({
@@ -142,6 +150,7 @@ const ajusteTaxaSchema = z.strictObject({
 });
 
 module.exports = {
+    lancamentoIdParamSchema,
     cobrancaTaxaQuerySchema,
     periodoIdParamSchema,
     fecharPeriodoSchema,
