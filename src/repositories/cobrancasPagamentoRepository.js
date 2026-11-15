@@ -5,7 +5,7 @@ const { reaisParaCentavos } = require('../utils/taxaPlataforma');
 
 const COLUNAS = `id, codigo, empresa_id, provedor, metodo, valor, taxa_plataforma, status, id_externo,
                  qr_code, qr_code_base64, ticket_url, expira_em, venda_id, usada_em, consultado_em, criado_em, atualizado_em,
-                 preferencia_id, link_url, tipo_cartao, parcelas, parcelas_maximas, valor_total_pago`;
+                 preferencia_id, link_url, tipo_cartao, parcelas, parcelas_maximas, valor_total_pago, criado_por`;
 
 async function criar({ codigo, empresa_id, valor, taxa_plataforma, criado_por, metodo = 'pix', parcelas_maximas = null }) {
     const { rows } = await db.query(
@@ -120,13 +120,19 @@ async function registrarConsulta(id, empresa_id) {
 // Consome a cobrança paga numa venda, DENTRO da transação da venda (client dela): trava a linha,
 // confere empresa (pelo filtro do lock), status pago, valor idêntico e que ainda não foi usada.
 // Uma cobrança só entra em uma venda; qualquer divergência derruba a venda inteira (ROLLBACK).
-async function consumirParaVenda({ codigo, empresa_id, venda_id, valor, forma_pagamento, numero_parcelas }, client) {
+// `usuario_id` + `pode_usar_de_outros` (opcionais): quem está vendendo. A cobrança criada por um usuário é DELE: outro vendedor
+// da mesma empresa não a usa (admin e quem gere o financeiro podem). Sem `usuario_id` (fluxo da loja online) a regra não se aplica.
+async function consumirParaVenda({ codigo, empresa_id, venda_id, valor, forma_pagamento, numero_parcelas, usuario_id, pode_usar_de_outros = false }, client) {
     return executarComLock('cobrancas_pagamento', { coluna: 'codigo', valor: codigo }, empresa_id, client, async (cobranca, tx) => {
         if (!cobranca) {
             throw new AppError('Cobrança não encontrada', 404);
         }
 
         const rotulo = cobranca.metodo === 'pix' ? 'Pix' : 'link de cartão';
+
+        if (usuario_id !== undefined && usuario_id !== null && cobranca.criado_por !== null && Number(cobranca.criado_por) !== Number(usuario_id) && !pode_usar_de_outros) {
+            throw new AppError(`Esta cobrança (${rotulo}) foi criada por outro usuário e só ele (ou um administrador) pode usá-la na venda`, 403);
+        }
 
         if (cobranca.venda_id !== null) {
             throw new AppError(`Esta cobrança (${rotulo}) já foi usada em outra venda`, 409);
