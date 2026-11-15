@@ -228,13 +228,13 @@ describe('conexão da loja (OAuth)', () => {
 });
 
 describe('GET /pagamentos-gateway/disponibilidade', () => {
-    test('vendedor e admin veem só { pix, motivo, parcelas_maximas_link }; estoquista 403; sem token 401', async () => {
+    test('vendedor e admin veem só { pix, motivo, parcelas_maximas_link, pix_manual }; estoquista 403; sem token 401', async () => {
         await conectarLoja(A);
 
         const vendedor = await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'vendedor');
         expect(vendedor.status).toBe(200);
-        expect(vendedor.body.data).toEqual({ pix: true, motivo: null, parcelas_maximas_link: 12 });
-        expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'admin')).body.data).toEqual({ pix: true, motivo: null, parcelas_maximas_link: 12 });
+        expect(vendedor.body.data).toEqual({ pix: true, motivo: null, parcelas_maximas_link: 12, pix_manual: true });
+        expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'admin')).body.data).toEqual({ pix: true, motivo: null, parcelas_maximas_link: 12, pix_manual: true });
 
         expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'estoquista')).status).toBe(403);
         expect((await request(app).get('/pagamentos-gateway/disponibilidade')).status).toBe(401);
@@ -246,7 +246,7 @@ describe('GET /pagamentos-gateway/disponibilidade', () => {
         await db.query('UPDATE empresa_mercadopago SET ativo = false, access_token_cifrado = NULL, refresh_token_cifrado = NULL WHERE empresa_id = $1', [B.empresaId]);
 
         const b = await auth(request(app).get('/pagamentos-gateway/disponibilidade'), B, 'vendedor');
-        expect(b.body.data).toEqual({ pix: false, motivo: 'loja_nao_conectada' });
+        expect(b.body.data).toEqual({ pix: false, motivo: 'loja_nao_conectada', pix_manual: true });
         expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'vendedor')).body.data.pix).toBe(true);
     });
 
@@ -256,9 +256,30 @@ describe('GET /pagamentos-gateway/disponibilidade', () => {
         try {
             const res = await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'vendedor');
             expect(res.status).toBe(200);
-            expect(res.body.data).toEqual({ pix: false, motivo: 'nao_configurado' });
+            expect(res.body.data).toEqual({ pix: false, motivo: 'nao_configurado', pix_manual: true });
         } finally {
             process.env.MP_APP_ID = guardado;
+        }
+    });
+
+    test('pix_manual=false com bloqueio ativo (só da empresa bloqueada) e volta a true ao liberar; nunca traz motivo nem justificativa', async () => {
+        await conectarLoja(A);
+        await conectarLoja(B);
+        await db.query(
+            `INSERT INTO bloqueios_pix_empresa (empresa_id, motivo, justificativa, aberto_por) VALUES ($1, 'pix_manual_sinalizado', 'segredo-do-operador', 'painel:teste@teste.invalid (#0)')`,
+            [A.empresaId]
+        );
+        try {
+            const a = await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'vendedor');
+            expect(a.status).toBe(200);
+            expect(a.body.data).toEqual({ pix: true, motivo: null, parcelas_maximas_link: 12, pix_manual: false });
+            expect(JSON.stringify(a.body)).not.toMatch(/segredo-do-operador|sinalizado|taxa/i);
+            expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), B, 'vendedor')).body.data.pix_manual).toBe(true);
+
+            await db.query(`UPDATE bloqueios_pix_empresa SET liberado_em = now(), liberado_por = 'painel:teste', justificativa_liberacao = 'teste de liberação' WHERE empresa_id = $1 AND liberado_em IS NULL`, [A.empresaId]);
+            expect((await auth(request(app).get('/pagamentos-gateway/disponibilidade'), A, 'vendedor')).body.data.pix_manual).toBe(true);
+        } finally {
+            await db.query(`UPDATE bloqueios_pix_empresa SET liberado_em = now(), liberado_por = 'painel:teste', justificativa_liberacao = 'teste de liberação' WHERE empresa_id = $1 AND liberado_em IS NULL`, [A.empresaId]).catch(() => {});
         }
     });
 });
