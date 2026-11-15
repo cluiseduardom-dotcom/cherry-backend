@@ -416,7 +416,14 @@ function montarLinha(r) {
         // Conciliação (T6): vendas apuradas do mês em que o retido no MP difere do esperado.
         qtd_divergencias: num(r.qtd_divergencias),
         pix_mp: num(r.pix_mp),
-        pix_manual: num(r.pix_manual)
+        pix_manual: num(r.pix_manual),
+        // Proporção de Pix manual do mês (T7), 0 a 100, ou null sem Pix. Só informa: quem sinaliza é o operador.
+        pct_manual: num(r.pix_mp) + num(r.pix_manual) > 0
+            ? Math.round((num(r.pix_manual) / (num(r.pix_mp) + num(r.pix_manual))) * 1000) / 10
+            : null,
+        bloqueio_pix_manual: r.bloqueio_id
+            ? { id: r.bloqueio_id, justificativa: r.bloqueio_justificativa, aberto_por: r.bloqueio_aberto_por, aberto_em: r.bloqueio_aberto_em }
+            : null
     };
 }
 
@@ -544,6 +551,8 @@ async function resumoCompetencia({ competencia, empresa_id, status }) {
                     to_char(p.vencimento, 'YYYY-MM-DD') AS vencimento, p.fechado_em,
                     COALESCE(vv.qtd, 0) AS qtd_vendas, COALESCE(vv.qtd_divergencias, 0) AS qtd_divergencias,
                     COALESCE(vv.pix_mp, 0) AS pix_mp, COALESCE(vv.pix_manual, 0) AS pix_manual,
+                    bq.id AS bloqueio_id, bq.justificativa AS bloqueio_justificativa,
+                    bq.aberto_por AS bloqueio_aberto_por, bq.aberto_em AS bloqueio_aberto_em,
                     CASE WHEN COALESCE(p.status, 'aberto') = 'aberto' THEN COALESCE(vv.calculado, 0) ELSE p.total_calculado END AS devido,
                     CASE WHEN COALESCE(p.status, 'aberto') = 'aberto' THEN COALESCE(vv.retido, 0) ELSE p.total_retido_mp END AS retido_mp,
                     COALESCE(l.pagamentos, 0) AS pagamentos, COALESCE(l.perdoes, 0) AS perdoes,
@@ -552,6 +561,7 @@ async function resumoCompetencia({ competencia, empresa_id, status }) {
              FROM empresas e
              LEFT JOIN periodos_taxa p ON p.empresa_id = e.id AND p.competencia = $1::date
              LEFT JOIN vivos vv ON vv.empresa_id = e.id
+             LEFT JOIN bloqueios_pix_empresa bq ON bq.empresa_id = e.id AND bq.liberado_em IS NULL AND bq.motivo = 'pix_manual_sinalizado'
              LEFT JOIN lanc l ON l.periodo_id = p.id
              WHERE e.status = 'ativa' OR p.id IS NOT NULL
          )

@@ -97,10 +97,12 @@ ajuste com sinal). `a_receber` = saldo, nunca abaixo de zero. Retido maior que o
 
 | Rota | O que faz |
 |---|---|
-| `GET /painel/taxas/cobranca?competencia=AAAA-MM[&empresa_id][&status]` | por empresa: status, vencimento, devido, retido, pagamentos, perdões, ajustes, estornos, saldo. Mês aberto = valores vivos |
+| `GET /painel/taxas/cobranca?competencia=AAAA-MM[&empresa_id][&status]` | por empresa: status, vencimento, devido, retido, pagamentos, perdões, ajustes, estornos, saldo, **Pix do mês por origem (`pix_mp`, `pix_manual`, `pct_manual`) e `bloqueio_pix_manual`**. Mês aberto = valores vivos |
 | `GET /painel/taxas/vendas?competencia=AAAA-MM&empresa_id=N[&somente_divergentes=true][&limit][&offset]` | detalhe por venda com a **conciliação do MP (T6)**: valor Pix (MP × manual), percentual, taxa, retido, retido esperado, divergência e situação (`ok`/`divergente`/`estornada`). Sem cliente, produto, vendedor ou total da venda |
 | `GET /painel/taxas/instrucoes-pagamento` | `{ configurado, chave_pix, favorecido }` lidos do ambiente (abaixo); sai no extrato e na mensagem de cobrança |
 | `GET /painel/taxas/ciclo` | em que ponto do ciclo está cada loja com saldo a receber (`a_vencer`, `vencido`, `aviso_suspensao`, `suspensao_devida`, `abaixo_do_piso`), com a configuração em vigor. **Só leitura: nada é suspenso nem avisado por esta rota** |
+| `POST /painel/empresas/:id/pix-manual/bloquear` `{ justificativa }` | sinaliza a loja e **bloqueia o lançamento de Pix manual** na venda (T7). Um bloqueio ativo por loja (repetir → 409) |
+| `POST /painel/empresas/:id/pix-manual/liberar` `{ justificativa }` | libera (ação do admin, com justificativa); sem bloqueio ativo → 409 |
 | `POST /painel/taxas/periodos/fechar` `{ competencia, empresa_id? }` | congela devido e retido do mês (só mês já terminado, horário de Brasília); vencimento dia 05 do mês seguinte. Sem `empresa_id`: todas com taxa no mês. Repetir é seguro |
 | `GET /painel/taxas/periodos/:id` | período e lançamentos (com responsável e data) |
 | `POST /painel/taxas/periodos/:id/pagamentos` `{ valor, data_pagamento, forma_pagamento, comprovante_chave?, chave_idempotencia? }` | só período fechado; parcial aceito; acima do saldo → 409; forma `pix`/`transferencia`/`boleto` |
@@ -171,3 +173,16 @@ Linha do tempo de um período de R$ 25,00 do mês M (vence dia 05 de M+1):
 - *Aviso* só quando a suspensão realmente vai acontecer no próximo fim de carência (a soma do que terá passado da carência até lá chega ao piso).
 - `suspensao_em` = dia seguinte ao fim da carência que fecha o piso, se nada for pago.
 - Em centavos inteiros; `hoje` é o dia de São Paulo.
+
+### Pix manual: sinalização e bloqueio (SPEC T7) — etapa 6
+Migration `116_bloqueios_pix_empresa.sql`. Decisões do PO (15/11/2026):
+- **Quem sinaliza:** só o **operador do painel**, olhando a proporção Pix Mercado Pago × manual de cada loja (`pct_manual`, no resumo do mês). **Não há regra automática**: a SPEC não define "fuga do padrão" e não existe dado real de volume para fixar um limite; um limite errado bloquearia loja honesta. Pode virar automática depois, com dado.
+- **O que o bloqueio recusa:** só a **venda no PDV com Pix manual** (Pix sem cobrança do Mercado Pago). Pix do Mercado Pago, dinheiro, débito, crédito e crediário seguem. **Recebimento de conta a receber/fiado com Pix manual não é bloqueado.**
+
+Como funciona:
+- Tabela `bloqueios_pix_empresa`: uma linha por bloqueio (motivo `pix_manual_sinalizado`; `suspensao_taxa` já previsto para a etapa 5), com quem abriu, quando e justificativa, e quem liberou, quando e justificativa. **Histórico imutável**: nunca apagado; a liberação só preenche `liberado_*` e não se desfaz (bloquear de novo cria outra linha). Um só bloqueio ativo por loja e motivo (índice único parcial).
+- **A validação é no backend** (`vendasRepository.criar`, no início da transação, antes de criar a venda e travar estoque): venda com Pix manual de loja bloqueada responde **403** e **nada** é gravado. Pagamento misto com Pix manual também é recusado inteiro.
+- A mensagem ao caixa **não cita taxa, motivo nem sinalização** (a taxa nunca aparece na API de vendas): *"O Pix manual está indisponível para esta empresa. Use o Pix pelo Mercado Pago ou outra forma de pagamento, ou fale com o administrador do sistema."*
+- O responsável é sempre o operador da sessão; bloquear e liberar vão para `plataforma_eventos` (`pix_manual_bloqueado`, `pix_manual_liberado`) na mesma transação.
+- Corrida: um bloqueio criado no mesmo instante de uma venda em andamento vale a partir da próxima venda (é uma decisão de autorização, não um saldo; não há lock).
+- Lacuna conhecida (fora do escopo): o PDV ainda oferece o Pix manual; o caixa só descobre ao finalizar. Esconder a opção quando bloqueado é melhoria do ERP.

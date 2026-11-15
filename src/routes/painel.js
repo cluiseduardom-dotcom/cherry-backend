@@ -7,6 +7,7 @@ const identidade = require('../controllers/plataformaIdentidadeController');
 const funcionalidades = require('../controllers/funcionalidadesPainelController');
 const limiteUsuarios = require('../controllers/limiteUsuariosPainelController');
 const cobrancaTaxa = require('../controllers/cobrancaTaxaPainelController');
+const bloqueioPix = require('../controllers/bloqueioPixPainelController');
 const uploadComprovanteTaxa = require('../middlewares/uploadComprovanteTaxa');
 const requirePainel = require('../middlewares/requirePainel');
 const registrar = require('../middlewares/registrarEventoPainel');
@@ -45,6 +46,10 @@ router.post('/taxas/periodos/:id/pagamentos', op, cobrancaTaxa.pagamento);
 router.get('/taxas/lancamentos/:id/comprovante', op, cobrancaTaxa.baixarComprovante);
 router.post('/taxas/periodos/:id/perdoes', op, cobrancaTaxa.perdao);
 router.post('/empresas/:id/taxas/ajustes', op, cobrancaTaxa.ajuste);
+// Pix manual (T7): o operador sinaliza e bloqueia o lançamento de Pix manual da loja, ou libera, sempre com justificativa.
+// A trilha é gravada pelo repository, na mesma transação, com o detalhe (sem registrar()).
+router.post('/empresas/:id/pix-manual/bloquear', op, bloqueioPix.bloquear);
+router.post('/empresas/:id/pix-manual/liberar', op, bloqueioPix.liberar);
 router.get('/planos', op, comercial.listarPlanos);
 router.get('/empresas/comercial', op, comercial.listarEmpresas);
 router.get('/empresas/identidade', op, identidade.listar);
