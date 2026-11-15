@@ -99,6 +99,7 @@ ajuste com sinal). `a_receber` = saldo, nunca abaixo de zero. Retido maior que o
 |---|---|
 | `GET /painel/taxas/cobranca?competencia=AAAA-MM[&empresa_id][&status]` | por empresa: status, vencimento, devido, retido, pagamentos, perdões, ajustes, estornos, saldo. Mês aberto = valores vivos |
 | `GET /painel/taxas/vendas?competencia=AAAA-MM&empresa_id=N[&somente_divergentes=true][&limit][&offset]` | detalhe por venda com a **conciliação do MP (T6)**: valor Pix (MP × manual), percentual, taxa, retido, retido esperado, divergência e situação (`ok`/`divergente`/`estornada`). Sem cliente, produto, vendedor ou total da venda |
+| `GET /painel/taxas/instrucoes-pagamento` | `{ configurado, chave_pix, favorecido }` lidos do ambiente (abaixo); sai no extrato e na mensagem de cobrança |
 | `POST /painel/taxas/periodos/fechar` `{ competencia, empresa_id? }` | congela devido e retido do mês (só mês já terminado, horário de Brasília); vencimento dia 05 do mês seguinte. Sem `empresa_id`: todas com taxa no mês. Repetir é seguro |
 | `GET /painel/taxas/periodos/:id` | período e lançamentos (com responsável e data) |
 | `POST /painel/taxas/periodos/:id/pagamentos` `{ valor, data_pagamento, forma_pagamento, comprovante_chave?, chave_idempotencia? }` | só período fechado; parcial aceito; acima do saldo → 409; forma `pix`/`transferencia`/`boleto` |
@@ -135,3 +136,11 @@ Por venda: **retido esperado** = Σ, por cobrança Pix paga da venda, `ROUND(val
 `divergente`, contada em `qtd_divergencias` no resumo do mês. A diferença é só **sinalizada** (decisão do PO): correção, se
 houver, é ajuste ou perdão manual com justificativa. Causas prováveis: percentual da empresa mudou entre a cobrança e a venda,
 ou a comissão do MP não corresponde à registrada (conferir no extrato do Mercado Pago).
+
+### Instrução de pagamento (extrato e WhatsApp)
+| Variável | Valor |
+|---|---|
+| `TAXA_COBRANCA_PIX_CHAVE` | chave Pix da GiroNex que recebe a taxa (até 140 caracteres, sem quebra de linha). Vazia ou inválida = extrato sem instrução de pagamento |
+| `TAXA_COBRANCA_FAVORECIDO` | nome do favorecido como aparece no Pix (opcional, até 100 caracteres) |
+
+Não são segredos (o lojista precisa ver), mas ficam no ambiente do Render, não no código.

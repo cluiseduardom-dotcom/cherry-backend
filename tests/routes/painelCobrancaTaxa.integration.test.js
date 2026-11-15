@@ -273,6 +273,37 @@ describe('pagamento e perdão', () => {
     });
 });
 
+describe('dados para o extrato', () => {
+    test('o detalhe do período traz razão social, CNPJ e telefone da loja (e nada além do necessário)', async () => {
+        await db.query(`UPDATE empresas SET razao_social = 'Aurora Comércio Ltda', cnpj = '12345678000190', telefone = '11987654321' WHERE id = $1`, [C.empresaId]);
+        const { periodo } = (await detalhe(C.maio)).body.data;
+        expect(periodo).toMatchObject({ empresa_razao_social: 'Aurora Comércio Ltda', empresa_cnpj: '12345678000190', empresa_telefone: '11987654321' });
+        expect(Object.keys(periodo).filter((k) => k.startsWith('empresa_')).sort())
+            .toEqual(['empresa_cnpj', 'empresa_id', 'empresa_nome', 'empresa_razao_social', 'empresa_telefone']);
+    });
+
+    test('instrução de pagamento: não configurada sem as variáveis; configurada com elas; ERP 401', async () => {
+        const antes = { c: process.env.TAXA_COBRANCA_PIX_CHAVE, f: process.env.TAXA_COBRANCA_FAVORECIDO };
+        const get = () => request(app).get('/painel/taxas/instrucoes-pagamento').set(operador.cabecalho);
+        try {
+            delete process.env.TAXA_COBRANCA_PIX_CHAVE;
+            expect((await get()).body.data).toEqual({ configurado: false, chave_pix: null, favorecido: null });
+
+            process.env.TAXA_COBRANCA_PIX_CHAVE = 'pix@gironex.invalid';
+            process.env.TAXA_COBRANCA_FAVORECIDO = 'GiroNex';
+            const res = await get();
+            expect(res.status).toBe(200);
+            expect(res.body.data).toEqual({ configurado: true, chave_pix: 'pix@gironex.invalid', favorecido: 'GiroNex' });
+            expect(res.headers['cache-control']).toBe('no-store');
+        } finally {
+            if (antes.c === undefined) delete process.env.TAXA_COBRANCA_PIX_CHAVE; else process.env.TAXA_COBRANCA_PIX_CHAVE = antes.c;
+            if (antes.f === undefined) delete process.env.TAXA_COBRANCA_FAVORECIDO; else process.env.TAXA_COBRANCA_FAVORECIDO = antes.f;
+        }
+        const tokenErp = makeToken({ id: A.adminId, empresa_id: A.empresaId, papel: 'admin' });
+        expect((await request(app).get('/painel/taxas/instrucoes-pagamento').set('Authorization', `Bearer ${tokenErp}`)).status).toBe(401);
+    });
+});
+
 describe('ajuste', () => {
     test('vai para o período aberto do mês corrente, com sinal', async () => {
         const res = await ajustar(A.empresaId, { valor: -0.05, justificativa: 'divergência conferida com o MP' });
