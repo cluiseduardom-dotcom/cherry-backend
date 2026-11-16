@@ -1,5 +1,6 @@
 jest.mock('../../src/repositories/usuarioRepository');
 jest.mock('../../src/repositories/usuariosFotosRepository');
+jest.mock('../../src/repositories/moduloRepository');
 jest.mock('../../src/services/cargosService');
 jest.mock('bcrypt');
 jest.mock('jsonwebtoken');
@@ -9,12 +10,14 @@ const jwt = require('jsonwebtoken');
 const usuarioRepository = require('../../src/repositories/usuarioRepository');
 const cargosService = require('../../src/services/cargosService');
 const usuariosFotosRepository = require('../../src/repositories/usuariosFotosRepository');
+const moduloRepository = require('../../src/repositories/moduloRepository');
 const authService = require('../../src/services/authService');
 
 beforeEach(() => {
   jest.clearAllMocks();
   cargosService.garantirCargoAtivo.mockResolvedValue();
   usuariosFotosRepository.buscarChave.mockResolvedValue(null);
+  moduloRepository.listarAtivos.mockResolvedValue([]);
 });
 
 describe('authService.login', () => {
@@ -58,7 +61,7 @@ describe('authService.login', () => {
       token: 'signed-token',
       usuario: {
         id: 1, nome: 'Ana', email: 'a@x.com', login: null, papel: 'admin', empresa_id: undefined, senha_temporaria: false, foto_url: null,
-        empresa: { id: undefined, tema: 'vertumno', slug: null }
+        empresa: { id: undefined, tema: 'vertumno', slug: null, modulos: [] }
       }
     });
   });
@@ -150,15 +153,15 @@ describe('authService.login — identidade visual da empresa', () => {
 
     const { usuario } = await authService.login('a@x.com', 'senha123');
 
-    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry', slug: null });
+    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry', slug: null, modulos: [] });
   });
 
   test('devolve o slug (endereço público) da empresa para o navegador lembrar a loja', async () => {
-    usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase, empresa_tema: 'cherry', empresa_slug: 'cherry' });
+    usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase, empresa_tema: 'cherry', empresa_slug: 'cherry', modulos: [] });
 
     const { usuario } = await authService.login('a@x.com', 'senha123');
 
-    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry', slug: 'cherry' });
+    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry', slug: 'cherry', modulos: [] });
   });
 
   test.each([undefined, null, '', 'desconhecido', 'CHERRY', '__proto__', 42])(
@@ -168,7 +171,7 @@ describe('authService.login — identidade visual da empresa', () => {
       const { token, usuario } = await authService.login('a@x.com', 'senha123');
 
       expect(token).toBe('signed-token');
-      expect(usuario.empresa).toEqual({ id: 7, tema: 'vertumno', slug: null });
+      expect(usuario.empresa).toEqual({ id: 7, tema: 'vertumno', slug: null, modulos: [] });
     }
   );
 
@@ -195,6 +198,41 @@ describe('authService.login — identidade visual da empresa', () => {
     expect(jwt.sign).not.toHaveBeenCalled();
   });
 
+  test('devolve em empresa.modulos só os códigos ativos, consultados pela empresa do usuário', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase, empresa_tema: 'cherry' });
+    moduloRepository.listarAtivos.mockResolvedValue(['fiscal', 'grade']);
+
+    const { usuario } = await authService.login('a@x.com', 'senha123');
+
+    expect(moduloRepository.listarAtivos).toHaveBeenCalledWith(7);
+    expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry', slug: null, modulos: ['fiscal', 'grade'] });
+  });
+
+  test('falha na consulta de módulos devolve [] e não derruba o login', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase, empresa_tema: 'cherry' });
+    moduloRepository.listarAtivos.mockRejectedValue(new Error('db fora do ar'));
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const { token, usuario } = await authService.login('a@x.com', 'senha123');
+
+      expect(token).toBe('signed-token');
+      expect(usuario.empresa).toEqual({ id: 7, tema: 'cherry', slug: null, modulos: [] });
+      expect(usuario.id).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('retorno inesperado da consulta de módulos (não array) vira []', async () => {
+    usuarioRepository.buscarPorEmail.mockResolvedValue({ ...usuarioBase });
+    moduloRepository.listarAtivos.mockResolvedValue(undefined);
+
+    const { usuario } = await authService.login('a@x.com', 'senha123');
+
+    expect(usuario.empresa.modulos).toEqual([]);
+  });
+
   test('empresas diferentes recebem cada uma o seu tema', async () => {
     usuarioRepository.buscarPorEmail.mockResolvedValueOnce({ ...usuarioBase, empresa_id: 1, empresa_tema: 'cherry' });
     usuarioRepository.buscarPorEmail.mockResolvedValueOnce({ ...usuarioBase, empresa_id: 2, empresa_tema: 'vertumno' });
@@ -202,8 +240,8 @@ describe('authService.login — identidade visual da empresa', () => {
     const a = await authService.login('a@x.com', 'senha123');
     const b = await authService.login('b@x.com', 'senha123');
 
-    expect(a.usuario.empresa).toEqual({ id: 1, tema: 'cherry', slug: null });
-    expect(b.usuario.empresa).toEqual({ id: 2, tema: 'vertumno', slug: null });
+    expect(a.usuario.empresa).toEqual({ id: 1, tema: 'cherry', slug: null, modulos: [] });
+    expect(b.usuario.empresa).toEqual({ id: 2, tema: 'vertumno', slug: null, modulos: [] });
   });
 });
 
