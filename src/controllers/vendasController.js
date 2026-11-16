@@ -5,7 +5,9 @@ const AppError = require('../errors/AppError');
 const { criarVendaSchema } = require('../validations/vendasValidation');
 const { cancelarVendaSchema } = require('../validations/cancelamentosValidation');
 const { listarVendasSchema } = require('../validations/listarVendasValidation');
-const { podeVerCustosOperacionais, temCapacidade } = require('../services/permissoesService');
+const { podeVerCustosOperacionais, podeVerCustos, podeVerVendasDeTodos, temCapacidade } = require('../services/permissoesService');
+const resultadoVendasService = require('../services/resultadoVendasService');
+const { resultadoPeriodoSchema } = require('../validations/resultadoVendasValidation');
 const { CAPACIDADES } = require('../constants/cargos');
 const { escopoDeClientes } = require('../services/clientesService');
 
@@ -126,7 +128,14 @@ async function listar(req, res, next) {
             ...paginacao,
             ...parsedFiltros.data
         }, req.usuario);
-        const items = resultado.items.map((venda) => filtrarParaRole(venda, req.usuario));
+        let items = resultado.items.map((venda) => filtrarParaRole(venda, req.usuario));
+
+        // Lucro (receita, custo, bruto, líquido e %) só para quem tem `ver_custos`: vendedor nunca recebe.
+        if (podeVerCustos(req.usuario)) {
+            const resultados = await resultadoVendasService.resultadoDasVendas(items, req.usuario.empresa_id);
+
+            items = items.map((venda) => ({ ...venda, resultado: resultados.get(venda.id) ?? null }));
+        }
 
         return response.success(res, { ...resultado, items });
     } catch (error) {
@@ -138,8 +147,37 @@ async function buscarPorId(req, res, next) {
     try {
         const id = parseId(req.params.id);
         const venda = await vendasService.buscarPorId(id, req.usuario);
+        const filtrada = filtrarParaRole(venda, req.usuario);
 
-        return response.success(res, filtrarParaRole(venda, req.usuario));
+        if (!podeVerCustos(req.usuario)) return response.success(res, filtrada);
+
+        const resultados = await resultadoVendasService.resultadoDasVendas([filtrada], req.usuario.empresa_id);
+
+        return response.success(res, { ...filtrada, resultado: resultados.get(filtrada.id) ?? null });
+    } catch (error) {
+        next(error);
+    }
+}
+
+// Resultado do período (e, opcionalmente, por dia ou por mês). Exige `ver_custos` (na rota) e enxergar as
+// vendas de todos: o total de uma empresa não pode ser montado por quem só vê as próprias vendas.
+async function resultado(req, res, next) {
+    try {
+        if (!podeVerVendasDeTodos(req.usuario)) {
+            throw new AppError('Acesso negado: sem permissão para ver o resultado de todas as vendas', 403);
+        }
+
+        const parsed = resultadoPeriodoSchema.safeParse({
+            data_de: req.query.data_de,
+            data_ate: req.query.data_ate,
+            agrupar: req.query.agrupar
+        });
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        return response.success(res, await resultadoVendasService.resultadoPeriodo(parsed.data, req.usuario));
     } catch (error) {
         next(error);
     }
@@ -180,6 +218,7 @@ module.exports = {
     criar,
     listar,
     buscarPorId,
+    resultado,
     cancelar,
     previaCancelamento
 };
