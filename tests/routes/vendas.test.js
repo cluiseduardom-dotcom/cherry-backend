@@ -1,9 +1,11 @@
 jest.mock('../../src/services/vendasService');
 jest.mock('../../src/services/cancelamentosService');
+jest.mock('../../src/services/resultadoVendasService');
 
 const request = require('supertest');
 const vendasService = require('../../src/services/vendasService');
 const cancelamentosService = require('../../src/services/cancelamentosService');
+const resultadoVendasService = require('../../src/services/resultadoVendasService');
 const AppError = require('../../src/errors/AppError');
 const app = require('../../src/app');
 const { makeToken } = require('../helpers/token');
@@ -14,6 +16,7 @@ const estoquistaToken = makeToken({ id: 3, role: 'estoquista', empresa_id: 1 });
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resultadoVendasService.resultadoDasVendas.mockResolvedValue(new Map());
 });
 
 test('GET /vendas/resumo returns 401 without a token', async () => {
@@ -458,5 +461,57 @@ describe('GET /vendas/:id/cancelamento/previa', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.faixa).toBe('ate_7_dias');
     expect(cancelamentosService.previa).toHaveBeenCalledWith(1, expect.objectContaining({ id: 2, empresa_id: 1 }));
+  });
+});
+
+describe('resultado (lucro) só para quem tem ver_custos', () => {
+  const venda = { id: 5, status: 'finalizada', usuario_id: 2, itens: [{ produto_id: 1, quantidade: 1, preco_unitario: '10.00', custo_unitario: '4.00' }] };
+  const resultado = { receita: 10, custo: 4, lucro_bruto: 6, lucro_liquido: 6 };
+
+  test('GET /vendas/:id — admin recebe resultado; vendedor não, e o cálculo nem roda para ele', async () => {
+    vendasService.buscarPorId.mockResolvedValue(venda);
+    resultadoVendasService.resultadoDasVendas.mockResolvedValue(new Map([[5, resultado]]));
+
+    const admin = await request(app).get('/vendas/5').set('Authorization', `Bearer ${adminToken}`);
+    expect(admin.status).toBe(200);
+    expect(admin.body.data.resultado).toEqual(resultado);
+
+    resultadoVendasService.resultadoDasVendas.mockClear();
+    const vendedor = await request(app).get('/vendas/5').set('Authorization', `Bearer ${vendedorToken}`);
+    expect(vendedor.status).toBe(200);
+    expect(vendedor.body.data).not.toHaveProperty('resultado');
+    expect(resultadoVendasService.resultadoDasVendas).not.toHaveBeenCalled();
+  });
+
+  test('GET /vendas — resultado em cada item para admin; vendedor sem o campo', async () => {
+    vendasService.listar.mockResolvedValue({ items: [venda], page: 1, pageSize: 20, total: 1, totalPages: 1 });
+    resultadoVendasService.resultadoDasVendas.mockResolvedValue(new Map([[5, resultado]]));
+
+    const admin = await request(app).get('/vendas').set('Authorization', `Bearer ${adminToken}`);
+    const vendedor = await request(app).get('/vendas').set('Authorization', `Bearer ${vendedorToken}`);
+
+    expect(admin.body.data.items[0].resultado).toEqual(resultado);
+    expect(vendedor.body.data.items[0]).not.toHaveProperty('resultado');
+  });
+
+  test('GET /vendas/resultado — vendedor 403, sem chamar o serviço; sem token 401', async () => {
+    const vendedor = await request(app).get('/vendas/resultado?data_de=2026-03-01&data_ate=2026-03-31').set('Authorization', `Bearer ${vendedorToken}`);
+    const anonimo = await request(app).get('/vendas/resultado?data_de=2026-03-01&data_ate=2026-03-31');
+
+    expect(vendedor.status).toBe(403);
+    expect(anonimo.status).toBe(401);
+    expect(resultadoVendasService.resultadoPeriodo).not.toHaveBeenCalled();
+  });
+
+  test('GET /vendas/resultado — admin chama o serviço com o período e o usuário do JWT', async () => {
+    resultadoVendasService.resultadoPeriodo.mockResolvedValue({ totais: {} });
+
+    const res = await request(app).get('/vendas/resultado?data_de=2026-03-01&data_ate=2026-03-31&agrupar=mes').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(resultadoVendasService.resultadoPeriodo).toHaveBeenCalledWith(
+      { data_de: '2026-03-01', data_ate: '2026-03-31', agrupar: 'mes' },
+      expect.objectContaining({ empresa_id: 1 })
+    );
   });
 });

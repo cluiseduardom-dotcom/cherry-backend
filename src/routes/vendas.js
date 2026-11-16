@@ -11,6 +11,9 @@ router.get('/por-dia', requireVendedor, controller.porDia);
 router.get('/por-mes', requireVendedor, controller.porMes);
 router.get('/mais-vendidos', requireVendedor, controller.maisVendidos);
 
+// Lucro do período (bruto, líquido, %): só `ver_custos`. Antes de '/:id' para não ser lido como id.
+router.get('/resultado', requireVendedor, requireCapacidade(CAPACIDADES.VER_CUSTOS), controller.resultado);
+
 router.get('/', requireVendedor, controller.listar);
 router.post('/', requireVendedor, controller.criar);
 
