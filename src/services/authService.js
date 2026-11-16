@@ -6,6 +6,7 @@ const usuariosFotosRepository = require('../repositories/usuariosFotosRepository
 const storage = require('./storage/imagensStorage');
 const AppError = require('../errors/AppError');
 const cargosService = require('./cargosService');
+const moduloRepository = require('../repositories/moduloRepository');
 const { resolverTemaVisual } = require('../constants/temasVisuais');
 
 // Hash descartável: quando o e-mail não existe, ainda pagamos um bcrypt.compare
@@ -13,6 +14,19 @@ const { resolverTemaVisual } = require('../constants/temasVisuais');
 const HASH_DESCARTAVEL = bcrypt.hashSync('hash-descartavel-sem-usuario', 10);
 
 const MENSAGEM_CREDENCIAIS = 'Email ou senha inválidos';
+
+// Módulos ativos da empresa (ADR-007, R7): só os códigos, para o frontend esconder menus.
+// Falha fechada: qualquer erro (ou retorno inesperado) vira [] e nunca derruba o login nem libera
+// módulo. A barreira real continua sendo o exigirModulo em cada rota.
+async function listarModulosAtivos(empresa_id) {
+    try {
+        const modulos = await moduloRepository.listarAtivos(empresa_id);
+        return Array.isArray(modulos) ? modulos : [];
+    } catch (erro) {
+        console.error('Falha ao listar módulos no login:', erro && erro.message);
+        return [];
+    }
+}
 
 // `identificador`: e-mail (contém @; vale em qualquer tela) ou código de usuário (ex.: EGASIL), que só
 // existe dentro de uma empresa e por isso precisa da loja (`empresaSlug`). Qualquer falta ou erro dá a
@@ -43,6 +57,7 @@ async function login(identificador, senha, empresaSlug) {
 
     const token = tokenService.emitirToken(usuario);
     const chaveFoto = await usuariosFotosRepository.buscarChave(usuario.id, usuario.empresa_id);
+    const modulos = await listarModulosAtivos(usuario.empresa_id);
 
     return {
         token,
@@ -57,7 +72,7 @@ async function login(identificador, senha, empresaSlug) {
             foto_url: chaveFoto ? storage.urlPublica(chaveFoto) : null,
             // Identidade visual da empresa do próprio usuário (lida do banco, nunca da requisição).
             // O slug (endereço público /c/<slug>) deixa o navegador lembrar a loja para o login por código.
-            empresa: { id: usuario.empresa_id, tema: resolverTemaVisual(usuario.empresa_tema), slug: usuario.empresa_slug ?? null }
+            empresa: { id: usuario.empresa_id, tema: resolverTemaVisual(usuario.empresa_tema), slug: usuario.empresa_slug ?? null, modulos }
         }
     };
 }
