@@ -5,7 +5,7 @@ const { FUNCIONALIDADES, CODIGOS_FUNCIONALIDADES, RECURSOS } = require('../../sr
 
 const SQL = fs.readFileSync(path.join(__dirname, '../../src/database/migrations/089_funcionalidades.sql'), 'utf8');
 const EXECUTAVEL = SQL.replace(/--.*$/gm, '');
-const INTRODUZIDAS_DEPOIS_DA_089 = ['loja_online', 'fiado'];
+const INTRODUZIDAS_DEPOIS_DA_089 = ['loja_online', 'fiado', 'importacao_lista'];
 
 describe('migration 089 — arquivo', () => {
     test('está no runner', async () => {

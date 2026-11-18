@@ -21,7 +21,9 @@ const FUNCIONALIDADES = [
     // Entrou na migration 095 (canal e-commerce). Nenhum plano a inclui; a GiroNex liga avulsa, por empresa.
     { codigo: 'loja_online', tipo: 'modulo', nome: 'Loja online (e-commerce)', vendavel: true },
     // Entrou na migration 109. Nenhum plano a inclui; a GiroNex liga avulsa, por empresa.
-    { codigo: 'fiado', tipo: 'modulo', nome: 'Fiado: dívidas de clientes e cobrança', vendavel: true }
+    { codigo: 'fiado', tipo: 'modulo', nome: 'Fiado: dívidas de clientes e cobrança', vendavel: true },
+    // Entrou na migration 117. Nenhum plano a inclui; a GiroNex liga avulsa, por empresa.
+    { codigo: 'importacao_lista', tipo: 'modulo', nome: 'Importação de lista: produtos, estoque inicial e clientes', vendavel: true }
 ];
 
 const CODIGOS_FUNCIONALIDADES = FUNCIONALIDADES.map((f) => f.codigo);
