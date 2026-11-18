@@ -7,5 +7,7 @@ const importacaoListaRateLimiter = require('../middlewares/importacaoListaRateLi
 // Autenticação, papel admin e a funcionalidade `importacao_lista` são aplicados no app.js.
 router.get('/modelo', controller.modelo);
 router.post('/previa', importacaoListaRateLimiter, uploadImportacaoLista, controller.previa);
+router.post('/confirmar', controller.confirmar);
+router.get('/:id/relatorio', controller.relatorio);
 
 module.exports = router;

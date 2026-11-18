@@ -1,10 +1,13 @@
 // Fiação da rota de importação (prévia e modelo): auth, papel, funcionalidade, upload e validação.
 // A regra da prévia é coberta em tests/services/importacaoListaService.test.js; o service é mockado aqui.
 jest.mock('../../src/services/importacaoListaService');
+jest.mock('../../src/services/importacaoListaConfirmacaoService');
 
 const request = require('supertest');
 const app = require('../../src/app');
 const importacaoListaService = require('../../src/services/importacaoListaService');
+const confirmacaoService = require('../../src/services/importacaoListaConfirmacaoService');
+const AppError = require('../../src/errors/AppError');
 const sessaoRepository = require('../../src/repositories/sessaoRepository');
 const { MENSAGEM } = require('../../src/middlewares/exigirFuncionalidade');
 const { makeToken } = require('../helpers/token');
@@ -143,5 +146,97 @@ describe('POST /importacao/previa', () => {
             .attach('arquivo', csv, 'a.csv')
             .attach('arquivo', csv, 'b.csv');
         expect(res.status).toBe(400);
+    });
+});
+
+const TOKEN = 'a'.repeat(43);
+const confirmar = (token, corpo) => request(app).post('/importacao/confirmar').set('Authorization', `Bearer ${token}`).send(corpo);
+
+describe('POST /importacao/confirmar', () => {
+    test('401 sem token; 403 para vendedor, estoquista e empresa sem a funcionalidade', async () => {
+        expect((await request(app).post('/importacao/confirmar').send({ token: TOKEN })).status).toBe(401);
+        expect((await confirmar(vendedor, { token: TOKEN })).status).toBe(403);
+        expect((await confirmar(estoquista, { token: TOKEN })).status).toBe(403);
+
+        comFuncionalidade(false);
+        const res = await confirmar(admin, { token: TOKEN });
+        expect(res.status).toBe(403);
+        expect(res.body.message).toBe(MENSAGEM);
+        expect(confirmacaoService.confirmar).not.toHaveBeenCalled();
+    });
+
+    test('201 com o resultado; somente_validas assume falso; o usuário vem do JWT', async () => {
+        confirmacaoService.confirmar.mockResolvedValue({ importacao_id: 55, criados: 3 });
+
+        const res = await confirmar(admin, { token: TOKEN });
+
+        expect(res.status).toBe(201);
+        expect(res.body).toEqual({ success: true, data: { importacao_id: 55, criados: 3 } });
+        expect(res.headers['cache-control']).toBe('no-store');
+        expect(confirmacaoService.confirmar).toHaveBeenCalledWith({ token: TOKEN, somenteValidas: false }, expect.objectContaining({ id: 1, empresa_id: 1 }));
+    });
+
+    test('repassa somente_validas verdadeiro', async () => {
+        confirmacaoService.confirmar.mockResolvedValue({});
+        await confirmar(admin, { token: TOKEN, somente_validas: true });
+        expect(confirmacaoService.confirmar).toHaveBeenCalledWith({ token: TOKEN, somenteValidas: true }, expect.anything());
+    });
+
+    test.each([
+        [{}, 'sem token'],
+        [{ token: 'curto' }, 'token curto'],
+        [{ token: `${TOKEN}x` }, 'token longo'],
+        [{ token: 123 }, 'token não texto'],
+        [{ token: TOKEN, somente_validas: 'sim' }, 'somente_validas não booleano'],
+        [{ token: TOKEN, empresa_id: 2 }, 'campo extra (empresa vem do JWT)']
+    ])('400 para %j (%s)', async (corpo) => {
+        const res = await confirmar(admin, corpo);
+        expect(res.status).toBe(400);
+        expect(confirmacaoService.confirmar).not.toHaveBeenCalled();
+    });
+
+    test('erros do service chegam com o status e a mensagem (404 prévia, 409 erros, 410 expirada)', async () => {
+        for (const [status, msg] of [[404, 'Prévia não encontrada'], [409, 'Tem erro'], [410, 'A prévia expirou']]) {
+            confirmacaoService.confirmar.mockRejectedValueOnce(new AppError(msg, status));
+            const res = await confirmar(admin, { token: TOKEN });
+            expect([res.status, res.body.message]).toEqual([status, msg]);
+        }
+    });
+});
+
+describe('GET /importacao/:id/relatorio', () => {
+    const baixar = (id, token = admin) => request(app).get(`/importacao/${id}/relatorio`).set('Authorization', `Bearer ${token}`);
+
+    test('401 sem token; 403 para vendedor e empresa sem a funcionalidade', async () => {
+        expect((await request(app).get('/importacao/5/relatorio')).status).toBe(401);
+        expect((await baixar(5, vendedor)).status).toBe(403);
+
+        comFuncionalidade(false);
+        expect((await baixar(5)).status).toBe(403);
+        expect(confirmacaoService.relatorioCsv).not.toHaveBeenCalled();
+    });
+
+    test('baixa o CSV como anexo, sem cache, para a empresa do JWT', async () => {
+        confirmacaoService.relatorioCsv.mockResolvedValue({ nome: 'relatorio-importacao-5.csv', conteudo: 'linha;resultado\r\n' });
+
+        const res = await baixar(5);
+
+        expect(res.status).toBe(200);
+        expect(res.headers['content-type']).toMatch(/^text\/csv/);
+        expect(res.headers['content-disposition']).toBe('attachment; filename="relatorio-importacao-5.csv"');
+        expect(res.headers['cache-control']).toBe('no-store');
+        expect(confirmacaoService.relatorioCsv).toHaveBeenCalledWith(5, expect.objectContaining({ empresa_id: 1 }));
+    });
+
+    test.each(['abc', '0', '-1', '1.5'])('400 para id %p', async (id) => {
+        expect((await baixar(id)).status).toBe(400);
+        expect(confirmacaoService.relatorioCsv).not.toHaveBeenCalled();
+    });
+
+    test('importação de outra empresa ou não confirmada: o status do service', async () => {
+        confirmacaoService.relatorioCsv.mockRejectedValueOnce(new AppError('Importação não encontrada', 404));
+        confirmacaoService.relatorioCsv.mockRejectedValueOnce(new AppError('O relatório só existe depois da confirmação da importação', 409));
+        expect((await baixar(9)).status).toBe(404);
+        expect((await baixar(9)).status).toBe(409);
     });
 });

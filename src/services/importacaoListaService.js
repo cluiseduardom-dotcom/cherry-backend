@@ -10,6 +10,7 @@ const { extrairLinhas } = require('./importacaoLista/planilha');
 const { validarProdutos } = require('./importacaoLista/validadorProdutos');
 const { validarClientes } = require('./importacaoLista/validadorClientes');
 const { limparTexto, normalizarParaComparar } = require('./importacaoLista/texto');
+const { telefoneParaComparar } = require('./importacaoLista/campos');
 
 // Planilha-modelo: só o cabeçalho, em português. Sem linha de exemplo, para ninguém importar "Produto exemplo" sem querer.
 function gerarModelo(tipo, formato) {
@@ -26,14 +27,6 @@ function gerarModelo(tipo, formato) {
 function nomeSeguroDoArquivo(nome) {
     const base = path.basename(String(nome ?? 'arquivo.csv').replace(/\\/g, '/'));
     return limparTexto(base).slice(0, 255) || 'arquivo.csv';
-}
-
-// Telefone já cadastrado, no mesmo formato do que a importação normaliza (só dígitos, sem DDI nem zero inicial).
-function telefoneParaComparar(telefone) {
-    let digitos = String(telefone ?? '').replace(/\D/g, '');
-    if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) digitos = digitos.slice(2);
-    else if (digitos.length > 10 && digitos.startsWith('0')) digitos = digitos.replace(/^0+/, '');
-    return digitos;
 }
 
 function indexarPorNome(itens) {
@@ -172,6 +165,13 @@ async function previa({ tipo, arquivo, localPadraoId }, usuario) {
 
     const { totais, ...resumo } = consolidar(resultados, avisosDeArquivo, ignoradas);
     const aCriar = resultados.filter((r) => r.acao === 'criar').map((r) => ({ linha: r.linha, ...r.dados }));
+    // Para o relatório da confirmação: o que não entra e por quê (só linha, coluna e motivo, sem dado pessoal).
+    const ignoradasNaPrevia = resultados
+        .filter((r) => r.acao === 'ignorar')
+        .map((r) => ({ linha: r.linha, motivo: r.problemas.find((p) => p.nivel === 'aviso')?.motivo ?? 'duplicado' }));
+    const errosNaPrevia = resultados
+        .filter((r) => r.acao === 'erro')
+        .flatMap((r) => r.problemas.filter((p) => p.nivel === 'erro').map((p) => ({ linha: r.linha, coluna: p.coluna, motivo: p.motivo })));
 
     const token = aCriar.length ? crypto.randomBytes(32).toString('base64url') : null;
 
@@ -186,7 +186,7 @@ async function previa({ tipo, arquivo, localPadraoId }, usuario) {
         previa: token
             ? {
                 token_hash: crypto.createHash('sha256').update(token).digest('hex'),
-                dados: { tipo, registros: aCriar },
+                dados: { tipo, registros: aCriar, ignoradas: ignoradasNaPrevia, erros: errosNaPrevia },
                 ttl_minutos: LIMITES.TTL_PREVIA_MINUTOS
             }
             : null

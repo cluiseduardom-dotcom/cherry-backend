@@ -104,8 +104,10 @@ function formatarSku(codigos, contador, configuracao) {
 }
 
 // `escopo`: 'produto' (padrão) ou 'insumo'; escolhe o padrão de SKU e, portanto, a sequência (cada padrão tem a sua).
-async function gerar(categorias, empresaId, client, escopo = 'produto') {
-    const configuracao = await obterConfiguracao(categorias, empresaId, client, escopo);
+// `configuracaoPronta` (opcional): padrão já carregado por uma chamada anterior para as MESMAS categorias; evita reler
+// o padrão a cada SKU quando se gera muitos de uma vez (importação de lista).
+async function gerar(categorias, empresaId, client, escopo = 'produto', configuracaoPronta = null) {
+    const configuracao = configuracaoPronta || await obterConfiguracao(categorias, empresaId, client, escopo);
     const codigos = montarSegmentos(categorias, configuracao);
 
     if (!codigos.length && !configuracao.prefixo && !configuracao.sufixo) {

@@ -2,8 +2,8 @@ const db = require('../config/db');
 
 // Contexto de validação da prévia. Cada função é UMA consulta da empresa do JWT (sem N+1).
 
-async function buscarProdutosExistentes(empresa_id) {
-    const { rows } = await db.query(
+async function buscarProdutosExistentes(empresa_id, client = db) {
+    const { rows } = await client.query(
         `SELECT sku, nome, tipo FROM produtos WHERE empresa_id = $1`,
         [empresa_id]
     );
@@ -28,8 +28,8 @@ async function buscarLocaisImportaveis(empresa_id) {
     return rows;
 }
 
-async function buscarTelefonesDeClientes(empresa_id) {
-    const { rows } = await db.query(
+async function buscarTelefonesDeClientes(empresa_id, client = db) {
+    const { rows } = await client.query(
         `SELECT telefone FROM clientes WHERE empresa_id = $1 AND telefone IS NOT NULL AND telefone <> ''`,
         [empresa_id]
     );

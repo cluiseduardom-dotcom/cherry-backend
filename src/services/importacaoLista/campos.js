@@ -114,6 +114,14 @@ function parseTelefone(bruto) {
     return { valor: digitos, avisos };
 }
 
+// Telefone já cadastrado, no mesmo formato do que a importação normaliza (só dígitos, sem DDI nem zero inicial).
+function telefoneParaComparar(telefone) {
+    let digitos = String(telefone ?? '').replace(/\D/g, '');
+    if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) digitos = digitos.slice(2);
+    else if (digitos.length > 10 && digitos.startsWith('0')) digitos = digitos.replace(/^0+/, '');
+    return digitos;
+}
+
 function dataValida(ano, mes, dia) {
     const d = new Date(Date.UTC(ano, mes - 1, dia));
     return d.getUTCFullYear() === ano && d.getUTCMonth() === mes - 1 && d.getUTCDate() === dia;
@@ -142,4 +150,4 @@ function parseObservacoes(bruto) {
     return { valor: texto };
 }
 
-module.exports = { parseNome, parseCusto, parseSaldo, parseSku, parseTelefone, parseNascimento, parseObservacoes };
+module.exports = { telefoneParaComparar, parseNome, parseCusto, parseSaldo, parseSku, parseTelefone, parseNascimento, parseObservacoes };
