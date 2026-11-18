@@ -165,6 +165,78 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
     }
 }
 
+// Entrada de estoque inicial EM BLOCO para produtos recém-criados na MESMA transação (importação de lista). Faz o que
+// `criarMovimentacao` faria uma a uma (saldo do local, total do produto e movimentação `entrada`/`estoque_inicial`), mas em
+// poucas instruções: 2.000 produtos viram ~12 queries em vez de ~16.000. Só vale porque o produto é novo: se algum já tem
+// saldo ou qualquer movimentação, recusa tudo (ENTRADA_INICIAL_COM_HISTORICO) e nada é gravado. A soma dos locais continua
+// fechando com produtos.estoque_atual. `itens`: [{ produto_id, quantidade, local_id? }] com um item por produto.
+const BLOCO_ENTRADA_INICIAL = 500;
+
+async function criarEntradasIniciaisEmLote({ itens, usuario_id, empresa_id }, client) {
+    if (!itens.length) return { movimentacoes: 0, unidades: 0 };
+
+    const centralId = itens.some((i) => i.local_id == null) ? await garantirLocalCentral(client, empresa_id) : null;
+    const resolvidos = itens.map((i) => ({ ...i, local_id: i.local_id ?? centralId }));
+
+    const locaisPedidos = [...new Set(resolvidos.map((i) => i.local_id))];
+    const { rows: locaisOk } = await client.query(
+        `SELECT id FROM locais_estoque WHERE id = ANY($1::int[]) AND empresa_id = $2 AND ativo = true AND tipo <> 'reserva'`,
+        [locaisPedidos, empresa_id]
+    );
+    const validos = new Set(locaisOk.map((l) => l.id));
+    const invalido = locaisPedidos.find((id) => !validos.has(id));
+    if (invalido !== undefined) return { erro: 'LOCAL_NAO_ENCONTRADO', local_id: invalido };
+
+    let unidades = 0;
+
+    for (let i = 0; i < resolvidos.length; i += BLOCO_ENTRADA_INICIAL) {
+        const bloco = resolvidos.slice(i, i + BLOCO_ENTRADA_INICIAL);
+        const ids = bloco.map((b) => b.produto_id);
+
+        const { rows: comHistorico } = await client.query(
+            `SELECT p.id FROM produtos p
+             WHERE p.id = ANY($1::int[]) AND p.empresa_id = $2
+               AND (p.estoque_atual <> 0
+                    OR EXISTS (SELECT 1 FROM movimentacoes_estoque m WHERE m.produto_id = p.id AND m.empresa_id = p.empresa_id)
+                    OR EXISTS (SELECT 1 FROM estoque_locais e WHERE e.produto_id = p.id AND e.empresa_id = p.empresa_id))
+             LIMIT 1`,
+            [ids, empresa_id]
+        );
+        if (comHistorico.length) return { erro: 'ENTRADA_INICIAL_COM_HISTORICO', produto_id: comHistorico[0].id };
+
+        const { rows: existentes } = await client.query(
+            `SELECT COUNT(*)::int AS n FROM produtos WHERE id = ANY($1::int[]) AND empresa_id = $2`,
+            [ids, empresa_id]
+        );
+        if (existentes[0].n !== ids.length) return { erro: 'PRODUTO_NAO_ENCONTRADO' };
+
+        const quantidades = bloco.map((b) => b.quantidade);
+        const locais = bloco.map((b) => b.local_id);
+
+        await client.query(
+            `INSERT INTO estoque_locais (produto_id, local_id, empresa_id, saldo)
+             SELECT t.produto_id, t.local_id, $1, t.quantidade FROM unnest($2::int[], $3::int[], $4::int[]) AS t(produto_id, local_id, quantidade)`,
+            [empresa_id, ids, locais, quantidades]
+        );
+        await client.query(
+            `UPDATE produtos p SET estoque_atual = t.quantidade
+             FROM unnest($1::int[], $2::int[]) AS t(produto_id, quantidade)
+             WHERE p.id = t.produto_id AND p.empresa_id = $3`,
+            [ids, quantidades, empresa_id]
+        );
+        await client.query(
+            `INSERT INTO movimentacoes_estoque (produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id, empresa_id, local_id, saldo_local_resultante, origem)
+             SELECT t.produto_id, 'entrada', t.quantidade, t.quantidade, 'Estoque inicial', $1, $2, t.local_id, t.quantidade, 'estoque_inicial'
+             FROM unnest($3::int[], $4::int[], $5::int[]) AS t(produto_id, quantidade, local_id)`,
+            [usuario_id, empresa_id, ids, quantidades, locais]
+        );
+
+        unidades += quantidades.reduce((a, b) => a + b, 0);
+    }
+
+    return { movimentacoes: resolvidos.length, unidades };
+}
+
 // Locais ativos da empresa com o saldo do produto em cada um (0 quando nunca teve) e o total.
 // `consistente` confere a invariante soma dos locais = produtos.estoque_atual.
 async function saldosPorLocal(produto_id, empresa_id) {
@@ -278,6 +350,7 @@ async function listarMovimentacoesRelatorio({ limit, offset, produto_id, data_de
 
 module.exports = {
     criarMovimentacao,
+    criarEntradasIniciaisEmLote,
     garantirLocalCentral,
     garantirLocalTransito,
     garantirLocalReserva,

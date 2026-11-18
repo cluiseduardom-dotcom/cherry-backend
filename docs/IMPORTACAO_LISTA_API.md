@@ -1,8 +1,8 @@
 # Importação de lista (produtos e clientes)
 
-Estado: **PR 1 (leitura e prévia, sem gravar)**. A confirmação, o estoque inicial e o relatório entram no PR 2 (seção "Próximo PR").
+Estado: **PR 1 (prévia, sem gravar) e PR 2 (confirmação, estoque inicial e relatório)**. Migrations `117` e `118`.
 
-Permite ao lojista que vem de caderno ou planilha trazer produtos (com custo e saldo inicial) e clientes sem digitar item por item. Migration `117`.
+Permite ao lojista que vem de caderno ou planilha trazer produtos (com custo e saldo inicial) e clientes sem digitar item por item. Fluxo: **enviar o arquivo, ver a prévia, confirmar**.
 
 ## Acesso
 
@@ -69,6 +69,45 @@ Resposta `200`:
 - Erros de arquivo (cabeçalho sem coluna obrigatória, coluna repetida, aspas abertas, Excel, vazio, acima do limite) respondem 400/413 com `{ "success": false, "message": "..." }`, sem prévia.
 - Reenviar o arquivo corrigido gera uma nova prévia (novo token); a anterior só expira sozinha.
 
+### `POST /importacao/confirmar` (JSON)
+
+```json
+{ "token": "<token da prévia>", "somente_validas": false }
+```
+
+`somente_validas` (padrão `false`): com erro na prévia, a confirmação é **bloqueada** (409) a menos que o admin peça explicitamente para confirmar só as linhas válidas (`true`). As linhas com erro nunca são gravadas.
+
+Grava tudo numa **única transação**: se qualquer parte falhar, **nada** é gravado e o token continua válido (corrija o problema e confirme de novo, ou refaça a prévia). Resposta `201`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "importacao_id": 55,
+    "tipo": "produtos",
+    "criados": 190,
+    "ignorados": 2,
+    "nao_importados": 8,
+    "skus_gerados": 120,
+    "com_estoque_inicial": 150,
+    "unidades_estoque_inicial": 2310,
+    "codigos_gerados": 150,
+    "sem_preco": 190,
+    "relatorio_url": "/importacao/55/relatorio"
+  }
+}
+```
+
+- `ignorados`: duplicados (da prévia, mais os que apareceram entre a prévia e a confirmação). `nao_importados`: linhas com erro (contadas por linha).
+- `sem_preco` (só produtos): todo produto criado nasce **sem preço**. A tela de resultado deve oferecer o atalho para **"Precificar por canal"** com a lista "Produtos sem preço".
+- Para clientes, a resposta não tem `sem_preco`; os campos de estoque vêm zerados.
+- Erros: `404` token desconhecido, de outra empresa ou já usado; `410` prévia expirada (30 min); `409` prévia com erro sem `somente_validas`, importação já confirmada, ou o estado mudou depois da prévia (saldo inicial já lançado, categoria removida, local indisponível: refaça a prévia); `400` corpo inválido (token fora do formato, campo extra como `empresa_id`).
+- Quem confirma pode ser outro admin da mesma empresa que gerou a prévia. A empresa e o usuário vêm sempre do JWT.
+
+### `GET /importacao/:id/relatorio`
+
+CSV (`text/csv`, anexo `relatorio-importacao-<id>.csv`, BOM + `;`) com **uma linha por linha do arquivo**: `linha;resultado;id;nome;sku;saldo;detalhe` (produtos) ou `linha;resultado;id;detalhe` (clientes, sem nome nem telefone: LGPD). `resultado`: `criado`, `ignorado` ou `nao_importado` (com a coluna e o motivo em `detalhe`). Texto que começa com `=`, `+`, `-` ou `@` sai com apóstrofo na frente (proteção contra injeção de fórmula). `404` se a importação é de outra empresa; `409` antes da confirmação.
+
 ## Colunas (cabeçalho em português, qualquer ordem, qualquer caixa, sem acento obrigatório)
 
 **produtos**
@@ -100,15 +139,21 @@ Sinônimos aceitos: `observacao`, `data de nascimento`, `celular`, `whatsapp`. Q
 - **Categoria desconhecida**: aviso se há SKU (o produto entra sem categoria); erro se não há SKU. Nome de categoria repetido em níveis diferentes: erro.
 - **Duplicidade de produto** (mesmo SKU, ou mesmo nome sem acento, caixa e espaços extras, entre produtos vendáveis da empresa, e dentro do arquivo): **aviso e a linha é ignorada** (não atualiza). A primeira ocorrência no arquivo vale. Insumo não conflita.
 - **Duplicidade de cliente**: mesmo telefone normalizado na empresa ou no arquivo: aviso, ignorada.
-- **Estoque inicial**: se a empresa já lançou o estoque inicial em massa (`empresas.estoque_inicial_lancado_em`), `saldo` maior que 0 é erro ("saldo inicial já lançado para esta empresa"); produto novo sem saldo continua importável. A trava só é gravada pela confirmação (PR 2).
+- **Estoque inicial**: a coluna `saldo` vira uma **entrada** (`tipo = entrada`, `origem = estoque_inicial`, motivo "Estoque inicial") no local da linha ou no local padrão, só em produto novo (sem saldo nem movimentação). A trava por empresa (`empresas.estoque_inicial_lancado_em`) é gravada na mesma transação; depois dela, `saldo` maior que 0 é erro na prévia ("saldo inicial já lançado para esta empresa") e na confirmação, e produto novo **sem saldo** continua importável. Quem precisar de um segundo estoque inicial pede ao admin da plataforma, que zera a trava (a rota do Painel GiroNex ainda não existe). Não há entrada livre: o estoque inicial em massa só nasce aqui (o avulso por produto segue só para admin, em produto sem histórico).
+- **SKU e código de barras**: SKU informado vale como veio; sem SKU, é gerado pelo padrão da empresa a partir da categoria (registrado em `historico_sku`). Todo produto que entra com saldo maior que 0 recebe um código interno de etiqueta (o curto de 6 dígitos ou, se ocupado, o longo), na mesma transação.
+- **Concorrência**: duas confirmações da mesma empresa nunca correm juntas (lock da importação e da empresa). O token é de uso único: a segunda tentativa responde 404.
 - **Local**: nome inexistente ou repetido é erro. Trânsito e reserva online não são destino.
+
+## Rastreabilidade
+
+Cada produto e cada cliente criado guarda `importacao_id` (vínculo com `importacoes`), o que permite auditar e, no futuro, reverter em massa (a reversão fica fora da v1). `importacoes` guarda quem, quando, tipo, nome do arquivo, SHA-256, totais, status (`previa`, `confirmada`, `expirada`) e o relatório.
+
+## Desempenho
+
+A gravação é em bloco: produtos, categorias, histórico de SKU, códigos e clientes em instruções de até 500 linhas; o estoque inicial em 3 instruções por bloco (`estoqueRepository.criarEntradasIniciaisEmLote`). Medido com 2.000 produtos, todos com saldo e SKU gerado: cerca de 4 mil queries (2 por linha, ambas do gerador de SKU, que precisa do contador atômico por combinação). Com SKU informado em todas as linhas, são dezenas de queries.
 
 ## Segurança e LGPD
 
-- A prévia pendente (linhas normalizadas, com dados pessoais) fica em `importacoes_previas` por no máximo 30 min e é apagada na expiração (limpeza na próxima prévia da empresa) ou na confirmação. `importacoes` (trilha) não guarda dado pessoal: quem, tipo, nome do arquivo, SHA-256, totais, status.
+- A prévia pendente (linhas normalizadas, com dados pessoais) fica em `importacoes_previas` por no máximo 30 min e é apagada na expiração (limpeza na próxima prévia da empresa) ou na confirmação. `importacoes` (trilha e relatório) não guarda dado pessoal: quem, tipo, nome do arquivo, SHA-256, totais, status e, no relatório, número da linha, id, SKU e motivo (cliente sem nome nem telefone).
 - O conteúdo do arquivo nunca vai para log; só metadados e hash.
 - Toda consulta de contexto filtra por `empresa_id` do JWT; as tabelas novas têm FK composta com usuário, local e importação da mesma empresa.
-
-## Próximo PR (confirmação)
-
-`POST /importacao/confirmar` (token) em transação única; estoque inicial por `estoqueRepository.criarMovimentacao` (`tipo = entrada`, `origem = estoque_inicial`, produto sem histórico); gravação da trava por empresa; SKU e código de barras (D2); `GET /importacao/:id/relatorio` com proteção contra injeção de fórmula; vínculo `importacao_id` nos registros criados; tela em 3 passos.
