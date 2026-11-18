@@ -152,6 +152,7 @@ const lojaInstitucionalRoutes = require('./routes/lojaInstitucional');
 const lojaHomeVendasRoutes = require('./routes/lojaHomeVendas');
 const lojaCondicoesRoutes = require('./routes/lojaCondicoes');
 const fiadoRoutes = require('./routes/fiado');
+const importacaoRoutes = require('./routes/importacao');
 const lojaBannersRoutes = require('./routes/lojaBanners');
 const integracoesMercadoPagoRoutes = require('./routes/integracoesMercadoPago');
 const pagamentosGatewayRoutes = require('./routes/pagamentosGateway');
@@ -180,6 +181,8 @@ app.use('/loja-institucional', authMiddleware, requireAdmin, exigirFuncionalidad
 app.use('/loja-home-vendas', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaHomeVendasRoutes);
 app.use('/loja-condicoes', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaCondicoesRoutes);
 app.use('/fiado', authMiddleware, requireVendedor, exigirFuncionalidade('fiado'), fiadoRoutes);
+// Importação de lista (produtos com custo e saldo inicial, clientes). Só admin (o arquivo traz custo e dados pessoais), só com a funcionalidade ligada.
+app.use('/importacao', authMiddleware, requireAdmin, exigirFuncionalidade('importacao_lista'), importacaoRoutes);
 // Faixas (banners) rotativas da Home: promoções, recados e fotos. Só admin, só com a funcionalidade ligada.
 app.use('/loja-banners', authMiddleware, requireAdmin, exigirFuncionalidade('loja_online'), lojaBannersRoutes);
 app.use('/loja-pedidos', authMiddleware, requireVendedor, exigirFuncionalidade('loja_online'), lojaPedidosRoutes);
