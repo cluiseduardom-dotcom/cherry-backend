@@ -14,4 +14,11 @@ const modeloSchema = z.object({
     formato: z.enum(['csv', 'xlsx'], { error: 'Formato inválido: use csv' }).default('csv')
 });
 
-module.exports = { previaSchema, modeloSchema };
+const confirmarSchema = z.object({
+    token: z.string({ error: 'Token da prévia é obrigatório' }).regex(/^[A-Za-z0-9_-]{43}$/, 'Token da prévia inválido'),
+    somente_validas: z.boolean({ error: 'somente_validas deve ser verdadeiro ou falso' }).default(false)
+}).strict();
+
+const idImportacaoSchema = z.string().regex(/^[1-9]\d{0,9}$/, 'ID inválido').transform(Number);
+
+module.exports = { previaSchema, modeloSchema, confirmarSchema, idImportacaoSchema };

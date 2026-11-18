@@ -166,4 +166,4 @@ async function garantirCodigosParaEtiqueta(produtoIds, empresaId, usuarioId) {
     return resultado;
 }
 
-module.exports = { listarPorProduto, buscarPorCodigo, adicionar, remover, garantirCodigosParaEtiqueta, LIMITE_ETIQUETAS_POR_PEDIDO };
+module.exports = { listarPorProduto, buscarPorCodigo, adicionar, remover, garantirCodigosParaEtiqueta, candidatosCodigoInterno, LIMITE_ETIQUETAS_POR_PEDIDO };

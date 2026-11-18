@@ -139,3 +139,17 @@ describe('gerar', () => {
     expect(sequenciasSkuRepository.incrementarContador).toHaveBeenCalledTimes(100);
   });
 });
+
+describe('gerar com configuração já carregada', () => {
+  test('não relê o padrão (a importação de lista gera centenas de SKUs seguidos)', async () => {
+    sequenciasSkuRepository.incrementarContador.mockResolvedValue(7);
+    sequenciasSkuRepository.skuEmUso.mockResolvedValue(false);
+
+    const resultado = await skuService.gerar([{ id: 11, nivel: 1, codigo: 'ANE' }], 9, {}, 'produto', configuracao);
+
+    expect(configuracoesSkuRepository.buscarParaCategorias).not.toHaveBeenCalled();
+    expect(configuracoesSkuRepository.buscarAtiva).not.toHaveBeenCalled();
+    expect(resultado.sku).toBe('ANE-007');
+    expect(resultado.configuracao).toBe(configuracao);
+  });
+});

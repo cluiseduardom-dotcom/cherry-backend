@@ -75,6 +75,8 @@ describe('previa de produtos', () => {
         expect(gravado.previa.token_hash).toBe(crypto.createHash('sha256').update(r.token).digest('hex'));
         expect(JSON.stringify(gravado)).not.toContain(r.token);
         expect(gravado.previa.ttl_minutos).toBe(30);
+        expect(gravado.previa.dados.ignoradas).toEqual([{ linha: 5, motivo: expect.stringMatching(/repetido no arquivo/) }]);
+        expect(gravado.previa.dados.erros).toEqual([{ linha: 4, coluna: 'custo', motivo: expect.stringMatching(/apenas números/) }]);
         expect(gravado.previa.dados.registros).toEqual([
             { linha: 2, nome: 'Anel Ouro', custo: '12.50', saldo: 5, sku: null, categoria_id: 7, local_id: 10 },
             { linha: 3, nome: 'Brinco Prata', custo: '8.00', saldo: 0, sku: 'BR-1', categoria_id: null, local_id: 30 }
@@ -197,7 +199,9 @@ describe('previa de clientes', () => {
         expect(r.pode_confirmar).toBe(true);
         expect(repo.registrarPrevia.mock.calls[0][0].previa.dados).toEqual({
             tipo: 'clientes',
-            registros: [{ linha: 2, nome: 'Maria', telefone: '11912345678', data_nascimento: '1990-03-05', observacoes: null }]
+            registros: [{ linha: 2, nome: 'Maria', telefone: '11912345678', data_nascimento: '1990-03-05', observacoes: null }],
+            ignoradas: [],
+            erros: []
         });
     });
 });
