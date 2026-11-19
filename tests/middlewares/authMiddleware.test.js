@@ -52,7 +52,7 @@ describe('authMiddleware', () => {
 
     expect(next).toHaveBeenCalledWith();
     expect(req.usuario).toEqual({
-      id: 42, role: 'vendedor', cargo: 'vendedor', nivel: 30, capacidades: ['cancelar_venda'], empresa_id: 7, funcionalidades: ['analise_financeira', 'bancos', 'comissoes', 'maletas'], senha_temporaria: false
+      id: 42, role: 'vendedor', cargo: 'vendedor', nivel: 30, capacidades: ['cancelar_venda'], empresa_id: 7, funcionalidades: ['analise_financeira', 'bancos', 'comissoes', 'maletas'], senha_temporaria: false, cobranca: null
     });
     expect(sessaoRepository.buscarEstado).toHaveBeenCalledWith(42, 7);
   });
@@ -167,6 +167,68 @@ describe('authMiddleware', () => {
       const err = next.mock.calls[0][0];
       expect(err).toBeInstanceOf(Error);
       expect(req.usuario).toBeUndefined();
+    });
+  });
+
+  describe('somente leitura (teste grátis e pagamento vencidos)', () => {
+    const estado = (cobranca_situacao, cobranca_ate = null) => ({
+      ativo: true, token_version: 0, papel: 'vendedor', empresa_status: 'ativa', senha_temporaria: false,
+      cargo_configurado: false, funcionalidades: [], cobranca_situacao, cobranca_ate
+    });
+    const requisicao = (method, originalUrl = '/vendas') => ({ method, originalUrl, headers: { authorization: `Bearer ${token()}` } });
+
+    test.each(['POST', 'PUT', 'PATCH', 'DELETE'])('%s é barrado com 403 e mensagem clara; usuário não é autenticado', async (metodo) => {
+      sessaoRepository.buscarEstado.mockResolvedValueOnce(estado('somente_leitura'));
+      const req = requisicao(metodo);
+      const next = await executar(req);
+
+      const err = next.mock.calls[0][0];
+      expect(err.statusCode).toBe(403);
+      expect(err.message).toMatch(/somente para consulta/);
+      expect(req.usuario).toBeUndefined();
+    });
+
+    test.each(['GET', 'HEAD', 'OPTIONS'])('%s segue liberado (consulta e exportação)', async (metodo) => {
+      sessaoRepository.buscarEstado.mockResolvedValueOnce(estado('somente_leitura'));
+      const req = requisicao(metodo);
+      const next = await executar(req);
+
+      expect(next).toHaveBeenCalledWith();
+      expect(req.usuario.cobranca).toEqual({ situacao: 'somente_leitura', ate: null });
+    });
+
+    test.each(['/auth/renovar', '/auth/senha', '/auth/senha?x=1'])('POST %s segue liberado: a sessão não morre', async (rota) => {
+      sessaoRepository.buscarEstado.mockResolvedValueOnce(estado('somente_leitura'));
+      const next = await executar(requisicao('POST', rota));
+
+      expect(next).toHaveBeenCalledWith();
+    });
+
+    test('rota parecida não escapa da trava (/auth/senha-x, /auth/renovar/x)', async () => {
+      for (const rota of ['/auth/senha-x', '/auth/renovar/x', '/auth/register']) {
+        sessaoRepository.buscarEstado.mockResolvedValueOnce(estado('somente_leitura'));
+        const next = await executar(requisicao('POST', rota));
+
+        expect(next.mock.calls[0][0].statusCode).toBe(403);
+      }
+    });
+
+    test.each([['em_teste', '2026-12-18'], ['ativa', '2026-12-19'], ['isenta', null]])('%s grava normalmente e expõe a situação', async (situacao, ate) => {
+      sessaoRepository.buscarEstado.mockResolvedValueOnce(estado(situacao, ate));
+      const req = requisicao('POST');
+      const next = await executar(req);
+
+      expect(next).toHaveBeenCalledWith();
+      expect(req.usuario.cobranca).toEqual({ situacao, ate });
+    });
+
+    test('empresa sem regra (null) nunca é restrita', async () => {
+      sessaoRepository.buscarEstado.mockResolvedValueOnce(estado(null));
+      const req = requisicao('DELETE');
+      const next = await executar(req);
+
+      expect(next).toHaveBeenCalledWith();
+      expect(req.usuario.cobranca).toBeNull();
     });
   });
 });

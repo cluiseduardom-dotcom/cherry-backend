@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
+const { situacaoSql, ateSql } = require('./cobrancaSituacaoSql');
 
 // Administração comercial das empresas pelo OPERADOR DO PAINEL GIRONEX.
 // Exceção deliberada à regra "empresa_id vem do JWT": aqui a empresa-alvo vem da rota,
@@ -53,8 +54,10 @@ async function listarEmpresas() {
                 pl.tem_mensalidade, ep.vigencia_inicio::text AS plano_inicio, ep.vigencia_fim::text AS plano_fim,
                 c.id AS condicao_id, c.percentual::text AS condicao_percentual,
                 c.vigencia_inicio::text AS condicao_inicio, c.vigencia_fim::text AS condicao_fim,
-                c.justificativa AS condicao_justificativa, c.responsavel AS condicao_responsavel
+                c.justificativa AS condicao_justificativa, c.responsavel AS condicao_responsavel,
+                COALESCE(${situacaoSql('cb')}, 'sem_regra') AS cobranca_situacao, ${ateSql('cb')} AS cobranca_ate
          FROM empresas e
+         LEFT JOIN empresa_cobranca cb ON cb.empresa_id = e.id
          LEFT JOIN LATERAL (
              SELECT * FROM empresa_planos ep
              WHERE ep.empresa_id = e.id AND ${VIGENTE_SQL('ep')}

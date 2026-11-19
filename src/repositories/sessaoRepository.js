@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { situacaoSql, ateSql } = require('./cobrancaSituacaoSql');
 
 const HOJE_SQL = `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date`;
 
@@ -32,6 +33,8 @@ const LIGACAO_VIGENTE_SQL = `ef.empresa_id = u.empresa_id
 async function buscarEstado(usuario_id, empresa_id) {
     const { rows } = await db.query(
         `SELECT u.ativo, u.token_version, u.papel, u.email, u.senha_temporaria, e.status AS empresa_status,
+                -- Cobrança (teste grátis / pagamento / isenção): NULL = empresa sem regra, nunca restrita. Mesma regra do Painel.
+                ${situacaoSql('ec')} AS cobranca_situacao, ${ateSql('ec')} AS cobranca_ate,
                 (c.empresa_id IS NOT NULL) AS cargo_configurado,
                 c.nivel AS cargo_nivel, c.ativo AS cargo_ativo, c.capacidades AS cargo_capacidades,
                 EXISTS (
@@ -64,6 +67,7 @@ async function buscarEstado(usuario_id, empresa_id) {
          FROM usuarios u
          JOIN empresas e ON e.id = u.empresa_id
          LEFT JOIN cargos_empresa c ON c.empresa_id = u.empresa_id AND c.cargo = u.papel
+         LEFT JOIN empresa_cobranca ec ON ec.empresa_id = u.empresa_id
          WHERE u.id = $1 AND u.empresa_id = $2`,
         [usuario_id, empresa_id]
     );
