@@ -6,6 +6,7 @@ const comercial = require('../controllers/plataformaComercialController');
 const identidade = require('../controllers/plataformaIdentidadeController');
 const funcionalidades = require('../controllers/funcionalidadesPainelController');
 const limiteUsuarios = require('../controllers/limiteUsuariosPainelController');
+const cobrancaEmpresa = require('../controllers/cobrancaEmpresaPainelController');
 const cobrancaTaxa = require('../controllers/cobrancaTaxaPainelController');
 const bloqueioPix = require('../controllers/bloqueioPixPainelController');
 const uploadComprovanteTaxa = require('../middlewares/uploadComprovanteTaxa');
@@ -69,6 +70,13 @@ router.delete('/empresas/:id/funcionalidades/:codigo', op, funcionalidades.remov
 router.get('/empresas/:id/limite-usuarios', op, limiteUsuarios.obter);
 router.put('/empresas/:id/limite-usuarios', op, limiteUsuarios.definir);
 router.delete('/empresas/:id/limite-usuarios', op, limiteUsuarios.remover);
+router.get('/empresas/:id/cobranca', op, cobrancaEmpresa.obter);
+router.post('/empresas/:id/cobranca/teste', op, cobrancaEmpresa.iniciarTeste);
+router.post('/empresas/:id/cobranca/pagamento', op, cobrancaEmpresa.registrarPagamento);
+router.post('/empresas/:id/cobranca/isencao', op, cobrancaEmpresa.definirIsencao);
+router.post('/empresas/:id/cobranca/isencao/remover', op, cobrancaEmpresa.removerIsencao);
+router.post('/empresas/:id/desligar', op, cobrancaEmpresa.desligar);
+router.post('/empresas/:id/religar', op, cobrancaEmpresa.religar);
 router.get('/eventos', op, painel.eventos);
 
 module.exports = router;
