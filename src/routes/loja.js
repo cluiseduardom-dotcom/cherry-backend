@@ -29,6 +29,7 @@ const limitePedido = rateLimit({
 
 router.get('/:slug/catalogo', limiteLoja, controller.catalogo);
 router.get('/:slug/categorias', limiteLoja, controller.categorias);
+router.get('/:slug/niveis', limiteLoja, controller.niveis);
 router.get('/:slug/menu', limiteLoja, controller.menu);
 router.get('/:slug/vitrines', limiteLoja, controller.vitrines);
 router.get('/:slug/retratos', limiteLoja, controller.retratos);
