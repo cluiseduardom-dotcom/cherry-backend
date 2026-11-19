@@ -5,7 +5,7 @@ Roteiro para quem aplica em produção (Product Owner). Nada aqui é executado a
 ## 1. Ordem
 1. **Staging primeiro** (branch isolada do Neon): aplicar as migrations `095` a `098`, nessa ordem, e rodar a verificação abaixo. Só depois produção.
 2. Deploy do backend (o runner aplica as migrations pendentes no `npm start`).
-3. Variáveis na API: `LOJA_CORS_ORIGINS` (endereço exato da loja, sem `*`), `LOJA_PUBLIC_URL` (https), `TURNSTILE_SECRET_KEY`, `R2_PUBLIC_BASE_URL` e as `MP_*` já existentes.
+3. Variáveis na API: `LOJA_CORS_ORIGINS` (endereço exato de **cada** loja, separado por vírgula, sem `*`; é também o que decide para onde o cartão volta em cada empresa), `LOJA_PUBLIC_URL` (https; vale quando a origem não está na lista), `TURNSTILE_SECRET_KEY`, `R2_PUBLIC_BASE_URL` e as `MP_*` já existentes.
 4. Cron Job do Render, a cada minuto: `node scripts/expirar-reservas-loja.js`.
 5. Ligar `loja_online` para a Cherry no Painel; marcar os produtos como visíveis; garantir preço no canal `online`.
 6. Loja: variáveis `VITE_*` antes do build e regra de reescrita `/*` → `/index.html`.

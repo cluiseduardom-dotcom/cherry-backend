@@ -10,9 +10,25 @@ const { obterConfigMercadoPago } = require('../config/mercadoPagoConfig');
 //
 // Regras do PDV valem aqui: a taxa da plataforma incide só sobre o Pix (a cobrança de cartão leva 0, decisão do PO).
 
+const semBarraFinal = (valor) => String(valor ?? '').trim().replace(/\/+$/, '');
+
+// Para onde o link de cartão devolve a cliente. Cada empresa tem a própria loja (um site por empresa), então o endereço único
+// LOJA_PUBLIC_URL só serve a uma delas. Regra: se o pedido veio do navegador de uma loja cuja origem está na lista oficial
+// (LOJA_CORS_ORIGINS, a mesma que o CORS já valida), a cliente volta para ELA. Origem fora da lista, ou que não seja uma
+// origem https pura, é ignorada: ninguém consegue apontar o retorno para um site que não é nosso. Sem origem aceita, vale
+// LOJA_PUBLIC_URL (comportamento anterior, inalterado para quem tem uma loja só).
+function baseDeRetorno(origem, env) {
+    const candidata = semBarraFinal(origem);
+    const lojas = String(env.LOJA_CORS_ORIGINS ?? '').split(',').map(semBarraFinal).filter(Boolean);
+
+    if (/^https:\/\/[^\s/]+$/.test(candidata) && lojas.includes(candidata)) return candidata;
+
+    return semBarraFinal(env.LOJA_PUBLIC_URL);
+}
+
 // Endereço público da loja (https obrigatório no Mercado Pago). Sem ele, o link de cartão não devolve a cliente à loja.
-function urlsDeRetorno(codigoPedido, env = process.env) {
-    const base = String(env.LOJA_PUBLIC_URL ?? '').trim().replace(/\/+$/, '');
+function urlsDeRetorno(codigoPedido, env = process.env, origem = null) {
+    const base = baseDeRetorno(origem, env);
 
     if (!/^https:\/\/[^\s/]+/.test(base)) return null;
 
@@ -37,7 +53,7 @@ function paraCliente(resposta, metodo) {
 }
 
 // Devolve { pagamento, criado }. Idempotente: pedir de novo com a cobrança em aberto devolve a MESMA cobrança.
-async function iniciarPagamento({ empresa_id, codigoPedido, metodo }) {
+async function iniciarPagamento({ empresa_id, codigoPedido, metodo, origem = null }) {
     const preparo = await pedidosRepository.prepararPagamento({ empresa_id, codigo: codigoPedido, metodo });
 
     if (preparo.acao === 'reutilizar') {
@@ -52,7 +68,7 @@ async function iniciarPagamento({ empresa_id, codigoPedido, metodo }) {
     try {
         resposta = metodo === 'pix'
             ? await cobrancasService.criarPix(usuario, { valor, cliente_email: pedido.cliente_email }, { codigo: cobrancaCodigo, descricao: 'Pedido na loja online' })
-            : await cobrancasService.criarLinkCartao(usuario, { valor }, { codigo: cobrancaCodigo, urlsRetorno: urlsDeRetorno(pedido.codigo) });
+            : await cobrancasService.criarLinkCartao(usuario, { valor }, { codigo: cobrancaCodigo, urlsRetorno: urlsDeRetorno(pedido.codigo, process.env, origem) });
     } catch (error) {
         await pedidosRepository.liberarPagamentoNaoCriado({ empresa_id, pedido_id: pedido.id, cobrancaCodigo });
 
