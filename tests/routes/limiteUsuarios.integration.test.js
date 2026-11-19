@@ -56,11 +56,11 @@ afterAll(async () => {
     }
 });
 
-test('seed: Cortesia 3, Básico 5, Padrão 7, Pro 15, legados sem limite', async () => {
+test('seed: Cortesia 3, Básico 1, Padrão 4, Pro e legados sem limite', async () => {
     const { rows } = await db.query(`SELECT codigo, limite_usuarios FROM planos_comerciais WHERE codigo = ANY($1) ORDER BY codigo`,
         [['cortesia', 'basico', 'padrao', 'pro', 'sem_mensalidade', 'com_mensalidade']]);
     expect(Object.fromEntries(rows.map((r) => [r.codigo, r.limite_usuarios]))).toEqual({
-        com_mensalidade: null, cortesia: 3, basico: 5, padrao: 7, pro: 15, sem_mensalidade: null
+        com_mensalidade: null, cortesia: 3, basico: 1, padrao: 4, pro: null, sem_mensalidade: null
     });
 });
 
@@ -110,12 +110,12 @@ describe('plano com limite 3 (Cortesia), com o admin contando', () => {
     });
 });
 
-test('plano Padrão: limite 7', async () => {
+test('plano Padrão: limite 4 (admin conta; cabem mais 3)', async () => {
     await ligarCargoVendedor(padrao);
-    for (let n = 1; n <= 6; n += 1) expect((await criarUsuario(padrao, n)).status).toBe(201);
-    const res = await criarUsuario(padrao, 7);
+    for (let n = 1; n <= 3; n += 1) expect((await criarUsuario(padrao, n)).status).toBe(201);
+    const res = await criarUsuario(padrao, 4);
     expect(res.status).toBe(409);
-    expect(res.body.message).toMatch(/Limite de 7 usuários/);
+    expect(res.body.message).toMatch(/Limite de 4 usuários/);
 });
 
 test('empresa sem plano (padrão sem_mensalidade) não tem limite', async () => {
@@ -124,7 +124,7 @@ test('empresa sem plano (padrão sem_mensalidade) não tem limite', async () => 
 });
 
 test('limite é por empresa: lotar o Básico não afeta o Padrão', async () => {
-    expect(await ativos(padrao)).toBe(7);
+    expect(await ativos(padrao)).toBe(4);
     expect((await criarUsuario(basico, 99)).status).toBe(201);
 });
 

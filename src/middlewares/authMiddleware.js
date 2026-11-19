@@ -8,6 +8,12 @@ const MENSAGEM_TOKEN_INVALIDO = 'Token inválido ou expirado';
 // Com senha temporária (definida por um admin) só dá para ver quem sou e trocar a senha.
 const ROTAS_COM_SENHA_TEMPORARIA = ['/auth/me', '/auth/senha'];
 
+// Somente leitura (teste grátis e pagamento vencidos): consulta e exporta, não grava. Só a sessão continua viva:
+// renovar o token e trocar a própria senha. Webhooks do Mercado Pago não passam por aqui (não têm sessão de loja).
+const METODOS_DE_LEITURA = new Set(['GET', 'HEAD', 'OPTIONS']);
+const ROTAS_LIBERADAS_SOMENTE_LEITURA = ['/auth/renovar', '/auth/senha'];
+const MENSAGEM_SOMENTE_LEITURA = 'O período de uso terminou: a conta está somente para consulta. Fale com a GiroNex para ativar o plano.';
+
 module.exports = async (req, res, next) => {
 
     const authHeader = req.headers.authorization;
@@ -48,6 +54,14 @@ module.exports = async (req, res, next) => {
             }
         }
 
+        if (estado.cobranca_situacao === 'somente_leitura' && !METODOS_DE_LEITURA.has(req.method)) {
+            const rota = (req.originalUrl || '').split('?')[0];
+
+            if (!ROTAS_LIBERADAS_SOMENTE_LEITURA.includes(rota)) {
+                return next(new AppError(MENSAGEM_SOMENTE_LEITURA, 403));
+            }
+        }
+
         // O cargo vem do banco (estado.papel); o do JWT só vale quando a consulta não o devolve.
         const cargo = estado.papel ?? payload.role;
         const linha = estado.cargo_configurado
@@ -82,7 +96,9 @@ module.exports = async (req, res, next) => {
             empresa_id: payload.empresa_id,
             // Códigos ligados para a empresa (plano + avulsas - desligadas); lido por exigirFuncionalidade.
             funcionalidades: Array.isArray(estado.funcionalidades) ? estado.funcionalidades : [],
-            senha_temporaria: estado.senha_temporaria === true
+            senha_temporaria: estado.senha_temporaria === true,
+            // Cobrança da empresa (só para o frontend avisar; o servidor barra de fato, acima). null = sem regra.
+            cobranca: estado.cobranca_situacao ? { situacao: estado.cobranca_situacao, ate: estado.cobranca_ate ?? null } : null
         };
 
         return next();

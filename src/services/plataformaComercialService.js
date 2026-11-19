@@ -53,6 +53,8 @@ async function listarEmpresas() {
                 responsavel: linha.condicao_responsavel
             }
             : null,
+        // Teste grátis / pagamento / isenção (situação derivada das datas; 'sem_regra' = empresa que já existia, nunca restrita).
+        cobranca: { situacao: linha.cobranca_situacao ?? 'sem_regra', ate: linha.cobranca_ate ?? null },
         regra_efetiva: await regraEfetiva(linha.empresa_id)
     })));
 }

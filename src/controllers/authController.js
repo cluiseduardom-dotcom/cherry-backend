@@ -36,14 +36,14 @@ async function me(req, res, next) {
 
     try {
 
-        const { id, empresa_id, role, cargo, nivel, capacidades, funcionalidades, senha_temporaria } = req.usuario;
+        const { id, empresa_id, role, cargo, nivel, capacidades, funcionalidades, senha_temporaria, cobranca } = req.usuario;
         const foto_url = usuarioFotosService.urlDaChave(await usuariosFotosRepository.buscarChave(id, empresa_id));
 
         // `funcionalidades`: o que o plano da empresa liga (só para o frontend esconder menus; o servidor barra de fato).
         // `rotulo_estoque_vendedor`: como a empresa chama o estoque do vendedor (só vocabulário; o frontend escolhe as palavras).
         const rotulo_estoque_vendedor = await empresaRepository.obterRotuloEstoqueVendedor(empresa_id);
 
-        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades, funcionalidades: funcionalidades ?? [], senha_temporaria: senha_temporaria === true, foto_url, rotulo_estoque_vendedor: rotulo_estoque_vendedor ?? 'maleta' });
+        return response.success(res, { id, empresa_id, perfil: role, cargo, nivel, capacidades, funcionalidades: funcionalidades ?? [], senha_temporaria: senha_temporaria === true, foto_url, rotulo_estoque_vendedor: rotulo_estoque_vendedor ?? 'maleta', cobranca: cobranca ?? null });
 
     } catch (error) {
 

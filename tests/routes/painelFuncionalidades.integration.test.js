@@ -83,8 +83,8 @@ describe('catálogo', () => {
         expect(res.status).toBe(200);
         expect(res.body.data.funcionalidades.map((f) => f.codigo)).toEqual(expect.arrayContaining(['bancos', 'fiscal', 'pcp']));
         const plano = (codigo) => res.body.data.planos.find((p) => p.plano === codigo).funcionalidades;
-        expect(plano('basico')).toEqual([]);
-        expect(plano('padrao')).toEqual(['analise_financeira', 'bancos', 'comissoes', 'maletas']);
+        expect(plano('basico')).toEqual(['fiado', 'importacao_lista']);
+        expect(plano('padrao')).toEqual(['analise_financeira', 'bancos', 'comissoes', 'fiado', 'importacao_lista', 'maletas']);
     });
 });
 

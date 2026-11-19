@@ -164,6 +164,20 @@ const ajusteTaxaSchema = z.strictObject({
     chave_idempotencia: chaveIdempotencia
 });
 
+// Cobrança por empresa (Painel): teste grátis, pagamento manual, isenção e desligamento. Sempre com justificativa;
+// responsável e operador vêm da sessão do painel, nunca do corpo.
+const iniciarTesteSchema = z.strictObject({
+    dias: z.number({ error: 'Dias deve ser um número' }).int('Dias deve ser inteiro').min(1, 'Mínimo de 1 dia').max(90, 'Máximo de 90 dias').optional(),
+    justificativa
+});
+
+const pagamentoCobrancaSchema = z.strictObject({
+    pago_ate: dataCivil,
+    justificativa
+});
+
+const acaoCobrancaSchema = z.strictObject({ justificativa });
+
 module.exports = {
     pixManualAcaoSchema,
     vendasTaxaQuerySchema,
@@ -184,5 +198,8 @@ module.exports = {
     empresaIdParamSchema,
     trocarPlanoSchema,
     definirCondicaoSchema,
-    encerrarCondicaoSchema
+    encerrarCondicaoSchema,
+    iniciarTesteSchema,
+    pagamentoCobrancaSchema,
+    acaoCobrancaSchema
 };

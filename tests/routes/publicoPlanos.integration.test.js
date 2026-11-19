@@ -18,15 +18,15 @@ test('responde sem login com os três planos comerciais, nas duas linhas de nome
     expect(planos.map((p) => [p.nome, p.nome_joias])).toEqual([
         ['Semente', 'Pérola'], ['Cultivo', 'Esmeralda'], ['Pomar', 'Safira']
     ]);
-    expect(planos.map((p) => p.limite_usuarios)).toEqual([5, 7, 15]);
+    expect(planos.map((p) => p.limite_usuarios)).toEqual([1, 4, null]);
     expect(planos.map((p) => Number(p.percentual_pix))).toEqual([0.5, 0.4, 0.3]);
 });
 
-test('funcionalidades por plano: Básico nenhuma; Padrão e Pro os quatro recursos', async () => {
+test('funcionalidades por plano: os três trazem Fiado e Importação; Padrão e Pro somam os quatro recursos', async () => {
     const { planos } = (await request(app).get('/publico/planos')).body.data;
     const por = Object.fromEntries(planos.map((p) => [p.codigo, p.funcionalidades]));
-    expect(por.basico).toEqual([]);
-    expect(por.padrao).toEqual(['analise_financeira', 'bancos', 'comissoes', 'maletas']);
+    expect(por.basico).toEqual(['fiado', 'importacao_lista']);
+    expect(por.padrao).toEqual(['analise_financeira', 'bancos', 'comissoes', 'fiado', 'importacao_lista', 'maletas']);
     expect(por.pro).toEqual(por.padrao);
 });
 

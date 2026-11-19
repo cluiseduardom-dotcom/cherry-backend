@@ -1,6 +1,6 @@
 # Fiado — contrato da API (núcleo)
 
-Base: migration `109_fiado.sql`. Funcionalidade `fiado` (módulo): **desligada para toda empresa**; a GiroNex liga avulsa por empresa (`docs/FUNCIONALIDADES.md`). Sem ela, todas as rotas respondem 403. O nome comercial do produto é decidido à parte; o código usa o termo do domínio, `fiado`.
+Base: migration `109_fiado.sql`. Funcionalidade `fiado` (módulo): incluída nos três planos comerciais desde a migration 119 (planos legados, como `sem_mensalidade`, não a trazem); a GiroNex também liga avulsa por empresa (`docs/FUNCIONALIDADES.md`). Sem ela, todas as rotas respondem 403. O nome comercial do produto é decidido à parte; o código usa o termo do domínio, `fiado`.
 
 ## Modelo
 - `fiado_lancamentos`: livro-razão **append-only** (o banco recusa UPDATE/DELETE). `tipo` = `compra` (soma) | `pagamento` (subtrai) | `estorno` (inverte o lançamento estornado, com motivo). Cada lançamento só é estornado uma vez.
