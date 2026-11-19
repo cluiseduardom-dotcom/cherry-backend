@@ -273,6 +273,31 @@ describe('criar o pagamento do pedido', () => {
         });
     });
 
+    test('cartão: com a origem de OUTRA loja da lista, a cliente volta para ela; origem de fora da lista cai no endereço único', async () => {
+        const SEGUNDA_LOJA = 'https://segunda-loja.teste.invalid';
+        const anterior = process.env.LOJA_CORS_ORIGINS;
+        process.env.LOJA_CORS_ORIGINS = `${LOJA_URL},${SEGUNDA_LOJA}`;
+
+        try {
+            await criarProduto(A, 'origem1', { preco: 150, saldo: 5 });
+            await criarProduto(A, 'origem2', { preco: 150, saldo: 5 });
+            const p1 = await novoPedido(A, ['origem1']);
+            const p2 = await novoPedido(A, ['origem2']);
+            client.criarPreferenciaCartao
+                .mockResolvedValueOnce({ preferenciaId: `pref-${sufixo}-o1`, linkUrl: 'https://mp.teste/checkout/o1' })
+                .mockResolvedValueOnce({ preferenciaId: `pref-${sufixo}-o2`, linkUrl: 'https://mp.teste/checkout/o2' });
+
+            expect((await request(app).post(`/loja/${A.slug}/pedidos/${p1.codigo}/pagamento`).set('Origin', SEGUNDA_LOJA).send({ metodo: 'cartao' })).status).toBe(201);
+            expect((await request(app).post(`/loja/${A.slug}/pedidos/${p2.codigo}/pagamento`).set('Origin', 'https://evil.teste.invalid').send({ metodo: 'cartao' })).status).toBe(201);
+
+            const [primeira, segunda] = client.criarPreferenciaCartao.mock.calls.map((c) => c[1].urlsRetorno);
+            expect(primeira.sucesso).toBe(`${SEGUNDA_LOJA}/pedido/${p1.codigo}?pagamento=sucesso`);
+            expect(segunda.sucesso).toBe(`${LOJA_URL}/pedido/${p2.codigo}?pagamento=sucesso`);
+        } finally {
+            if (anterior === undefined) delete process.env.LOJA_CORS_ORIGINS; else process.env.LOJA_CORS_ORIGINS = anterior;
+        }
+    });
+
     test('com um Pix em aberto, trocar para cartão é recusado (evita dois pagamentos)', async () => {
         await criarProduto(A, 'troca1', { saldo: 5 });
         const pedido = await novoPedido(A, ['troca1']);

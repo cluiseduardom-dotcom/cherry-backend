@@ -29,6 +29,45 @@ describe('urlsDeRetorno', () => {
     });
 });
 
+describe('urlsDeRetorno: cada empresa volta para a própria loja', () => {
+    const LOJAS = 'https://www.cherrysemijoias.com.br, https://www.valvazoriimport.com.br/';
+    const ENV = { LOJA_PUBLIC_URL: 'https://www.cherrysemijoias.com.br', LOJA_CORS_ORIGINS: LOJAS };
+    const sucesso = (origem, env = ENV) => urlsDeRetorno(CODIGO_PEDIDO, env, origem)?.sucesso;
+
+    test('origem de uma loja da lista: a cliente volta para ESSA loja (a da Valvazori não cai na da Cherry)', () => {
+        expect(sucesso('https://www.valvazoriimport.com.br')).toBe(`https://www.valvazoriimport.com.br/pedido/${CODIGO_PEDIDO}?pagamento=sucesso`);
+        expect(sucesso('https://www.cherrysemijoias.com.br')).toBe(`https://www.cherrysemijoias.com.br/pedido/${CODIGO_PEDIDO}?pagamento=sucesso`);
+        expect(sucesso('https://www.valvazoriimport.com.br/')).toContain('https://www.valvazoriimport.com.br/pedido/');
+    });
+
+    test.each([
+        ['origem fora da lista (site de terceiro)', 'https://evil.example.com'],
+        ['subdomínio parecido', 'https://www.valvazoriimport.com.br.evil.com'],
+        ['http em vez de https', 'http://www.valvazoriimport.com.br'],
+        ['origem com caminho (não é uma origem pura)', 'https://www.valvazoriimport.com.br/x'],
+        ['origem ausente', undefined],
+        ['origem vazia', ''],
+        ['origem "null" (documento isolado)', 'null']
+    ])('%s: ignorada, vale LOJA_PUBLIC_URL (comportamento anterior)', (_nome, origem) => {
+        expect(sucesso(origem)).toBe(`https://www.cherrysemijoias.com.br/pedido/${CODIGO_PEDIDO}?pagamento=sucesso`);
+    });
+
+    test('sem LOJA_CORS_ORIGINS nada muda: origem enviada pelo navegador não vale, só LOJA_PUBLIC_URL', () => {
+        const env = { LOJA_PUBLIC_URL: 'https://loja.exemplo.com' };
+        expect(sucesso('https://qualquer.com', env)).toBe(`https://loja.exemplo.com/pedido/${CODIGO_PEDIDO}?pagamento=sucesso`);
+    });
+
+    test('origem da lista mesmo sem LOJA_PUBLIC_URL: a loja nova já devolve a cliente; sem as duas, sem retorno', () => {
+        expect(sucesso('https://www.valvazoriimport.com.br', { LOJA_CORS_ORIGINS: LOJAS })).toContain('https://www.valvazoriimport.com.br/pedido/');
+        expect(urlsDeRetorno(CODIGO_PEDIDO, { LOJA_CORS_ORIGINS: LOJAS }, 'https://outra.com')).toBeNull();
+    });
+
+    test('lista com origem http (inválida para o Mercado Pago): nunca é usada como retorno', () => {
+        const env = { LOJA_PUBLIC_URL: 'https://loja.exemplo.com', LOJA_CORS_ORIGINS: 'http://localhost:5173' };
+        expect(sucesso('http://localhost:5173', env)).toBe(`https://loja.exemplo.com/pedido/${CODIGO_PEDIDO}?pagamento=sucesso`);
+    });
+});
+
 describe('paraCliente', () => {
     const resposta = { codigo: 'interno', status: 'pendente', valor: '126.00', expira_em: 'x', expira_em_segundos: 10, qr_code: 'QR', qr_code_base64: 'B', ticket_url: 'https://t', link_url: 'https://l', parcelas_maximas: 12, taxa_plataforma: 1, id_externo: '5' };
 

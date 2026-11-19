@@ -301,7 +301,9 @@ async function criarPagamento(req, res, next) {
         if (!dados.success) throw new AppError(dados.error.issues[0].message, 400);
 
         const { pagamento, criado } = await lojaPagamentoService.iniciarPagamento({
-            empresa_id, codigoPedido: codigoPedido.toLowerCase(), metodo: dados.data.metodo
+            empresa_id, codigoPedido: codigoPedido.toLowerCase(), metodo: dados.data.metodo,
+            // Origem do navegador da loja: o serviço só a usa se estiver em LOJA_CORS_ORIGINS (retorno do cartão por loja).
+            origem: req.get('origin')
         });
 
         res.set('Cache-Control', 'no-store');

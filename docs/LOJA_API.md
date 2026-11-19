@@ -128,7 +128,7 @@ Cabeçalho obrigatório `Idempotency-Key` (8 a 80 caracteres: letras, números, 
 - **201** cobrança nova; **200** a mesma cobrança, se já estiver em aberto (idempotente; requisições simultâneas criam uma só). Reabrir a tela: `GET /pedidos/:codigo` traz `pagamento` com o QR ou o link enquanto estiver pendente.
 - **Taxa da plataforma:** a mesma regra do PDV: incide sobre o **Pix** (condição individual, depois plano, depois padrão) e é enviada como `application_fee`; o cartão leva 0 (decisão do PO). A venda online apura a taxa como qualquer venda.
 - **Reserva:** ao iniciar o pagamento a reserva ganha o prazo normal mais 2 minutos de folga, com **teto de 120 minutos** desde a criação do pedido.
-- **Cartão volta para a loja** se `LOJA_PUBLIC_URL` (https) estiver definida (`/pedido/<codigo>?pagamento=sucesso|pendente|falha`); sem ela, a cliente fica na página do Mercado Pago.
+- **Cartão volta para a loja** (`/pedido/<codigo>?pagamento=sucesso|pendente|falha`). Cada empresa tem a própria loja: se o pedido vem de uma origem **https que está em `LOJA_CORS_ORIGINS`**, a cliente volta para essa origem; senão vale `LOJA_PUBLIC_URL` (https). Sem nenhuma das duas, a cliente fica na página do Mercado Pago. Origem fora da lista é ignorada (nunca se aponta o retorno para um site que não é nosso).
 
 | Status | `codigo` | Quando |
 |---|---|---|
