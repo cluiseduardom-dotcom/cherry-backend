@@ -79,6 +79,16 @@ async function categorias(req, res, next) {
     } catch (error) { next(error); }
 }
 
+// Nomes dos níveis de categoria definidos no ERP pela empresa (a loja os usa como título dos filtros e do menu).
+async function niveis(req, res, next) {
+    try {
+        const empresa_id = await resolverEmpresa(req);
+
+        cachePublico(res);
+        return response.success(res, await repository.listarNiveisDeCategoria(empresa_id));
+    } catch (error) { next(error); }
+}
+
 // Menu de categorias com as variações (materiais e públicos que existem) e a peça mais nova de cada tipo.
 async function menu(req, res, next) {
     try {
@@ -341,4 +351,4 @@ async function salvarMarcacao(req, res, next) {
     } catch (error) { next(error); }
 }
 
-module.exports = { catalogo, produto, categorias, menu, banners, vitrines, retratos, institucional, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };
+module.exports = { catalogo, produto, categorias, niveis, menu, banners, vitrines, retratos, institucional, criarPedido, buscarPedido, criarPagamento, buscarMarcacao, salvarMarcacao };

@@ -294,6 +294,21 @@ async function listarCategoriasComProdutos(empresa_id) {
     return rows;
 }
 
+// Nomes dos níveis de categoria de PRODUTO que a empresa definiu no ERP (nível 1 = tipo, 2 = material, 3 = público... cada
+// empresa escolhe os nomes). A loja só filtra por até 3 níveis, então só eles saem. Só nível e nome: nada de id, escopo
+// nem data. Nível sem nome (em branco) não sai: a loja usa o rótulo padrão da marca.
+async function listarNiveisDeCategoria(empresa_id) {
+    const { rows } = await db.query(
+        `SELECT nivel, btrim(nome) AS nome
+         FROM niveis_categoria
+         WHERE empresa_id = $1 AND escopo = 'produto' AND nivel BETWEEN 1 AND 3 AND btrim(nome) <> ''
+         ORDER BY nivel`,
+        [empresa_id]
+    );
+
+    return rows;
+}
+
 // Menu de categorias com as VARIAÇÕES de cada tipo de peça (ex.: dentro de "Anel": os materiais e os públicos que existem
 // de verdade nas peças à venda), mais a peça mais nova com foto de cada tipo. Só entra o que tem ao menos uma peça visível
 // à venda: o menu nunca oferece um filtro que leva a uma página vazia. Nada é inventado: tudo vem do cadastro.
@@ -479,6 +494,7 @@ module.exports = {
     listarUltimasUnidades,
     buscarProdutoPorSlug,
     listarCategoriasComProdutos,
+    listarNiveisDeCategoria,
     listarMenuDeCategorias,
     contarComVenda,
     buscarMarcacao,

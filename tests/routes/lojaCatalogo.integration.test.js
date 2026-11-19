@@ -21,6 +21,7 @@ const B = { slug: `teste-b-${sufixo}`, p: {} };
 const SEM_FLAG = { slug: `teste-c-${sufixo}`, p: {} };
 const INATIVA = { slug: `teste-d-${sufixo}`, p: {} };
 const DESLIGADA = { slug: `teste-e-${sufixo}`, p: {} };
+const SEM_NIVEIS = { slug: `teste-f-${sufixo}`, p: {} };
 
 const um = async (sql, params) => (await db.query(sql, params)).rows[0].id;
 const get = (caminho) => request(app).get(caminho);
@@ -112,6 +113,15 @@ beforeAll(async () => {
     await criarEmpresa(INATIVA, { nome: 'Loja Inativa', status: 'inativa' });
     await criarEmpresa(DESLIGADA, { nome: 'Loja Desligada' });
     await ligarLoja(DESLIGADA.id, false);
+    await criarEmpresa(SEM_NIVEIS, { nome: 'Loja Sem Niveis' });
+
+    // Nomes dos níveis de categoria definidos pela empresa no ERP. A (Valvazori, por exemplo) escolhe os próprios nomes.
+    for (const [E, escopo, nivel, nome] of [
+        [A, 'produto', 1, 'Categoria'], [A, 'produto', 2, 'Marca'], [A, 'produto', 3, 'Linha'], [A, 'produto', 4, 'Quarto nível'],
+        [A, 'insumo', 1, 'Família de insumo'], [B, 'produto', 1, 'Tipo da B'], [SEM_NIVEIS, 'produto', 1, '   ']
+    ]) {
+        await db.query('INSERT INTO niveis_categoria (empresa_id, nivel, nome, escopo) VALUES ($1, $2, $3, $4)', [E.id, nivel, nome, escopo]);
+    }
 
     const anel = await criarCategoria(A, 1, 'ANE', 'Anel');
     const brinco = await criarCategoria(A, 1, 'BRC', 'Brinco');
@@ -161,7 +171,7 @@ describe('quem responde: empresa ativa com loja_online ligada', () => {
     });
 
     test('vale para todas as rotas públicas', async () => {
-        for (const caminho of ['categorias', 'vitrines', 'produtos/qualquer-1']) {
+        for (const caminho of ['categorias', 'niveis', 'vitrines', 'produtos/qualquer-1']) {
             expect((await get(`/loja/${SEM_FLAG.slug}/${caminho}`)).status).toBe(404);
         }
     });
@@ -219,11 +229,46 @@ describe('o que entra no catálogo', () => {
     });
 });
 
+describe('nomes dos níveis de categoria (a loja mostra os nomes que a empresa definiu no ERP)', () => {
+    const niveis = (E) => get(`/loja/${E.slug}/niveis`);
+
+    test('devolve só nível e nome, dos níveis 1 a 3 de PRODUTO, na ordem (sem o 4º nível e sem os de insumo)', async () => {
+        const res = await niveis(A);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual([{ nivel: 1, nome: 'Categoria' }, { nivel: 2, nome: 'Marca' }, { nivel: 3, nome: 'Linha' }]);
+        expect(res.headers['cache-control']).toMatch(/public/);
+        expect(JSON.stringify(res.body)).not.toMatch(/insumo|Quarto|Família/);
+    });
+
+    test('cada empresa vê só os próprios níveis (a outra loja não vaza)', async () => {
+        expect((await niveis(B)).body.data).toEqual([{ nivel: 1, nome: 'Tipo da B' }]);
+        expect(JSON.stringify((await niveis(B)).body)).not.toContain('Marca');
+    });
+
+    test('nível com nome em branco não sai; empresa sem nenhum nível definido recebe lista vazia (a loja usa o padrão da marca)', async () => {
+        const res = await niveis(SEM_NIVEIS);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual([]);
+    });
+
+    test('mudar o nome no ERP vale na hora para a rota (a loja só guarda cache curto)', async () => {
+        await db.query(`UPDATE niveis_categoria SET nome = 'Departamento' WHERE empresa_id = $1 AND escopo = 'produto' AND nivel = 1`, [A.id]);
+        expect((await niveis(A)).body.data[0]).toEqual({ nivel: 1, nome: 'Departamento' });
+        await db.query(`UPDATE niveis_categoria SET nome = 'Categoria' WHERE empresa_id = $1 AND escopo = 'produto' AND nivel = 1`, [A.id]);
+    });
+
+    test('a rota é só de leitura', async () => {
+        expect((await request(app).post(`/loja/${A.slug}/niveis`).send({})).status).toBe(404);
+    });
+});
+
 describe('nenhum dado sensível sai na API pública', () => {
     const PROIBIDOS = /custo|margem|markup|fornecedor|empresa_id|estoque_atual|estoque_minimo|saldo|local_id|"id"|produto_id|11\.11|77\.77|123\.45|55\.55/i;
 
     test('catálogo, produto, categorias e vitrines não trazem campo nem valor sensível', async () => {
-        const caminhos = ['catalogo?limite=48', 'categorias', 'vitrines', `produtos/anel-ouro-${A.p['anel-ouro']}`];
+        const caminhos = ['catalogo?limite=48', 'categorias', 'niveis', 'vitrines', `produtos/anel-ouro-${A.p['anel-ouro']}`];
 
         for (const c of caminhos) {
             const res = await get(`/loja/${A.slug}/${c}`);
