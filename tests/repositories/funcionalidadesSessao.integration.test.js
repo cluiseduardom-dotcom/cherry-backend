@@ -10,6 +10,9 @@ const { criarRegistroDeEmpresas } = require('../helpers/limpezaEmpresasTeste');
 const registro = criarRegistroDeEmpresas(db);
 const sufixo = crypto.randomBytes(4).toString('hex');
 const RECURSOS = ['analise_financeira', 'bancos', 'comissoes', 'maletas'];
+// Desde a migration 119 os três planos comerciais (basico, padrao, pro) trazem Fiado e Importação de lista.
+const FIADO_IMPORTACAO = ['fiado', 'importacao_lista'];
+const COMERCIAL = [...RECURSOS, ...FIADO_IMPORTACAO].sort();
 const HOJE = `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date`;
 
 const inserir = async (sql, params) => (await db.query(sql, params)).rows[0].id;
@@ -61,9 +64,9 @@ describe('funcionalidades na consulta da sessão', () => {
 
     test.each([
         ['com_mensalidade', RECURSOS],
-        ['padrao', RECURSOS],
-        ['pro', RECURSOS],
-        ['basico', []],
+        ['padrao', COMERCIAL],
+        ['pro', COMERCIAL],
+        ['basico', FIADO_IMPORTACAO],
         ['cortesia', []]
     ])('plano %s', async (codigo, esperado) => {
         const e = await novaEmpresa(codigo);
@@ -94,7 +97,7 @@ describe('funcionalidades na consulta da sessão', () => {
         await plano(e.empresaId, 'basico');
         await ligacao(e.empresaId, 'bancos', true);
 
-        expect(await lista(e)).toEqual(['bancos']);
+        expect(await lista(e)).toEqual(['bancos', ...FIADO_IMPORTACAO]);
     });
 
     test('desligar vence o plano que inclui', async () => {
@@ -102,7 +105,7 @@ describe('funcionalidades na consulta da sessão', () => {
         await plano(e.empresaId, 'padrao');
         await ligacao(e.empresaId, 'comissoes', false);
 
-        expect(await lista(e)).toEqual(['analise_financeira', 'bancos', 'maletas']);
+        expect(await lista(e)).toEqual(['analise_financeira', 'bancos', 'fiado', 'importacao_lista', 'maletas']);
     });
 
     test('ligação vencida ou futura não vale; ligação com vigência aberta vale até o último dia', async () => {
@@ -112,7 +115,7 @@ describe('funcionalidades na consulta da sessão', () => {
         await ligacao(e.empresaId, 'maletas', true, { inicio: `${HOJE} + 1` });
         await ligacao(e.empresaId, 'comissoes', true, { inicio: `${HOJE} - 3`, fim: HOJE });
 
-        expect(await lista(e)).toEqual(['comissoes']);
+        expect(await lista(e)).toEqual(['comissoes', ...FIADO_IMPORTACAO]);
     });
 
     test('desligamento vencido não bloqueia o plano', async () => {
@@ -120,7 +123,7 @@ describe('funcionalidades na consulta da sessão', () => {
         await plano(e.empresaId, 'padrao');
         await ligacao(e.empresaId, 'bancos', false, { inicio: `${HOJE} - 10`, fim: `${HOJE} - 1` });
 
-        expect(await lista(e)).toEqual(RECURSOS);
+        expect(await lista(e)).toEqual(COMERCIAL);
     });
 
     test('isolamento: ligação de uma empresa não aparece em outra', async () => {

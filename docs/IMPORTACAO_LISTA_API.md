@@ -7,7 +7,7 @@ Permite ao lojista que vem de caderno ou planilha trazer produtos (com custo e s
 ## Acesso
 
 - Só **admin** (o arquivo traz custo e dados pessoais). Vendedor e Estoquista recebem 403.
-- Só com a funcionalidade **`importacao_lista`** ligada para a empresa (Painel GiroNex). Nenhum plano a inclui; a GiroNex liga avulsa. Sem ela: `403 "Funcionalidade não incluída no seu plano. Fale com a GiroNex."`.
+- Só com a funcionalidade **`importacao_lista`** ligada para a empresa (Painel GiroNex). Os três planos comerciais a incluem desde a migration 119; a GiroNex ainda pode ligar avulsa (planos legados, como `sem_mensalidade`, não a trazem). Sem ela: `403 "Funcionalidade não incluída no seu plano. Fale com a GiroNex."`.
 - `empresa_id` e o usuário vêm sempre do JWT; campo `empresa_id`/`usuario_id` no corpo é recusado (400).
 
 ## Formato: só CSV (decisão do PO)

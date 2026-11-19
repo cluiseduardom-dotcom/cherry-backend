@@ -8,7 +8,7 @@ Estado: **PR 3**. O bloqueio entra rota a rota; já bloqueadas: ver tabela abaix
 | `analise_financeira` | `GET /financeiro/ponto-equilibrio`, todo `/despesas-fixas/*` |
 | `maletas` | `POST /estoque/locais`, `/estoque/transferencias*`, `/estoque/locais/:id/conferencias`, `/estoque/locais/:id/acerto` (ler locais e saldos segue no núcleo) |
 | `comissoes` | todo `/comissoes/*` (a venda continua apurando comissão; a devolução de Pix em `/pagamentos-gateway` não é de Comissões) |
-| `importacao_lista` | todo `/importacao/*` (módulo, migration 117; nenhum plano a inclui, a GiroNex liga avulsa; ver `docs/IMPORTACAO_LISTA_API.md`) |
+| `importacao_lista` | todo `/importacao/*` (módulo, migration 117; incluída nos três planos comerciais desde a migration 119, a GiroNex ainda pode ligar avulsa; ver `docs/IMPORTACAO_LISTA_API.md`) |
 
 A barreira de plano vem DEPOIS da de papel/capacidade (quem não tem o papel recebe o 403 de permissão). Em `/comissoes` o plano é checado logo após a autenticação (antes do papel); nas demais, depois.
 
