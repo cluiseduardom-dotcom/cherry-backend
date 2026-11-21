@@ -119,6 +119,7 @@ const vendasRoutes = require('./routes/vendas');
 const clientesRoutes = require('./routes/clientes');
 const canaisVendaRoutes = require('./routes/canaisVenda');
 const dashboardRoutes = require('./routes/dashboard');
+const modelosNichoRoutes = require('./routes/modelosNicho');
 const relatoriosRoutes = require('./routes/relatorios');
 const notificacoesRoutes = require('./routes/notificacoes');
 const consumosRoutes = require('./routes/consumos');
@@ -201,6 +202,7 @@ app.use('/estoque', authMiddleware, estoqueRoutes);
 app.use('/canais-venda', authMiddleware, canaisVendaRoutes);
 app.use('/dashboard', authMiddleware, requireCapacidade(CAPACIDADES.VER_DASHBOARD, CAPACIDADES.VER_CUSTOS), dashboardRoutes);
 app.use('/notificacoes', authMiddleware, notificacoesRoutes);
+app.use('/modelos-nicho', authMiddleware, requireAdmin, modelosNichoRoutes);
 app.use('/relatorios', authMiddleware, relatoriosRoutes);
 app.use('/empresa', authMiddleware, requireAdmin, empresaRoutes);
 // Painel GiroNex: operadores separados dos usuários das lojas, com sessão própria (PAINEL_JWT_SECRET) e 2FA.
