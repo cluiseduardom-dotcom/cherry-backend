@@ -9,7 +9,7 @@ const arred = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 function apresentar(ordem, usuario) {
     const verCustos = podeVerCustos(usuario);
-    const { insumos, custo_insumos: custoInsumos, ...resto } = ordem;
+    const { insumos, consumos, custo_insumos: custoInsumos, ...resto } = ordem;
     const produzida = resto.quantidade_produzida;
     const perdida = Number(resto.quantidade_perdida);
     const concluida = resto.status === 'concluida';
@@ -35,6 +35,26 @@ function apresentar(ordem, usuario) {
 
             return verCustos ? { ...base, custo_unitario: Number(i.custo) } : base;
         });
+    }
+
+    // Pendência de baixa de insumo (faltou saldo no sistema ao concluir): quantidade prevista × baixada.
+    final.tem_pendencia = Number(resto.insumos_pendentes ?? 0) > 0 || Boolean(consumos?.some((c) => c.quantidade_baixada < c.quantidade_prevista));
+
+    if (consumos) {
+        final.pendencias = consumos
+            .filter((c) => c.quantidade_baixada < c.quantidade_prevista)
+            .map((c) => {
+                const base = {
+                    insumo_produto_id: c.insumo_produto_id,
+                    sku: c.sku,
+                    nome: c.nome,
+                    quantidade_prevista: c.quantidade_prevista,
+                    quantidade_baixada: c.quantidade_baixada,
+                    quantidade_pendente: c.quantidade_prevista - c.quantidade_baixada
+                };
+
+                return verCustos ? { ...base, custo_unitario: Number(c.custo_unitario) } : base;
+            });
     }
 
     if (verCustos) {
@@ -85,8 +105,12 @@ async function concluir(id, dados, usuario) {
     return apresentar(await repo.concluir(id, dados, usuario.id, usuario.empresa_id), usuario);
 }
 
+async function regularizarInsumos(id, usuario) {
+    return apresentar(await repo.regularizarInsumos(id, usuario.id, usuario.empresa_id), usuario);
+}
+
 async function cancelar(id, dados, usuario) {
     return apresentar(await repo.cancelar(id, dados, usuario.id, usuario.empresa_id), usuario);
 }
 
-module.exports = { criar, listar, buscarPorId, iniciar, concluir, cancelar };
+module.exports = { criar, listar, buscarPorId, iniciar, concluir, regularizarInsumos, cancelar };

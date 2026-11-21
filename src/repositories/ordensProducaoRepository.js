@@ -9,7 +9,10 @@ const AppError = require('../errors/AppError');
 
 const SELECT_ORDEM = `
     SELECT o.*, p.nome AS produto_nome, p.sku AS produto_sku,
-           to_char(o.prazo, 'YYYY-MM-DD') AS prazo_iso
+           to_char(o.prazo, 'YYYY-MM-DD') AS prazo_iso,
+           (SELECT COUNT(*)::int FROM ordem_producao_consumos c
+             WHERE c.ordem_id = o.id AND c.empresa_id = o.empresa_id
+               AND c.quantidade_baixada < c.quantidade_prevista) AS insumos_pendentes
       FROM ordens_producao o
       JOIN produtos p ON p.id = o.produto_id AND p.empresa_id = o.empresa_id`;
 
@@ -91,7 +94,16 @@ async function buscarPorId(id, empresaId) {
         [rows[0].ficha_tecnica_id, empresaId]
     );
 
-    return { ...normalizar(rows[0]), insumos };
+    const { rows: consumos } = await db.query(
+        `SELECT c.insumo_produto_id, p.sku, p.nome, c.quantidade_prevista, c.quantidade_baixada, c.custo_unitario
+           FROM ordem_producao_consumos c
+           JOIN produtos p ON p.id = c.insumo_produto_id AND p.empresa_id = c.empresa_id
+          WHERE c.ordem_id = $1 AND c.empresa_id = $2
+          ORDER BY c.insumo_produto_id`,
+        [id, empresaId]
+    );
+
+    return { ...normalizar(rows[0]), insumos, consumos };
 }
 
 async function iniciar(id, usuarioId, empresaId) {
@@ -110,8 +122,10 @@ async function iniciar(id, usuarioId, empresaId) {
     return buscarPorId(id, empresaId);
 }
 
-// Conclui: baixa os insumos de (produzida + perdida) × consumo por unidade e dá entrada no acabado só com a
-// produzida. Tudo na mesma transação; sem estoque de algum insumo = 409 e nada é gravado.
+// Conclui: baixa cada insumo em min(necessário, saldo do Central) e dá entrada no acabado com a produzida. O que
+// faltar de insumo vira PENDÊNCIA (ordem_producao_consumos), baixada depois por `regularizarInsumos`: faltar insumo
+// no sistema não trava a produção (ele pode existir fisicamente e só não ter dado entrada). Estoque nunca fica negativo.
+// Tudo na mesma transação.
 async function concluir(id, { quantidade_produzida: produzida, quantidade_perdida: perdida }, usuarioId, empresaId) {
     await executarComLock('ordens_producao', { coluna: 'id', valor: id }, empresaId, undefined, async (ordem, client) => {
         if (!ordem) throw new AppError('Ordem de produção não encontrada', 404);
@@ -135,6 +149,7 @@ async function concluir(id, { quantidade_produzida: produzida, quantidade_perdid
         );
         const porId = new Map(insumos.map((p) => [p.id, p]));
         const consumidas = produzida + perdida;
+        const centralId = await estoqueRepository.garantirLocalCentral(client, empresaId);
         let custoInsumos = 0;
 
         for (const item of itens) {
@@ -142,23 +157,39 @@ async function concluir(id, { quantidade_produzida: produzida, quantidade_perdid
 
             if (!insumo?.ativo) throw new AppError('Produto inativo não pode receber movimentações de estoque', 400);
 
-            const quantidade = Number(item.por_unidade) * consumidas;
-            const resultado = await estoqueRepository.criarMovimentacao(
-                {
-                    produto_id: item.insumo_produto_id,
-                    tipo: 'saida',
-                    quantidade,
-                    motivo: `Ordem de produção #${id}`,
-                    usuario_id: usuarioId,
-                    empresa_id: empresaId
-                },
-                client
+            const previsto = Number(item.por_unidade) * consumidas;
+            const { rows: saldoRows } = await client.query(
+                'SELECT saldo FROM estoque_locais WHERE produto_id = $1 AND local_id = $2 AND empresa_id = $3',
+                [item.insumo_produto_id, centralId, empresaId]
+            );
+            const baixar = Math.min(previsto, Math.max(saldoRows.length ? saldoRows[0].saldo : 0, 0));
+
+            if (baixar > 0) {
+                const resultado = await estoqueRepository.criarMovimentacao(
+                    {
+                        produto_id: item.insumo_produto_id,
+                        tipo: 'saida',
+                        quantidade: baixar,
+                        motivo: `Ordem de produção #${id}`,
+                        usuario_id: usuarioId,
+                        empresa_id: empresaId,
+                        local_id: centralId
+                    },
+                    client
+                );
+
+                if (resultado.erro === 'PRODUTO_NAO_ENCONTRADO') throw new AppError('Produto não encontrado', 404);
+                if (resultado.erro) throw new AppError('Não foi possível baixar o insumo', 409);
+            }
+
+            await client.query(
+                `INSERT INTO ordem_producao_consumos (empresa_id, ordem_id, insumo_produto_id, local_id, quantidade_prevista, quantidade_baixada, custo_unitario)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [empresaId, id, item.insumo_produto_id, centralId, previsto, baixar, insumo.custo]
             );
 
-            if (resultado.erro === 'PRODUTO_NAO_ENCONTRADO') throw new AppError('Produto não encontrado', 404);
-            if (resultado.erro === 'ESTOQUE_INSUFICIENTE') throw new AppError('Estoque de insumo insuficiente para concluir esta ordem', 409);
-
-            custoInsumos += quantidade * Number(insumo.custo);
+            // Custo real = necessidade COMPLETA (inclui o que ainda não foi baixado).
+            custoInsumos += previsto * Number(insumo.custo);
         }
 
         if (produzida > 0) {
@@ -189,6 +220,69 @@ async function concluir(id, { quantidade_produzida: produzida, quantidade_perdid
     return buscarPorId(id, empresaId);
 }
 
+// Regulariza a pendência de uma ordem concluída: baixa de cada insumo o que o Central tem (até o pendente).
+// Chamada depois que o insumo deu entrada no sistema. Sem pendência = 409; nenhum insumo com saldo = 409.
+async function regularizarInsumos(id, usuarioId, empresaId) {
+    await executarComLock('ordens_producao', { coluna: 'id', valor: id }, empresaId, undefined, async (ordem, client) => {
+        if (!ordem) throw new AppError('Ordem de produção não encontrada', 404);
+        if (ordem.status !== 'concluida') throw new AppError('Somente ordens concluídas têm insumos a regularizar', 409);
+
+        const { rows: linhas } = await client.query(
+            `SELECT * FROM ordem_producao_consumos
+              WHERE ordem_id = $1 AND empresa_id = $2 AND quantidade_baixada < quantidade_prevista
+              ORDER BY insumo_produto_id
+                FOR UPDATE`,
+            [id, empresaId]
+        );
+
+        if (!linhas.length) throw new AppError('Esta ordem não tem insumo pendente', 409);
+
+        // Trava os insumos antes de ler o saldo (mesma ordem de toda movimentação: ordem -> produto -> saldo).
+        await client.query(
+            'SELECT id FROM produtos WHERE id = ANY($1::int[]) AND empresa_id = $2 ORDER BY id FOR UPDATE',
+            [linhas.map((l) => l.insumo_produto_id), empresaId]
+        );
+
+        let baixouAlgo = false;
+
+        for (const linha of linhas) {
+            const { rows: saldoRows } = await client.query(
+                'SELECT saldo FROM estoque_locais WHERE produto_id = $1 AND local_id = $2 AND empresa_id = $3',
+                [linha.insumo_produto_id, linha.local_id, empresaId]
+            );
+            const pendente = linha.quantidade_prevista - linha.quantidade_baixada;
+            const baixar = Math.min(pendente, Math.max(saldoRows.length ? saldoRows[0].saldo : 0, 0));
+
+            if (baixar <= 0) continue;
+
+            const resultado = await estoqueRepository.criarMovimentacao(
+                {
+                    produto_id: linha.insumo_produto_id,
+                    tipo: 'saida',
+                    quantidade: baixar,
+                    motivo: `Regularização ordem de produção #${id}`,
+                    usuario_id: usuarioId,
+                    empresa_id: empresaId,
+                    local_id: linha.local_id
+                },
+                client
+            );
+
+            if (resultado.erro) throw new AppError('Não foi possível baixar o insumo', 409);
+
+            await client.query(
+                'UPDATE ordem_producao_consumos SET quantidade_baixada = quantidade_baixada + $3, atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2',
+                [linha.id, empresaId, baixar]
+            );
+            baixouAlgo = true;
+        }
+
+        if (!baixouAlgo) throw new AppError('Sem saldo dos insumos no Central para regularizar. Dê entrada no estoque primeiro.', 409);
+    });
+
+    return buscarPorId(id, empresaId);
+}
+
 // Cancela ordem planejada ou em produção (nada foi consumido). Concluída não cancela.
 async function cancelar(id, { motivo }, usuarioId, empresaId) {
     await executarComLock('ordens_producao', { coluna: 'id', valor: id }, empresaId, undefined, async (ordem, client) => {
@@ -208,4 +302,4 @@ async function cancelar(id, { motivo }, usuarioId, empresaId) {
     return buscarPorId(id, empresaId);
 }
 
-module.exports = { criar, listarPaginado, buscarPorId, iniciar, concluir, cancelar };
+module.exports = { criar, listarPaginado, buscarPorId, iniciar, concluir, regularizarInsumos, cancelar };

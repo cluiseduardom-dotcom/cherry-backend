@@ -48,5 +48,6 @@ module.exports = {
     buscarPorId: acao((req) => service.buscarPorId(parseId(req.params.id), req.usuario)),
     iniciar: acao((req) => service.iniciar(parseId(req.params.id), req.usuario)),
     concluir: acao((req) => service.concluir(parseId(req.params.id), validar(concluirOrdemSchema, req.body ?? {}), req.usuario)),
+    regularizarInsumos: acao((req) => service.regularizarInsumos(parseId(req.params.id), req.usuario)),
     cancelar: acao((req) => service.cancelar(parseId(req.params.id), validar(cancelarOrdemSchema, req.body ?? {}), req.usuario))
 };

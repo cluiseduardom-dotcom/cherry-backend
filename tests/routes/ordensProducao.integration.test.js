@@ -93,6 +93,14 @@ beforeAll(async () => {
     await criarProduto(A, 'inativo', { ativo: false });
     await criarFicha(A, 'inativo', [['ovo', 1]]);
 
+    // Cenários de insumo que ainda não deu entrada no sistema (saldo menor que o necessário, ou zero).
+    await criarProduto(A, 'pudim');
+    await criarProduto(A, 'leite', { tipo: 'insumo', custo: 2, estoque: 5 });
+    await criarFicha(A, 'pudim', [['leite', 3]]);
+    await criarProduto(A, 'sorvete');
+    await criarProduto(A, 'calda', { tipo: 'insumo', custo: 5, estoque: 0 });
+    await criarFicha(A, 'sorvete', [['calda', 2]]);
+
     await criarProduto(B, 'bolo');
     await criarProduto(B, 'ovo', { tipo: 'insumo', custo: 1, estoque: 100 });
     await criarFicha(B, 'bolo', [['ovo', 1]]);
@@ -246,15 +254,39 @@ describe('concluir', () => {
         expect(await estoque(A, 'ovo')).toBe(ovo);
     });
 
-    test('insumo insuficiente = 409 sem gravar nada: ordem continua em produção e o estoque não muda', async () => {
-        const id = await emProducao(A, 'bolo', 1000);
-        const antes = { ovo: await estoque(A, 'ovo'), farinha: await estoque(A, 'farinha'), bolo: await estoque(A, 'bolo') };
-        const res = await patch(A, 'admin', `${ORD}/${id}/concluir`, { quantidade_produzida: 1000 });
+    test('insumo insuficiente NÃO trava: baixa o que há, registra a pendência, estoque nunca fica negativo', async () => {
+        // Pudim: 3 leites por unidade. 4 pudins pedem 12 leites; só há 5 (o resto pode não ter dado entrada ainda).
+        const id = await emProducao(A, 'pudim', 4);
+        const res = await patch(A, 'admin', `${ORD}/${id}/concluir`, { quantidade_produzida: 4 });
 
-        expect(res.status).toBe(409);
-        expect({ ovo: await estoque(A, 'ovo'), farinha: await estoque(A, 'farinha'), bolo: await estoque(A, 'bolo') }).toEqual(antes);
-        expect(await movimentos(id)).toEqual([]);
-        expect((await get(A, 'admin', `${ORD}/${id}`)).body.data.status).toBe('em_producao');
+        expect(res.status).toBe(200);
+        expect(res.body.data).toMatchObject({ status: 'concluida', quantidade_produzida: 4, tem_pendencia: true });
+        expect(res.body.data.pendencias).toEqual([
+            expect.objectContaining({ insumo_produto_id: A.p.leite, nome: 'Item leite', quantidade_prevista: 12, quantidade_baixada: 5, quantidade_pendente: 7 })
+        ]);
+        expect(await estoque(A, 'leite')).toBe(0); // baixou só o que existia; nunca negativo
+        expect(await estoque(A, 'pudim')).toBe(4); // o acabado entra por inteiro
+        // custo real usa a necessidade COMPLETA (12 × 2), não só o que foi baixado
+        expect(res.body.data).toMatchObject({ custo_insumos: 24, custo_unitario_real: 6 });
+        expect((await movimentos(id)).map((m) => [m.tipo, m.quantidade])).toEqual([['saida', 5], ['entrada', 4]]);
+    });
+
+    test('insumo sem nenhum saldo: produz do mesmo jeito e a pendência é a necessidade inteira', async () => {
+        const id = await emProducao(A, 'sorvete', 3);
+        const res = await patch(A, 'admin', `${ORD}/${id}/concluir`, { quantidade_produzida: 3 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.pendencias[0]).toMatchObject({ nome: 'Item calda', quantidade_prevista: 6, quantidade_baixada: 0, quantidade_pendente: 6 });
+        expect(await estoque(A, 'calda')).toBe(0);
+        expect(await estoque(A, 'sorvete')).toBe(3);
+        expect((await movimentos(id)).map((m) => m.tipo)).toEqual(['entrada']); // só o acabado; nenhuma saída de insumo
+    });
+
+    test('ordem com insumo suficiente não tem pendência', async () => {
+        const id = await emProducao(A, 'bolo', 1);
+        const res = await patch(A, 'admin', `${ORD}/${id}/concluir`, { quantidade_produzida: 1 });
+
+        expect(res.body.data).toMatchObject({ tem_pendencia: false, pendencias: [] });
     });
 
     test('insumo inativo na conclusão = 400 e nada é gravado', async () => {
@@ -369,6 +401,100 @@ describe('RBAC e flag', () => {
         expect((await post(C, 'admin', ORD, { produto_id: C.p.bolo, quantidade_planejada: 1 })).status).toBe(403);
         expect((await patch(C, 'admin', `${ORD}/${id}/iniciar`, {})).status).toBe(403);
         expect((await get(C, 'admin', '/producoes')).status).toBe(200); // rota antiga segue aberta
+    });
+});
+
+describe('regularizar insumos pendentes', () => {
+    const repor = async (alvo, chave, quantidade) => {
+        const { rows } = await db.query(`SELECT id FROM locais_estoque WHERE empresa_id = $1 AND tipo = 'central'`, [alvo.empresaId]);
+
+        await db.query(
+            `INSERT INTO estoque_locais (empresa_id, local_id, produto_id, saldo) VALUES ($1, $2, $3, $4)
+             ON CONFLICT (produto_id, local_id) DO UPDATE SET saldo = estoque_locais.saldo + EXCLUDED.saldo`,
+            [alvo.empresaId, rows[0].id, alvo.p[chave], quantidade]
+        );
+        await db.query('UPDATE produtos SET estoque_atual = estoque_atual + $1 WHERE id = $2', [quantidade, alvo.p[chave]]);
+    };
+
+    async function ordemComPendencia(produto, quantidade) {
+        const id = await emProducao(A, produto, quantidade);
+
+        expect((await patch(A, 'admin', `${ORD}/${id}/concluir`, { quantidade_produzida: quantidade })).status).toBe(200);
+        return id;
+    }
+
+    test('depois da entrada do insumo, baixa o que há (até o pendente); sem saldo, 409; sem pendência, 409', async () => {
+        await db.query('UPDATE estoque_locais SET saldo = 0 WHERE produto_id = $1', [A.p.leite]);
+        await db.query('UPDATE produtos SET estoque_atual = 0 WHERE id = $1', [A.p.leite]);
+        const id = await ordemComPendencia('pudim', 3); // pede 9 leites, não há nenhum: pendente 9
+
+        const semSaldo = await patch(A, 'admin', `${ORD}/${id}/regularizar-insumos`, {});
+
+        expect(semSaldo.status).toBe(409);
+        expect(semSaldo.body.message).toMatch(/Sem saldo/);
+
+        await repor(A, 'leite', 4); // chegou a entrada, mas só parte
+        const parcial = await patch(A, 'estoquista', `${ORD}/${id}/regularizar-insumos`, {});
+
+        expect(parcial.status).toBe(200);
+        expect(parcial.body.data.pendencias[0]).toMatchObject({ quantidade_baixada: 4, quantidade_pendente: 5 });
+        expect(parcial.body.data.tem_pendencia).toBe(true);
+        expect(await estoque(A, 'leite')).toBe(0);
+
+        await repor(A, 'leite', 20); // chegou o resto
+        const total = await patch(A, 'admin', `${ORD}/${id}/regularizar-insumos`, {});
+
+        expect(total.body.data).toMatchObject({ tem_pendencia: false, pendencias: [] }); // quitada: some da lista
+        expect(await estoque(A, 'leite')).toBe(15);
+        const regularizacoes = await db.query(
+            `SELECT quantidade FROM movimentacoes_estoque WHERE motivo = $1 AND tipo = 'saida' ORDER BY id`,
+            [`Regularização ordem de produção #${id}`]
+        );
+
+        expect(regularizacoes.rows.map((m) => m.quantidade)).toEqual([4, 5]);
+
+        expect((await patch(A, 'admin', `${ORD}/${id}/regularizar-insumos`, {})).status).toBe(409);
+    });
+
+    test('só ordem concluída; outra empresa = 404; sem a flag = 403', async () => {
+        const andamento = await emProducao(A, 'bolo', 1);
+
+        expect((await patch(A, 'admin', `${ORD}/${andamento}/regularizar-insumos`, {})).status).toBe(409);
+
+        const id = await ordemComPendencia('sorvete', 1);
+
+        expect((await patch(B, 'admin', `${ORD}/${id}/regularizar-insumos`, {})).status).toBe(404);
+        expect((await patch(C, 'admin', `${ORD}/${id}/regularizar-insumos`, {})).status).toBe(403);
+        expect((await patch(A, 'vendedor', `${ORD}/${id}/regularizar-insumos`, {})).status).toBe(403);
+    });
+
+    test('duas regularizações simultâneas: a baixa acontece uma vez só', async () => {
+        const id = await ordemComPendencia('sorvete', 2); // pendente 4 de calda
+
+        await repor(A, 'calda', 100);
+        const antes = await estoque(A, 'calda');
+        const [r1, r2] = await Promise.all([
+            patch(A, 'admin', `${ORD}/${id}/regularizar-insumos`, {}),
+            patch(A, 'estoquista', `${ORD}/${id}/regularizar-insumos`, {})
+        ]);
+
+        expect([r1.status, r2.status].sort()).toEqual([200, 409]);
+        expect(await estoque(A, 'calda')).toBe(antes - 4);
+    });
+
+    test('lista e detalhe mostram a pendência; estoquista vê a pendência mas não o custo', async () => {
+        await db.query('UPDATE estoque_locais SET saldo = 0 WHERE produto_id = $1', [A.p.calda]); // o teste anterior repôs calda
+        await db.query('UPDATE produtos SET estoque_atual = 0 WHERE id = $1', [A.p.calda]);
+        const id = await ordemComPendencia('sorvete', 1);
+        const lista = await get(A, 'estoquista', `${ORD}?pageSize=100`);
+
+        expect(lista.body.data.items.find((o) => o.id === id)).toMatchObject({ tem_pendencia: true, insumos_pendentes: 1 });
+
+        const detalhe = await get(A, 'estoquista', `${ORD}/${id}`);
+
+        expect(detalhe.body.data.pendencias[0]).toMatchObject({ nome: 'Item calda', quantidade_pendente: 2 });
+        expect(detalhe.body.data.pendencias[0]).not.toHaveProperty('custo_unitario');
+        expect((await get(A, 'admin', `${ORD}/${id}`)).body.data.pendencias[0]).toHaveProperty('custo_unitario');
     });
 });
 

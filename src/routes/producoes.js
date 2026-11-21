@@ -17,6 +17,7 @@ router.get('/ordens', ordens.listar);
 router.get('/ordens/:id', ordens.buscarPorId);
 router.patch('/ordens/:id/iniciar', ordens.iniciar);
 router.patch('/ordens/:id/concluir', ordens.concluir);
+router.patch('/ordens/:id/regularizar-insumos', ordens.regularizarInsumos);
 router.patch('/ordens/:id/cancelar', ordens.cancelar);
 
 router.get('/', controller.listar);
