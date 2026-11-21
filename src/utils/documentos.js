@@ -43,6 +43,18 @@ function cnpjValido(cnpj) {
     return d1 === Number(cnpj[12]) && d2 === Number(cnpj[13]);
 }
 
+// Forma de um CPF (11 dígitos) ou de um CNPJ (numérico ou alfanumérico: 12 posições 0-9/A-Z + 2 dígitos), aceitando a pontuação
+// usual (. - / e espaço) e letras minúsculas. Só confere o FORMATO, sem dígito verificador (política dos cadastros de cliente e
+// fornecedor, que sempre aceitaram documento "como veio"); quem precisa do dígito usa cpfValido/cnpjValido.
+function documentoFormaValida(valor) {
+    const limpo = normalizarCnpj(valor);
+
+    return /^\d{11}$/.test(limpo) || /^[0-9A-Z]{12}\d{2}$/.test(limpo);
+}
+
+// Guarda o documento como veio, só com as letras do CNPJ alfanumérico em maiúsculas (a pontuação não muda).
+const documentoComLetrasMaiusculas = (valor) => (typeof valor === 'string' && /[a-z]/.test(valor) ? valor.toUpperCase() : valor);
+
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 
-module.exports = { cpfValido, cnpjValido, normalizarCnpj, UFS };
+module.exports = { cpfValido, cnpjValido, normalizarCnpj, documentoFormaValida, documentoComLetrasMaiusculas, UFS };

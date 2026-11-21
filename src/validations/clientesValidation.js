@@ -1,21 +1,19 @@
 const { z } = require('zod');
+const { documentoFormaValida, documentoComLetrasMaiusculas } = require('../utils/documentos');
 
 // data_nascimento fica como string 'YYYY-MM-DD' (z.iso.date), nunca vira
 // Date — mesma armadilha de fuso horário já documentada em CLAUDE.md
 // (`z.coerce.date` grava um dia a menos em servidor com fuso negativo).
 const dataISO = (mensagem) => z.iso.date({ error: mensagem });
 
-function normalizarDigitos(valor) {
-    return valor.replace(/\D/g, '');
-}
-
-// Só valida quantidade de dígitos (11 = CPF, 14 = CNPJ) — sem checar dígito
+// Só valida o formato (11 dígitos = CPF; 14 = CNPJ, numérico ou alfanumérico) — sem checar dígito
 // verificador, mesmo padrão de fornecedoresValidation.js.
 const cpfCnpj = z.string()
     .optional()
-    .refine((valor) => valor === undefined || /^\d{11}$|^\d{14}$/.test(normalizarDigitos(valor)), {
+    .refine((valor) => valor === undefined || documentoFormaValida(valor), {
         message: 'CPF/CNPJ inválido'
-    });
+    })
+    .transform(documentoComLetrasMaiusculas);
 
 const criarClienteSchema = z.object({
     nome: z.string({ error: 'Nome é obrigatório' }).min(1, 'Nome é obrigatório'),
