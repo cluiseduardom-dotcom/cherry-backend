@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const { ORIGENS_AQUISICAO, PARCEIRO_CODIGO_REGEX } = require('../constants/origensAquisicao');
+const { IDS_MODELOS_NICHO } = require('../constants/modelosNicho');
 
 const onboardingSchema = z.object({
     empresa_nome: z.string().trim().min(2, 'Nome da empresa deve ter no mínimo 2 caracteres').max(255, 'Nome da empresa muito longo'),
@@ -7,6 +8,7 @@ const onboardingSchema = z.object({
     nome_admin: z.string().trim().min(2, 'Nome do administrador deve ter no mínimo 2 caracteres').max(255, 'Nome do administrador muito longo'),
     email_admin: z.string().trim().toLowerCase().email('Email do administrador inválido'),
     senha_admin: z.string().min(8, 'Senha deve ter no mínimo 8 caracteres').max(72, 'Senha muito longa'),
+    modelo_nicho: z.enum(IDS_MODELOS_NICHO, { error: 'Modelo de nicho inválido' }).optional(),
     origem_aquisicao: z.enum(ORIGENS_AQUISICAO, { error: 'Origem de aquisição inválida' }).optional(),
     parceiro_codigo: z.string()
         .trim()

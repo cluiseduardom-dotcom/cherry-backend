@@ -4,11 +4,12 @@ const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { gerarLoginBase } = require('../utils/loginUsuario');
 const { ORIGEM_AQUISICAO_PADRAO } = require('../constants/origensAquisicao');
+const modelosNichoService = require('./modelosNichoService');
 
 // Núcleo da criação de empresa, dentro da transação do chamador: empresa, canais, configurações e o admin.
 // `senhaTemporaria`: o admin é obrigado a trocar a senha no primeiro acesso (criação pelo Painel GiroNex).
 // `origem_aquisicao`/`parceiro_codigo`: dado interno da GiroNex (canal de aquisição); nunca volta na resposta nem é lido por rota de tenant.
-async function criarEmpresaComAdmin(client, { empresa_nome, cnpj, nome_admin, email_admin, senha, senhaTemporaria = false, origem_aquisicao = ORIGEM_AQUISICAO_PADRAO, parceiro_codigo = null }) {
+async function criarEmpresaComAdmin(client, { empresa_nome, cnpj, nome_admin, email_admin, senha, senhaTemporaria = false, origem_aquisicao = ORIGEM_AQUISICAO_PADRAO, parceiro_codigo = null, modelo_nicho = null }) {
     const empresaResult = await client.query(
         `INSERT INTO empresas (nome, cnpj, status, origem_aquisicao, parceiro_codigo)
          VALUES ($1, $2, 'ativa', $3, $4)
@@ -64,6 +65,12 @@ async function criarEmpresaComAdmin(client, { empresa_nome, cnpj, nome_admin, em
         [empresa.id, configInsumo.id]
     );
 
+    // Modelo de nicho (opcional): categorias e padrão de SKU de produto de partida, na mesma transação.
+    // Modelo desconhecido derruba a criação inteira (nenhuma empresa pela metade).
+    if (modelo_nicho) {
+        await modelosNichoService.aplicar(client, empresa.id, modelo_nicho);
+    }
+
     // A senha só é processada depois dos padrões: uma falha antes não paga o bcrypt.
     const senhaHash = await bcrypt.hash(senha, 10);
 
@@ -77,13 +84,13 @@ async function criarEmpresaComAdmin(client, { empresa_nome, cnpj, nome_admin, em
     return { empresa, usuario: usuarioResult.rows[0] };
 }
 
-async function criarTenant({ empresa_nome, cnpj, nome_admin, email_admin, senha_admin, origem_aquisicao, parceiro_codigo }) {
+async function criarTenant({ empresa_nome, cnpj, nome_admin, email_admin, senha_admin, origem_aquisicao, parceiro_codigo, modelo_nicho }) {
     const client = await db.connect();
 
     try {
         await client.query('BEGIN');
 
-        const { empresa, usuario } = await criarEmpresaComAdmin(client, { empresa_nome, cnpj, nome_admin, email_admin, senha: senha_admin, origem_aquisicao, parceiro_codigo });
+        const { empresa, usuario } = await criarEmpresaComAdmin(client, { empresa_nome, cnpj, nome_admin, email_admin, senha: senha_admin, origem_aquisicao, parceiro_codigo, modelo_nicho });
 
         const token = tokenService.emitirToken(usuario);
 
