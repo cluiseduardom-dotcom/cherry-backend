@@ -30,7 +30,13 @@ async function criar(dados) {
     if (dados.chave_nf && !/^\d{44}$/.test(String(dados.chave_nf))) {
         throw new AppError('Chave da NF-e deve conter 44 dígitos', 400);
     }
-    return repository.criar(dados);
+    try {
+        return await repository.criar(dados);
+    } catch (error) {
+        // uq_recebimentos_numero_empresa: sem isso o erro sai como 500 genérico.
+        if (error.code === '23505') throw new AppError('Já existe um recebimento com esse número', 409);
+        throw error;
+    }
 }
 
 async function adicionarItem(recebimentoId, dados, usuario) {

@@ -257,6 +257,12 @@ describe('fluxo completo: pedido → recebimento → estoque, pedido recebido e 
 
         const primeiro = await receber(`REC-1-${sufixo}`, 4);
 
+        // número de recebimento repetido na empresa = 409 claro (e não 500)
+        const repetido = await request(app).post('/recebimentos').set(como(A, 'admin')).send({ pedido_compra_id: pedido.id, fornecedor_id: A.fornecedor, numero: `REC-1-${sufixo}`, data_recebimento: '2026-12-01' });
+
+        expect(repetido.status).toBe(409);
+        expect(repetido.body.message || repetido.body.error).toMatch(/já existe um recebimento/i);
+
         expect(primeiro.status).toBe(200);
         expect((await db.query('SELECT estoque_atual FROM produtos WHERE id = $1', [A.p.anel])).rows[0].estoque_atual).toBe(4);
         let detalhe = (await get(A, 'admin', `${PC}/${pedido.id}`)).body.data;
