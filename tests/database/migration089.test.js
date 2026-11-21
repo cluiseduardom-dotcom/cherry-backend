@@ -30,7 +30,7 @@ describe('migration 089 — arquivo', () => {
         // Códigos criados por migrations posteriores (ex.: 095) não fazem parte do seed da 089.
         // `vendavel` de códigos alterados por migrations posteriores volta ao valor do seed original
         // (ex.: a 121 passou o `pcp` a vendável; o seed da 089 continua dizendo false, e migration aplicada não se edita).
-        const VENDAVEL_NO_SEED_089 = { pcp: false };
+        const VENDAVEL_NO_SEED_089 = { pcp: false, grade: false };
         const daMigration089 = FUNCIONALIDADES
             .filter((f) => !INTRODUZIDAS_DEPOIS_DA_089.includes(f.codigo))
             .map((f) => (f.codigo in VENDAVEL_NO_SEED_089 ? { ...f, vendavel: VENDAVEL_NO_SEED_089[f.codigo] } : f));

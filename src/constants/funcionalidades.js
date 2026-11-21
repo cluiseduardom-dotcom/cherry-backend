@@ -14,7 +14,8 @@ const FUNCIONALIDADES = [
     { codigo: 'fiscal', tipo: 'modulo', nome: 'Fiscal', vendavel: false },
     // Vendável desde a migration 121 (necessidade de material). Nenhum plano o inclui: a GiroNex liga avulso.
     { codigo: 'pcp', tipo: 'modulo', nome: 'PCP: ordem de produção, ordem de serviço e consumo', vendavel: true },
-    { codigo: 'grade', tipo: 'modulo', nome: 'Grade de produtos', vendavel: false },
+    // Vendável desde a migration 125 (grade de produtos). Nenhum plano o inclui: a GiroNex liga avulso.
+    { codigo: 'grade', tipo: 'modulo', nome: 'Grade de produtos', vendavel: true },
     { codigo: 'fracionario', tipo: 'modulo', nome: 'Venda fracionada', vendavel: false },
     { codigo: 'rastreio_unidade', tipo: 'modulo', nome: 'Rastreio por unidade', vendavel: false },
     { codigo: 'multi_pdv', tipo: 'modulo', nome: 'Vários PDVs', vendavel: false },
