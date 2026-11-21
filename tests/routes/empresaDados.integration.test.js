@@ -80,6 +80,15 @@ describe('/empresa/dados', () => {
         expect(rows[0].atualizado_por).toBe(A.u.admin);
     });
 
+    test('CNPJ alfanumérico (Receita, desde julho de 2026): aceita o válido, grava normalizado e recusa o de dígito errado', async () => {
+        const ok = await patch(A, { cnpj: '12.abc.345/01de-35' });
+
+        expect(ok.status).toBe(200);
+        expect(ok.body.data.cnpj).toBe('12ABC34501DE35');
+        expect((await patch(A, { cnpj: '12.ABC.345/01DE-36' })).status).toBe(400);
+        expect((await patch(A, { cnpj: '11.222.333/0001-81' })).body.data.cnpj).toBe('11222333000181'); // volta ao numérico
+    });
+
     test('validações: CNPJ, UF, e-mail, nome vazio, corpo vazio e campos proibidos', async () => {
         expect((await patch(A, { cnpj: '11222333000182' })).status).toBe(400);
         expect((await patch(A, { uf: 'XX' })).status).toBe(400);
