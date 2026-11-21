@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { IDS_MODELOS_NICHO } = require('../constants/modelosNicho');
 
 const loginPainelSchema = z.strictObject({
     email: z.string({ error: 'Informe o e-mail' }).trim().toLowerCase().email('E-mail inválido').max(254),
@@ -20,7 +21,8 @@ const criarEmpresaPainelSchema = z.strictObject({
     empresa_nome: z.string({ error: 'Informe o nome da empresa' }).trim().min(2, 'Nome da empresa muito curto').max(255),
     cnpj: z.string().trim().min(11, 'CNPJ/CPF inválido').max(20, 'CNPJ/CPF inválido').optional(),
     nome_admin: z.string({ error: 'Informe o nome do administrador' }).trim().min(2, 'Nome do administrador muito curto').max(255),
-    email_admin: z.string({ error: 'Informe o e-mail do administrador' }).trim().toLowerCase().email('E-mail do administrador inválido').max(255)
+    email_admin: z.string({ error: 'Informe o e-mail do administrador' }).trim().toLowerCase().email('E-mail do administrador inválido').max(255),
+    modelo_nicho: z.enum(IDS_MODELOS_NICHO, { error: 'Modelo de nicho inválido' }).optional()
 });
 
 const paginaSchema = z.object({
