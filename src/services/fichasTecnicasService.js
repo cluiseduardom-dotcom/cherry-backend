@@ -6,6 +6,7 @@ async function criar(produtoId, dados, usuarioId, empresaId) {
     return fichasTecnicasRepository.criarVersao({
         produto_id: produtoId,
         itens: dados.itens,
+        rendimento: dados.rendimento,
         usuario_id: usuarioId,
         empresa_id: empresaId
     });

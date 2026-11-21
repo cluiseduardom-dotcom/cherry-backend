@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const estoqueRepository = require('./estoqueRepository');
 const { executarComLock } = require('./shared/transacoes');
+const { consumoDaReceita } = require('../utils/receita');
 const AppError = require('../errors/AppError');
 
 // Ordem de produção (PCP, migration 122). Toda leitura e escrita leva empresa_id. Quem muda estoque usa
@@ -86,7 +87,7 @@ async function buscarPorId(id, empresaId) {
 
     const { rows: insumos } = await db.query(
         `SELECT i.insumo_produto_id, p.sku, p.nome, p.ativo, p.estoque_atual, p.custo,
-                i.quantidade_necessaria AS por_unidade
+                i.quantidade_necessaria AS quantidade_receita
            FROM itens_ficha_tecnica i
            JOIN produtos p ON p.id = i.insumo_produto_id AND p.empresa_id = i.empresa_id
           WHERE i.ficha_tecnica_id = $1 AND i.empresa_id = $2
@@ -103,7 +104,12 @@ async function buscarPorId(id, empresaId) {
         [id, empresaId]
     );
 
-    return { ...normalizar(rows[0]), insumos, consumos };
+    const { rows: fichas } = await db.query(
+        'SELECT rendimento FROM fichas_tecnicas WHERE id = $1 AND empresa_id = $2',
+        [rows[0].ficha_tecnica_id, empresaId]
+    );
+
+    return { ...normalizar(rows[0]), rendimento: fichas[0]?.rendimento ?? 1, insumos, consumos };
 }
 
 async function iniciar(id, usuarioId, empresaId) {
@@ -132,7 +138,7 @@ async function concluir(id, { quantidade_produzida: produzida, quantidade_perdid
         if (ordem.status !== 'em_producao') throw new AppError('Somente ordens em produção podem ser concluídas', 409);
 
         const { rows: itens } = await client.query(
-            `SELECT i.insumo_produto_id, i.quantidade_necessaria AS por_unidade
+            `SELECT i.insumo_produto_id, i.quantidade_necessaria AS quantidade_receita
                FROM itens_ficha_tecnica i
               WHERE i.ficha_tecnica_id = $1 AND i.empresa_id = $2
               ORDER BY i.insumo_produto_id`,
@@ -149,6 +155,11 @@ async function concluir(id, { quantidade_produzida: produzida, quantidade_perdid
         );
         const porId = new Map(insumos.map((p) => [p.id, p]));
         const consumidas = produzida + perdida;
+        const { rows: fichaRows } = await client.query(
+            'SELECT rendimento FROM fichas_tecnicas WHERE id = $1 AND empresa_id = $2',
+            [ordem.ficha_tecnica_id, empresaId]
+        );
+        const rendimento = fichaRows[0]?.rendimento ?? 1;
         const centralId = await estoqueRepository.garantirLocalCentral(client, empresaId);
         let custoInsumos = 0;
 
@@ -157,7 +168,7 @@ async function concluir(id, { quantidade_produzida: produzida, quantidade_perdid
 
             if (!insumo?.ativo) throw new AppError('Produto inativo não pode receber movimentações de estoque', 400);
 
-            const previsto = Number(item.por_unidade) * consumidas;
+            const previsto = consumoDaReceita(item.quantidade_receita, rendimento, consumidas);
             const { rows: saldoRows } = await client.query(
                 'SELECT saldo FROM estoque_locais WHERE produto_id = $1 AND local_id = $2 AND empresa_id = $3',
                 [item.insumo_produto_id, centralId, empresaId]

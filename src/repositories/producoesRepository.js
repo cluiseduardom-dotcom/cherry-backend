@@ -3,6 +3,7 @@ const estoqueRepository = require('./estoqueRepository');
 const { executarComLock } = require('./shared/transacoes');
 const AppError = require('../errors/AppError');
 const { sqlDiaSP } = require('../utils/dataSaoPaulo');
+const { consumoDaReceita, maximoProduzivel } = require('../utils/receita');
 
 // Uma única transação: valida produto (tipo 'acabado', ativo) e a existência
 // de uma ficha técnica vigente pra ele; trava (FOR UPDATE) o estoque de cada
@@ -40,7 +41,7 @@ async function criar({ produto_id, quantidade_solicitada, usuario_id, empresa_id
         }
 
         const { rows: fichaRows } = await client.query(
-            'SELECT id FROM fichas_tecnicas WHERE produto_id = $1 AND empresa_id = $2 AND vigente = true',
+            'SELECT id, rendimento FROM fichas_tecnicas WHERE produto_id = $1 AND empresa_id = $2 AND vigente = true',
             [produto_id, empresa_id]
         );
 
@@ -49,6 +50,7 @@ async function criar({ produto_id, quantidade_solicitada, usuario_id, empresa_id
         }
 
         const ficha_tecnica_id = fichaRows[0].id;
+        const rendimento = fichaRows[0].rendimento;
 
         const { rows: itensFicha } = await client.query(
             'SELECT insumo_produto_id, quantidade_necessaria FROM itens_ficha_tecnica WHERE ficha_tecnica_id = $1 AND empresa_id = $2 ORDER BY id',
@@ -73,7 +75,7 @@ async function criar({ produto_id, quantidade_solicitada, usuario_id, empresa_id
                 throw new AppError('Produto inativo não pode receber movimentações de estoque', 400);
             }
 
-            const possivel = Math.floor(insumoRow.estoque_atual / item.quantidade_necessaria);
+            const possivel = maximoProduzivel(insumoRow.estoque_atual, item.quantidade_necessaria, rendimento);
             quantidade_produzida = Math.min(quantidade_produzida, possivel);
         }
 
@@ -97,7 +99,7 @@ async function criar({ produto_id, quantidade_solicitada, usuario_id, empresa_id
                 {
                     produto_id: item.insumo_produto_id,
                     tipo: 'saida',
-                    quantidade: item.quantidade_necessaria * quantidade_produzida,
+                    quantidade: consumoDaReceita(item.quantidade_necessaria, rendimento, quantidade_produzida),
                     motivo: `Produção #${producao.id}`,
                     usuario_id,
                     empresa_id
@@ -153,7 +155,7 @@ async function lerNecessidade(produtoId, empresaId) {
     if (!produtos.length) return { produto: null, ficha: null, insumos: [] };
 
     const { rows: fichas } = await db.query(
-        'SELECT id FROM fichas_tecnicas WHERE produto_id = $1 AND empresa_id = $2 AND vigente = true',
+        'SELECT id, rendimento FROM fichas_tecnicas WHERE produto_id = $1 AND empresa_id = $2 AND vigente = true',
         [produtoId, empresaId]
     );
 
@@ -161,7 +163,7 @@ async function lerNecessidade(produtoId, empresaId) {
 
     const { rows: insumos } = await db.query(
         `SELECT i.insumo_produto_id, p.sku, p.nome, p.ativo, p.estoque_atual, p.custo,
-                i.quantidade_necessaria AS por_unidade
+                i.quantidade_necessaria AS quantidade_receita
            FROM itens_ficha_tecnica i
            JOIN produtos p ON p.id = i.insumo_produto_id AND p.empresa_id = i.empresa_id
           WHERE i.ficha_tecnica_id = $1 AND i.empresa_id = $2
@@ -226,8 +228,9 @@ async function buscarPorId(id, empresa_id) {
     const producao = rows[0];
 
     const { rows: itensRows } = await db.query(
-        `SELECT itf.insumo_produto_id, itf.quantidade_necessaria, p.nome AS insumo_nome, p.custo AS custo_unitario
+        `SELECT itf.insumo_produto_id, itf.quantidade_necessaria, f.rendimento, p.nome AS insumo_nome, p.custo AS custo_unitario
          FROM itens_ficha_tecnica itf
+         JOIN fichas_tecnicas f ON f.id = itf.ficha_tecnica_id
          JOIN produtos p ON p.id = itf.insumo_produto_id
          WHERE itf.ficha_tecnica_id = $1 AND itf.empresa_id = $2
          ORDER BY itf.id`,
@@ -237,7 +240,7 @@ async function buscarPorId(id, empresa_id) {
     let custo_total = 0;
 
     const itens = itensRows.map((item) => {
-        const quantidade_consumida = item.quantidade_necessaria * producao.quantidade_produzida;
+        const quantidade_consumida = consumoDaReceita(item.quantidade_necessaria, item.rendimento, producao.quantidade_produzida);
         const custo_unitario = Number(item.custo_unitario);
         const subtotal_custo = Number((quantidade_consumida * custo_unitario).toFixed(2));
         custo_total += subtotal_custo;
@@ -246,6 +249,7 @@ async function buscarPorId(id, empresa_id) {
             insumo_produto_id: item.insumo_produto_id,
             insumo_nome: item.insumo_nome,
             quantidade_necessaria: item.quantidade_necessaria,
+            rendimento: item.rendimento,
             quantidade_consumida,
             custo_unitario,
             subtotal_custo
@@ -294,7 +298,10 @@ async function cancelar(id, usuario_id, empresa_id) {
         }
 
         const { rows: itensRows } = await client.query(
-            'SELECT insumo_produto_id, quantidade_necessaria FROM itens_ficha_tecnica WHERE ficha_tecnica_id = $1',
+            `SELECT itf.insumo_produto_id, itf.quantidade_necessaria, f.rendimento
+               FROM itens_ficha_tecnica itf
+               JOIN fichas_tecnicas f ON f.id = itf.ficha_tecnica_id
+              WHERE itf.ficha_tecnica_id = $1`,
             [producao.ficha_tecnica_id]
         );
 
@@ -303,7 +310,7 @@ async function cancelar(id, usuario_id, empresa_id) {
                 {
                     produto_id: item.insumo_produto_id,
                     tipo: 'entrada',
-                    quantidade: item.quantidade_necessaria * producao.quantidade_produzida,
+                    quantidade: consumoDaReceita(item.quantidade_necessaria, item.rendimento, producao.quantidade_produzida),
                     motivo: `Cancelamento produção #${producao.id}`,
                     usuario_id,
                     empresa_id

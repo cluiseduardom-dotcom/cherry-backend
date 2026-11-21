@@ -1,6 +1,7 @@
 const producoesRepository = require('../repositories/producoesRepository');
 const AppError = require('../errors/AppError');
 const { podeVerCustos } = require('./permissoesService');
+const { consumoDaReceita, maximoProduzivel, porUnidade } = require('../utils/receita');
 
 async function criar(dados, usuarioId, empresaId) {
     return producoesRepository.criar({ ...dados, usuario_id: usuarioId, empresa_id: empresaId });
@@ -50,11 +51,12 @@ async function necessidade({ produto_id: produtoId, quantidade }, usuario) {
 
     const verCustos = podeVerCustos(usuario);
 
+    const rendimento = Number(ficha.rendimento ?? 1);
+
     const linhas = insumos.map((i) => {
-        const porUnidade = Number(i.por_unidade);
+        const quantidadeReceita = Number(i.quantidade_receita);
         const disponivel = Number(i.estoque_atual);
-        const necessario = porUnidade * quantidade;
-        const maximo = Math.floor(disponivel / porUnidade);
+        const necessario = consumoDaReceita(quantidadeReceita, rendimento, quantidade);
         const ativo = Boolean(i.ativo);
 
         return {
@@ -62,33 +64,37 @@ async function necessidade({ produto_id: produtoId, quantidade }, usuario) {
             sku: i.sku,
             nome: i.nome,
             ativo,
-            por_unidade: porUnidade,
+            quantidade_receita: quantidadeReceita,
+            por_unidade: porUnidade(quantidadeReceita, rendimento),
             necessario,
             disponivel,
             faltante: Math.max(0, necessario - disponivel),
             suficiente: ativo && disponivel >= necessario,
-            maximo_produzivel: maximo,
+            maximo_produzivel: maximoProduzivel(disponivel, quantidadeReceita, rendimento),
             custo: Number(i.custo)
         };
     });
 
-    const maximoProduzivel = linhas.length ? Math.min(...linhas.map((l) => l.maximo_produzivel)) : 0;
-    const gargalo = linhas.find((l) => l.maximo_produzivel === maximoProduzivel) ?? null;
-    const custoUnitario = linhas.reduce((soma, l) => soma + l.por_unidade * l.custo, 0);
+    const maximoGeral = linhas.length ? Math.min(...linhas.map((l) => l.maximo_produzivel)) : 0;
+    const gargalo = linhas.find((l) => l.maximo_produzivel === maximoGeral) ?? null;
+    // Custo pelo consumo real (necessário × custo do insumo); por unidade = custo da receita ÷ rendimento.
+    const custoTotal = linhas.reduce((soma, l) => soma + l.necessario * l.custo, 0);
+    const custoReceita = linhas.reduce((soma, l) => soma + l.quantidade_receita * l.custo, 0);
     const arred = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
     return {
         produto: { id: produto.id, nome: produto.nome, sku: produto.sku },
         ficha_tecnica_id: ficha.id,
+        rendimento,
         quantidade_solicitada: quantidade,
         pode_produzir_tudo: linhas.length > 0 && linhas.every((l) => l.suficiente),
         // Máximo que o estoque atual permite (não é limitado pela quantidade pedida).
-        maximo_produzivel: maximoProduzivel,
+        maximo_produzivel: maximoGeral,
         gargalo: gargalo ? { insumo_produto_id: gargalo.insumo_produto_id, nome: gargalo.nome } : null,
         insumos: linhas.map(({ custo, ...resto }) => (verCustos
-            ? { ...resto, custo_unitario: arred(custo), custo_necessario: arred(custo * resto.necessario) }
+            ? { ...resto, custo_unitario: Number(custo.toFixed(6)), custo_necessario: arred(custo * resto.necessario) }
             : resto)),
-        ...(verCustos ? { custo_estimado: { unitario: arred(custoUnitario), total: arred(custoUnitario * quantidade) } } : {})
+        ...(verCustos ? { custo_estimado: { unitario: arred(custoReceita / rendimento), total: arred(custoTotal) } } : {})
     };
 }
 

@@ -1,6 +1,12 @@
 const { z } = require('zod');
 
 const criarFichaTecnicaSchema = z.object({
+    // Quantas unidades do acabado UMA receita rende (padrão 1). A quantidade de cada insumo é por receita.
+    rendimento: z.coerce.number({ error: 'Rendimento deve ser um inteiro maior que zero' })
+        .int('Rendimento deve ser um inteiro maior que zero')
+        .positive('Rendimento deve ser um inteiro maior que zero')
+        .max(1000000, 'Rendimento máximo de 1.000.000')
+        .default(1),
     itens: z.array(
         z.object({
             insumo_produto_id: z.coerce.number({ error: 'Insumo inválido' }).int().positive('Insumo inválido'),

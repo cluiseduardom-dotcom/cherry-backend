@@ -20,7 +20,7 @@ function parseId(value) {
 function filtrarCustoParaRole(ficha, usuario) {
     if (podeVerCustos(usuario)) return ficha;
 
-    const { custo_sugerido, itens, ...resto } = ficha;
+    const { custo_sugerido, custo_receita, itens, ...resto } = ficha;
 
     return {
         ...resto,

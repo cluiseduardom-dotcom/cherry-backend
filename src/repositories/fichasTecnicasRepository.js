@@ -7,7 +7,7 @@ function montarResposta(ficha, itensRows) {
     const itens = itensRows.map((item) => {
         const custo_unitario = Number(item.custo_unitario);
         const quantidade_necessaria = Number(item.quantidade_necessaria);
-        const subtotal_custo = Number((quantidade_necessaria * custo_unitario).toFixed(2));
+        const subtotal_custo = Number((quantidade_necessaria * custo_unitario).toFixed(4));
         custo_sugerido += subtotal_custo;
 
         return {
@@ -20,7 +20,16 @@ function montarResposta(ficha, itensRows) {
         };
     });
 
-    return { ...ficha, itens, custo_sugerido: Number(custo_sugerido.toFixed(2)) };
+    // `custo_receita`: o que UMA receita custa em insumos. `custo_sugerido`: por unidade do acabado (÷ rendimento).
+    const rendimento = Number(ficha.rendimento ?? 1);
+
+    return {
+        ...ficha,
+        rendimento,
+        itens,
+        custo_receita: Number(custo_sugerido.toFixed(2)),
+        custo_sugerido: Number((custo_sugerido / rendimento).toFixed(4))
+    };
 }
 
 // Uma única transação: valida produto (tipo 'acabado') e cada insumo (tipo
@@ -31,7 +40,7 @@ function montarResposta(ficha, itensRows) {
 // a nova (vigente = true) na mesma transação, NESSA ORDEM — inserir a nova
 // antes de derrubar a antiga violaria o índice único parcial mesmo que só
 // por um instante.
-async function criarVersao({ produto_id, itens, usuario_id, empresa_id }) {
+async function criarVersao({ produto_id, itens, rendimento = 1, usuario_id, empresa_id }) {
     const client = await db.connect();
 
     try {
@@ -79,10 +88,10 @@ async function criarVersao({ produto_id, itens, usuario_id, empresa_id }) {
         );
 
         const { rows: fichaRows } = await client.query(
-            `INSERT INTO fichas_tecnicas (empresa_id, produto_id, vigente, criado_por)
-             VALUES ($1, $2, true, $3)
+            `INSERT INTO fichas_tecnicas (empresa_id, produto_id, vigente, criado_por, rendimento)
+             VALUES ($1, $2, true, $3, $4)
              RETURNING *`,
-            [empresa_id, produto_id, usuario_id]
+            [empresa_id, produto_id, usuario_id, rendimento]
         );
 
         const ficha = fichaRows[0];
