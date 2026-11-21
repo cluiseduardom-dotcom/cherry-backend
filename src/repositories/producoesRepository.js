@@ -142,6 +142,36 @@ async function criar({ produto_id, quantidade_solicitada, usuario_id, empresa_id
     }
 }
 
+// Leitura pura para a necessidade de material: produto, ficha vigente e insumos com saldo atual.
+// Não trava linha e não grava nada (a produção de verdade, em `criar`, continua travando os insumos).
+async function lerNecessidade(produtoId, empresaId) {
+    const { rows: produtos } = await db.query(
+        'SELECT id, nome, sku, tipo, ativo FROM produtos WHERE id = $1 AND empresa_id = $2',
+        [produtoId, empresaId]
+    );
+
+    if (!produtos.length) return { produto: null, ficha: null, insumos: [] };
+
+    const { rows: fichas } = await db.query(
+        'SELECT id FROM fichas_tecnicas WHERE produto_id = $1 AND empresa_id = $2 AND vigente = true',
+        [produtoId, empresaId]
+    );
+
+    if (!fichas.length) return { produto: produtos[0], ficha: null, insumos: [] };
+
+    const { rows: insumos } = await db.query(
+        `SELECT i.insumo_produto_id, p.sku, p.nome, p.ativo, p.estoque_atual, p.custo,
+                i.quantidade_necessaria AS por_unidade
+           FROM itens_ficha_tecnica i
+           JOIN produtos p ON p.id = i.insumo_produto_id AND p.empresa_id = i.empresa_id
+          WHERE i.ficha_tecnica_id = $1 AND i.empresa_id = $2
+          ORDER BY i.id`,
+        [fichas[0].id, empresaId]
+    );
+
+    return { produto: produtos[0], ficha: fichas[0], insumos };
+}
+
 async function listarPaginado({ limit, offset, produto_id, dataDe, dataAte, empresa_id }) {
     const condicoes = ['pr.empresa_id = $1'];
     const valores = [empresa_id];
@@ -293,6 +323,7 @@ async function cancelar(id, usuario_id, empresa_id) {
 
 module.exports = {
     criar,
+    lerNecessidade,
     listarPaginado,
     buscarPorId,
     cancelar

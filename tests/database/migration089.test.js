@@ -28,7 +28,12 @@ describe('migration 089 — arquivo', () => {
             .map((m) => ({ codigo: m[1], nome: m[2], tipo: m[3], vendavel: m[4] === 'true' }));
 
         // Códigos criados por migrations posteriores (ex.: 095) não fazem parte do seed da 089.
-        const daMigration089 = FUNCIONALIDADES.filter((f) => !INTRODUZIDAS_DEPOIS_DA_089.includes(f.codigo));
+        // `vendavel` de códigos alterados por migrations posteriores volta ao valor do seed original
+        // (ex.: a 121 passou o `pcp` a vendável; o seed da 089 continua dizendo false, e migration aplicada não se edita).
+        const VENDAVEL_NO_SEED_089 = { pcp: false };
+        const daMigration089 = FUNCIONALIDADES
+            .filter((f) => !INTRODUZIDAS_DEPOIS_DA_089.includes(f.codigo))
+            .map((f) => (f.codigo in VENDAVEL_NO_SEED_089 ? { ...f, vendavel: VENDAVEL_NO_SEED_089[f.codigo] } : f));
 
         expect(linhas).toEqual(daMigration089.map(({ codigo, nome, tipo, vendavel }) => ({ codigo, nome, tipo, vendavel })));
         expect(new Set(CODIGOS_FUNCIONALIDADES).size).toBe(CODIGOS_FUNCIONALIDADES.length);

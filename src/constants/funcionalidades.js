@@ -12,7 +12,8 @@ const FUNCIONALIDADES = [
     { codigo: 'bancos', tipo: 'recurso', nome: 'Bancos e conciliação', vendavel: true },
     { codigo: 'analise_financeira', tipo: 'recurso', nome: 'Análise financeira: ponto de equilíbrio e despesas fixas', vendavel: true },
     { codigo: 'fiscal', tipo: 'modulo', nome: 'Fiscal', vendavel: false },
-    { codigo: 'pcp', tipo: 'modulo', nome: 'PCP: ordem de produção, ordem de serviço e consumo', vendavel: false },
+    // Vendável desde a migration 121 (necessidade de material). Nenhum plano o inclui: a GiroNex liga avulso.
+    { codigo: 'pcp', tipo: 'modulo', nome: 'PCP: ordem de produção, ordem de serviço e consumo', vendavel: true },
     { codigo: 'grade', tipo: 'modulo', nome: 'Grade de produtos', vendavel: false },
     { codigo: 'fracionario', tipo: 'modulo', nome: 'Venda fracionada', vendavel: false },
     { codigo: 'rastreio_unidade', tipo: 'modulo', nome: 'Rastreio por unidade', vendavel: false },
