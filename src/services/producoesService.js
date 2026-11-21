@@ -63,6 +63,7 @@ async function necessidade({ produto_id: produtoId, quantidade }, usuario) {
             insumo_produto_id: i.insumo_produto_id,
             sku: i.sku,
             nome: i.nome,
+            unidade: i.unidade,
             ativo,
             quantidade_receita: quantidadeReceita,
             por_unidade: porUnidade(quantidadeReceita, rendimento),

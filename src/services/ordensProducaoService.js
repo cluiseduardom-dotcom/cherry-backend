@@ -28,6 +28,7 @@ function apresentar(ordem, usuario) {
                 insumo_produto_id: i.insumo_produto_id,
                 sku: i.sku,
                 nome: i.nome,
+                unidade: i.unidade,
                 ativo: i.ativo,
                 quantidade_receita: quantidadeReceita,
                 por_unidade: porUnidade(quantidadeReceita, resto.rendimento),
@@ -50,6 +51,7 @@ function apresentar(ordem, usuario) {
                     insumo_produto_id: c.insumo_produto_id,
                     sku: c.sku,
                     nome: c.nome,
+                    unidade: c.unidade,
                     quantidade_prevista: c.quantidade_prevista,
                     quantidade_baixada: c.quantidade_baixada,
                     quantidade_pendente: c.quantidade_prevista - c.quantidade_baixada

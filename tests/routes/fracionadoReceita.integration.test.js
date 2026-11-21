@@ -141,7 +141,7 @@ describe('necessidade de material com rendimento', () => {
         const por = Object.fromEntries(res.body.data.insumos.map((i) => [i.nome, i]));
 
         // leite: ceil(500 × 10 ÷ 12) = 417 g (há 1000); chocolate: ceil(6 × 10 ÷ 12) = 5 (há 4: falta 1)
-        expect(por['Item leite']).toMatchObject({ quantidade_receita: 500, necessario: 417, disponivel: 1000, faltante: 0, suficiente: true, maximo_produzivel: 24 });
+        expect(por['Item leite']).toMatchObject({ unidade: 'G', quantidade_receita: 500, necessario: 417, disponivel: 1000, faltante: 0, suficiente: true, maximo_produzivel: 24 });
         expect(por['Item choco']).toMatchObject({ quantidade_receita: 6, necessario: 5, disponivel: 4, faltante: 1, suficiente: false, maximo_produzivel: 8 });
         expect(res.body.data).toMatchObject({ rendimento: 12, maximo_produzivel: 8, pode_produzir_tudo: false, gargalo: { nome: 'Item choco' } });
         // custo pelo consumo real: 417 × 0,0125 + 5 × 1 = 10,2125
@@ -157,7 +157,7 @@ describe('ordem de produção com rendimento', () => {
 
         expect(criada.status).toBe(201);
         expect(criada.body.data.rendimento).toBe(12);
-        expect(criada.body.data.insumos.find((i) => i.nome === 'Item leite')).toMatchObject({ necessario_planejado: 417 });
+        expect(criada.body.data.insumos.find((i) => i.nome === 'Item leite')).toMatchObject({ unidade: 'G', necessario_planejado: 417 });
 
         const id = criada.body.data.id;
 
@@ -180,7 +180,7 @@ describe('ordem de produção com rendimento', () => {
         const res = await patch(A, 'admin', `/producoes/ordens/${id}/concluir`, { quantidade_produzida: 24 });
 
         expect(res.status).toBe(200);
-        expect(res.body.data.pendencias.find((p) => p.nome === 'Item leite')).toMatchObject({ quantidade_prevista: 1000, quantidade_baixada: 100, quantidade_pendente: 900 });
+        expect(res.body.data.pendencias.find((p) => p.nome === 'Item leite')).toMatchObject({ unidade: 'G', quantidade_prevista: 1000, quantidade_baixada: 100, quantidade_pendente: 900 });
         expect(await estoque(A, 'leite')).toBe(0);
     });
 });

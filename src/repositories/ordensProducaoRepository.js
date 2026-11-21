@@ -86,7 +86,7 @@ async function buscarPorId(id, empresaId) {
     if (!rows.length) return null;
 
     const { rows: insumos } = await db.query(
-        `SELECT i.insumo_produto_id, p.sku, p.nome, p.ativo, p.estoque_atual, p.custo,
+        `SELECT i.insumo_produto_id, p.sku, p.nome, p.unidade, p.ativo, p.estoque_atual, p.custo,
                 i.quantidade_necessaria AS quantidade_receita
            FROM itens_ficha_tecnica i
            JOIN produtos p ON p.id = i.insumo_produto_id AND p.empresa_id = i.empresa_id
@@ -96,7 +96,7 @@ async function buscarPorId(id, empresaId) {
     );
 
     const { rows: consumos } = await db.query(
-        `SELECT c.insumo_produto_id, p.sku, p.nome, c.quantidade_prevista, c.quantidade_baixada, c.custo_unitario
+        `SELECT c.insumo_produto_id, p.sku, p.nome, p.unidade, c.quantidade_prevista, c.quantidade_baixada, c.custo_unitario
            FROM ordem_producao_consumos c
            JOIN produtos p ON p.id = c.insumo_produto_id AND p.empresa_id = c.empresa_id
           WHERE c.ordem_id = $1 AND c.empresa_id = $2

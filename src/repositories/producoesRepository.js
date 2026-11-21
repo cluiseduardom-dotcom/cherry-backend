@@ -162,7 +162,7 @@ async function lerNecessidade(produtoId, empresaId) {
     if (!fichas.length) return { produto: produtos[0], ficha: null, insumos: [] };
 
     const { rows: insumos } = await db.query(
-        `SELECT i.insumo_produto_id, p.sku, p.nome, p.ativo, p.estoque_atual, p.custo,
+        `SELECT i.insumo_produto_id, p.sku, p.nome, p.unidade, p.ativo, p.estoque_atual, p.custo,
                 i.quantidade_necessaria AS quantidade_receita
            FROM itens_ficha_tecnica i
            JOIN produtos p ON p.id = i.insumo_produto_id AND p.empresa_id = i.empresa_id
