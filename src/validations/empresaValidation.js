@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { cnpjValido, UFS } = require('../utils/documentos');
+const { cnpjValido, normalizarCnpj, UFS } = require('../utils/documentos');
 const { CHAVES_VOCABULARIO } = require('../constants/vocabularioEstoque');
 
 // Texto vazio vira null (limpar o campo opcional). `strict`: campo desconhecido (empresa_id,
@@ -12,7 +12,8 @@ const texto = (rotulo, max) => z.string({ error: `${rotulo} inválido` }).trim()
 const atualizarDadosEmpresaSchema = z.strictObject({
     nome: z.string({ error: 'Nome é obrigatório' }).trim().min(1, 'Nome é obrigatório').max(255, 'Nome muito longo').optional(),
     razao_social: opcional(texto('Razão social', 255)),
-    cnpj: opcional(z.string().transform(soDigitos).refine(cnpjValido, 'CNPJ inválido')),
+    // CNPJ numérico ou alfanumérico (Receita, desde julho de 2026): normaliza sem tirar as letras.
+    cnpj: opcional(z.string().transform(normalizarCnpj).refine(cnpjValido, 'CNPJ inválido')),
     telefone: opcional(z.string().transform(soDigitos).refine((v) => /^\d{10,11}$/.test(v), 'Telefone inválido (use DDD + número)')),
     email_contato: opcional(z.string().trim().max(254, 'E-mail muito longo').email('E-mail inválido')),
     cep: opcional(z.string().transform(soDigitos).refine((v) => /^\d{8}$/.test(v), 'CEP inválido')),

@@ -120,6 +120,7 @@ const clientesRoutes = require('./routes/clientes');
 const canaisVendaRoutes = require('./routes/canaisVenda');
 const dashboardRoutes = require('./routes/dashboard');
 const gradesRoutes = require('./routes/grades');
+const fiscalRoutes = require('./routes/fiscal');
 const modelosNichoRoutes = require('./routes/modelosNicho');
 const relatoriosRoutes = require('./routes/relatorios');
 const notificacoesRoutes = require('./routes/notificacoes');
@@ -192,6 +193,7 @@ app.use('/loja-pedidos', authMiddleware, requireVendedor, exigirFuncionalidade('
 app.use('/onboarding', onboardingRoutes);
 app.use('/produtos', authMiddleware, produtosRoutes);
 app.use('/grades', authMiddleware, exigirFuncionalidade('grade'), gradesRoutes);
+app.use('/fiscal', authMiddleware, exigirFuncionalidade('fiscal_cadastro'), fiscalRoutes);
 app.use('/vendas', authMiddleware, vendasRoutes);
 app.use('/clientes', authMiddleware, requireVendedor, clientesRoutes);
 app.use('/cargos', authMiddleware, requireCapacidade(CAPACIDADES.GERIR_CARGOS), cargosRoutes);

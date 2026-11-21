@@ -17,13 +17,21 @@ function cpfValido(cpf) {
     return d1 === Number(cpf[9]) && d2 === Number(cpf[10]);
 }
 
-// CNPJ com dígitos verificadores; recusa sequência repetida.
+// CNPJ sem pontuação, em maiúsculas. Letras ficam: desde julho de 2026 a Receita emite CNPJ ALFANUMÉRICO
+// (IN RFB 2.229/2024): as 12 primeiras posições aceitam 0-9 e A-Z; as 2 últimas (dígitos verificadores) são sempre números.
+function normalizarCnpj(valor) {
+    return String(valor ?? '').replace(/[.\-/\s]/g, '').toUpperCase();
+}
+
+// CNPJ (numérico ou alfanumérico) com dígitos verificadores; recusa sequência repetida. Espera o valor já normalizado.
+// Cálculo: módulo 11, como sempre; cada caractere vale seu código ASCII menos 48 (0-9 = 0-9; A = 17 ... Z = 42), o que
+// mantém o mesmo dígito verificador dos CNPJ numéricos antigos.
 function cnpjValido(cnpj) {
-    if (typeof cnpj !== 'string' || !/^\d{14}$/.test(cnpj) || /^(\d)\1{13}$/.test(cnpj)) return false;
+    if (typeof cnpj !== 'string' || !/^[0-9A-Z]{12}\d{2}$/.test(cnpj) || /^(.)\1{13}$/.test(cnpj)) return false;
 
     const calcular = (base) => {
         const pesos = base.length === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-        const soma = base.split('').reduce((acc, d, i) => acc + Number(d) * pesos[i], 0);
+        const soma = base.split('').reduce((acc, c, i) => acc + (c.charCodeAt(0) - 48) * pesos[i], 0);
         const resto = soma % 11;
 
         return resto < 2 ? 0 : 11 - resto;
@@ -37,4 +45,4 @@ function cnpjValido(cnpj) {
 
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 
-module.exports = { cpfValido, cnpjValido, UFS };
+module.exports = { cpfValido, cnpjValido, normalizarCnpj, UFS };

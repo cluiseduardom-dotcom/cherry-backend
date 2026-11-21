@@ -25,7 +25,10 @@ const FUNCIONALIDADES = [
     // Entrou na migration 109. Desde a migration 119 os três planos comerciais a incluem; a GiroNex ainda pode ligar avulsa.
     { codigo: 'fiado', tipo: 'modulo', nome: 'Fiado: dívidas de clientes e cobrança', vendavel: true },
     // Entrou na migration 117. Desde a migration 119 os três planos comerciais a incluem; a GiroNex ainda pode ligar avulsa.
-    { codigo: 'importacao_lista', tipo: 'modulo', nome: 'Importação de lista: produtos, estoque inicial e clientes', vendavel: true }
+    { codigo: 'importacao_lista', tipo: 'modulo', nome: 'Importação de lista: produtos, estoque inicial e clientes', vendavel: true },
+    // Entrou na migration 126. Só o CADASTRO para emissão (NCM, origem, dados fiscais da empresa e prontidão); a emissão de nota
+    // continua sendo o módulo `fiscal`, "em breve". Código separado para o site público não anunciar emissão que não existe.
+    { codigo: 'fiscal_cadastro', tipo: 'modulo', nome: 'Fiscal: cadastro para emissão de nota (NCM, origem e dados da empresa)', vendavel: true }
 ];
 
 const CODIGOS_FUNCIONALIDADES = FUNCIONALIDADES.map((f) => f.codigo);
