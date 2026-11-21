@@ -34,10 +34,10 @@ async function listarPaginado({ limit, offset, empresa_id }) {
 // Estoque inicial: o total (produtos.estoque_atual) e o saldo por local têm que fechar sempre, e o
 // histórico precisa existir. Por isso, com estoque inicial > 0, o produto nasce com 0 e o saldo
 // entra como uma entrada auditada ("Estoque inicial") no local Central, na MESMA transação.
-async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id, usuario_id }) {
+async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, preco_base_quantidade, empresa_id, usuario_id }) {
     const estoqueInicial = estoque_atual ?? 0;
-    const sql = `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, empresa_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    const sql = `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, preco_base_quantidade, empresa_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`;
     const params = (estoque) => [
         sku ?? null,
@@ -51,6 +51,7 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
         ativo ?? true,
         tipo ?? 'acabado',
         unidade ?? 'UN',
+        preco_base_quantidade ?? 1,
         empresa_id
     ];
 
@@ -90,7 +91,7 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
 
 async function atualizar(id, dados, empresa_id) {
     // estoque_atual is deliberately excluded: it's only ever changed via estoqueRepository.criarMovimentacao
-    const campos = ['nome', 'descricao', 'categoria', 'preco_venda', 'custo', 'estoque_minimo', 'ativo', 'tipo', 'unidade'];
+    const campos = ['nome', 'descricao', 'categoria', 'preco_venda', 'custo', 'estoque_minimo', 'ativo', 'tipo', 'unidade', 'preco_base_quantidade'];
 
     const sets = [];
     const valores = [];

@@ -53,7 +53,8 @@ async function definirPreco(produto_id, canal_id, dados, usuario_id, empresaId) 
         throw new AppError('Canal não encontrado', 404);
     }
 
-    const custo = Number(produto.custo);
+    // Preço e custo na mesma base: o preço vale para N unidades-base (ex.: R$ 45 o kg) e o custo é por unidade-base (R$ 0,03 o g).
+    const custo = Number(produto.custo) * (produto.preco_base_quantidade || 1);
     const calculado = calcularPreco({ custo, ...dados });
 
     if (calculado.preco_venda < custo) {

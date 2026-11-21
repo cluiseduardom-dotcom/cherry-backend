@@ -1,5 +1,25 @@
 const { z } = require('zod');
 
+// Preço de venda por N unidades-base (venda por peso/volume): 1 (padrão), 100 ou 1000. Só G e ML aceitam mais de 1.
+const PRECO_BASE = z.union([z.literal(1), z.literal(100), z.literal(1000)], { error: 'Preço por quantidade inválido (use 1, 100 ou 1000)' }).optional();
+
+const MENSAGEM_BASE_UNIDADE = 'Preço por kg ou litro só vale para produtos em G ou ML';
+const ehGranel = (unidade) => ['G', 'ML'].includes(unidade);
+
+// Na criação a unidade padrão é UN: base maior que 1 exige informar G ou ML.
+function validarBaseNaCriacao(dados, ctx) {
+    if (dados.preco_base_quantidade > 1 && !ehGranel(dados.unidade)) {
+        ctx.addIssue({ code: 'custom', message: MENSAGEM_BASE_UNIDADE, path: ['preco_base_quantidade'] });
+    }
+}
+
+// Na edição só dá para conferir aqui quando a unidade vem junto; o serviço confere contra o produto salvo.
+function validarBaseNaEdicao(dados, ctx) {
+    if (dados.preco_base_quantidade > 1 && dados.unidade !== undefined && !ehGranel(dados.unidade)) {
+        ctx.addIssue({ code: 'custom', message: MENSAGEM_BASE_UNIDADE, path: ['preco_base_quantidade'] });
+    }
+}
+
 const criarProdutoSchema = z.object({
     nome: z.string({ error: 'Nome é obrigatório' }).min(1, 'Nome é obrigatório'),
     descricao: z.string().optional(),
@@ -14,8 +34,9 @@ const criarProdutoSchema = z.object({
     estoque_minimo: z.coerce.number({ error: 'Estoque mínimo inválido' }).int('Estoque mínimo inválido').nonnegative('Estoque mínimo inválido').optional(),
     ativo: z.boolean().optional(),
     tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional(),
-    unidade: z.enum(['UN', 'PAR', 'CX', 'PCT', 'G', 'ML'], { error: 'Unidade inválida' }).optional()
-});
+    unidade: z.enum(['UN', 'PAR', 'CX', 'PCT', 'G', 'ML'], { error: 'Unidade inválida' }).optional(),
+    preco_base_quantidade: PRECO_BASE
+}).superRefine(validarBaseNaCriacao);
 
 // estoque_atual is intentionally not editable here: once movimentacoes_estoque
 // exists, all stock changes must go through it so there's an audit trail.
@@ -28,8 +49,9 @@ const atualizarProdutoSchema = z.object({
     estoque_minimo: z.coerce.number().int('Estoque mínimo inválido').nonnegative('Estoque mínimo inválido').optional(),
     ativo: z.boolean().optional(),
     tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional(),
-    unidade: z.enum(['UN', 'PAR', 'CX', 'PCT', 'G', 'ML'], { error: 'Unidade inválida' }).optional()
-}).refine((data) => Object.keys(data).length > 0, { message: 'Informe ao menos um campo para atualizar' });
+    unidade: z.enum(['UN', 'PAR', 'CX', 'PCT', 'G', 'ML'], { error: 'Unidade inválida' }).optional(),
+    preco_base_quantidade: PRECO_BASE
+}).superRefine(validarBaseNaEdicao).refine((data) => Object.keys(data).length > 0, { message: 'Informe ao menos um campo para atualizar' });
 
 const ajustarPrecoSchema = z.object({
     id: z.coerce.number({ error: 'ID inválido' }).int().positive('ID inválido'),

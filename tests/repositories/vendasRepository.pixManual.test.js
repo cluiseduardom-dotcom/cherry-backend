@@ -35,7 +35,7 @@ function makeFakeClient() {
     if (sql.includes('INSERT INTO vendas')) {
       return Promise.resolve({ rows: [{ id: 1, canal_id: params[1], usuario_id: params[2], empresa_id: params[5], total: '0.00', status: 'finalizada' }] });
     }
-    if (sql.includes('SELECT id, ativo FROM produtos')) return Promise.resolve({ rows: [{ id: params[0], ativo: true }] });
+    if (sql.includes('SELECT id, ativo, preco_base_quantidade FROM produtos')) return Promise.resolve({ rows: [{ id: params[0], ativo: true }] });
     if (sql.includes('INSERT INTO itens_venda')) return Promise.resolve({ rows: [{ id: 1, venda_id: 1, produto_id: 1 }] });
     return Promise.resolve({ rows: [] });
   });

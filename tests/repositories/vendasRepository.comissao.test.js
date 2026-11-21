@@ -38,7 +38,7 @@ function makeFakeClient() {
       });
     }
 
-    if (sql.includes('SELECT id, ativo FROM produtos')) {
+    if (sql.includes('SELECT id, ativo, preco_base_quantidade FROM produtos')) {
       return Promise.resolve({ rows: [{ id: params[0], ativo: true }] });
     }
 
