@@ -45,6 +45,15 @@ async function aprovar(recebimentoId, usuario) {
             throw new AppError('Recebimento sem itens não pode ser aprovado', 409);
         }
 
+        // Aprova ANTES de recalcular o pedido: o saldo do item e o status do pedido somam só recebimentos APROVADOS,
+        // então com a ordem inversa o próprio recebimento não contava e o pedido nunca avançava.
+        const atualizado = await repository.atualizarStatusComCliente(
+            recebimentoId,
+            empresaId,
+            'APROVADO',
+            client
+        );
+
         const movimentacoes = [];
 
         for (const item of itens) {
@@ -100,13 +109,6 @@ async function aprovar(recebimentoId, usuario) {
         const financeiro = await financeiroRecebimentoService.criarObrigacao(
             recebimentoId,
             usuario,
-            client
-        );
-
-        const atualizado = await repository.atualizarStatusComCliente(
-            recebimentoId,
-            empresaId,
-            'APROVADO',
             client
         );
 
