@@ -288,7 +288,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
 
         for (const item of itens) {
             const { rows: produtoRows } = await client.query(
-                'SELECT id, ativo FROM produtos WHERE id = $1 AND empresa_id = $2',
+                'SELECT id, ativo, preco_base_quantidade FROM produtos WHERE id = $1 AND empresa_id = $2',
                 [item.produto_id, empresa_id]
             );
 
@@ -300,7 +300,11 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 : await precosRepository.buscarPrecoVigente(item.produto_id, canal_id, empresa_id, client);
             if (!precoVigente) throw new AppError('Produto sem preço definido para o canal informado', 409);
 
-            const preco_unitario = Number(precoVigente.preco_venda);
+            // O preço vale para `preco_base_quantidade` unidades-base (R$ 45 o kg, quantidade em gramas): o item congela o preço por
+            // unidade-base (6 casas, exato para 2 casas ÷ 1, 100 ou 1000) e o total do item é arredondado ao centavo.
+            const base = produtoRows[0].preco_base_quantidade || 1;
+            const precoCentavos = Math.round(Number(precoVigente.preco_venda) * 100);
+            const preco_unitario = base === 1 ? Number(precoVigente.preco_venda) : Number((precoCentavos / 100 / base).toFixed(6));
             const local = await resolverLocal(item.local_id);
             const resultado = await estoqueRepository.criarMovimentacao({
                 produto_id: item.produto_id,
@@ -330,7 +334,7 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 kit_id: item.kit_id ?? null,
                 local_id: local.id
             });
-            subtotal += item.quantidade * preco_unitario;
+            subtotal += base === 1 ? item.quantidade * preco_unitario : Math.round((item.quantidade * precoCentavos) / base) / 100;
         }
 
         subtotal = Number(subtotal.toFixed(2));

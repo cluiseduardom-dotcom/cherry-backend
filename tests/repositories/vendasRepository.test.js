@@ -41,7 +41,7 @@ function makeFakeClient({ produtos = {}, clienteExiste = true } = {}) {
       });
     }
 
-    if (sql.includes('SELECT id, ativo FROM produtos')) {
+    if (sql.includes('SELECT id, ativo, preco_base_quantidade FROM produtos')) {
       const produtoId = params[0];
       const produto = produtos[produtoId];
       return Promise.resolve({ rows: produto ? [{ id: produtoId, ativo: produto.ativo }] : [] });
@@ -134,7 +134,7 @@ describe('criar', () => {
     const travaIdx = chamadas.findIndex(([sql]) => typeof sql === 'string' && sql.includes('ORDER BY id FOR UPDATE'));
     expect(travaIdx).toBeGreaterThan(-1);
     expect(chamadas[travaIdx][1]).toEqual([9, [5, 2]]);
-    const primeiroItemIdx = chamadas.findIndex(([sql]) => typeof sql === 'string' && sql.includes('SELECT id, ativo FROM produtos'));
+    const primeiroItemIdx = chamadas.findIndex(([sql]) => typeof sql === 'string' && sql.includes('SELECT id, ativo, preco_base_quantidade FROM produtos'));
     expect(travaIdx).toBeLessThan(primeiroItemIdx);
     expect(estoqueRepository.criarMovimentacao.mock.invocationCallOrder[0])
       .toBeGreaterThan(fakeClient.query.mock.invocationCallOrder[travaIdx]);

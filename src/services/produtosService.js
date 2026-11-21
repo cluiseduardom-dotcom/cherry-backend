@@ -10,9 +10,11 @@ const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { escopoDoTipo } = require('../utils/escopoCategoria');
 
+// O preço de venda vale para `preco_base_quantidade` unidades-base (ex.: R$ 45 o kg = 1000 g) e o custo é por unidade-base:
+// para comparar, o custo é levado à mesma base.
 function comMargem(produto) {
     const precoVenda = produto.preco_venda == null ? null : Number(produto.preco_venda);
-    const custo = Number(produto.custo);
+    const custo = Number(produto.custo) * (produto.preco_base_quantidade || 1);
     const margem_percentual = precoVenda != null && precoVenda > 0 ? Number((((precoVenda - custo) / precoVenda) * 100).toFixed(2)) : null;
 
     return { ...produto, margem_percentual };
@@ -113,6 +115,20 @@ async function atualizar(id, dados, empresaId) {
 
     if (!produto) {
         throw new AppError('Produto não encontrado', 404);
+    }
+
+    // A base só vale para G/ML: confere o resultado final (unidade e base novas ou as salvas).
+    const baseFinal = dados.preco_base_quantidade ?? produto.preco_base_quantidade;
+    const unidadeFinal = dados.unidade ?? produto.unidade;
+
+    if (baseFinal > 1 && !['G', 'ML'].includes(unidadeFinal)) {
+        throw new AppError('Preço por kg ou litro só vale para produtos em G ou ML. Volte o preço para "por unidade" antes de trocar a unidade.', 400);
+    }
+
+    if (baseFinal > 1 && produto.preco_base_quantidade === 1) {
+        const { rows } = await db.query('SELECT 1 FROM produtos_loja WHERE produto_id = $1 AND empresa_id = $2 AND visivel', [id, empresaId]);
+
+        if (rows.length) throw new AppError('Tire o produto da loja online antes de vendê-lo por kg ou litro', 409);
     }
 
     const atualizado = await produtosRepository.atualizar(id, dados, empresaId);

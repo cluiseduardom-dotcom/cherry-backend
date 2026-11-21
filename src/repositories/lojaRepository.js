@@ -440,6 +440,11 @@ async function salvarMarcacao(produto_id, empresa_id, dados) {
             throw new AppError('Só produto acabado e ativo pode ser publicado na loja', 409);
         }
 
+        // A loja online vende por unidade (quantidade × preço); venda por kg/litro é só do PDV.
+        if (visivelFinal && produto.preco_base_quantidade > 1) {
+            throw new AppError('Produto vendido por kg ou litro não pode ser publicado na loja online', 409);
+        }
+
         // Ao PUBLICAR (marcar como visível agora), o que ainda está vazio é copiado do cadastro do produto: descrição e
         // material. É uma cópia no ato da publicação (nada fica ligado ao cadastro depois) e nunca troca texto já escrito
         // nem o que veio explícito no pedido (ex.: descricao: null limpa de propósito).
