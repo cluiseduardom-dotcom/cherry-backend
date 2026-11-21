@@ -1,7 +1,7 @@
 const producoesService = require('../services/producoesService');
 const response = require('../utils/response');
 const AppError = require('../errors/AppError');
-const { criarProducaoSchema, listarProducoesSchema } = require('../validations/producoesValidation');
+const { criarProducaoSchema, listarProducoesSchema, necessidadeSchema } = require('../validations/producoesValidation');
 const { podeVerCustos } = require('../services/permissoesService');
 
 function parseId(value) {
@@ -103,4 +103,18 @@ async function cancelar(req, res, next) {
     }
 }
 
-module.exports = { criar, listar, buscarPorId, cancelar };
+async function necessidade(req, res, next) {
+    try {
+        const parsed = necessidadeSchema.safeParse({ produto_id: req.query.produto_id, quantidade: req.query.quantidade });
+
+        if (!parsed.success) {
+            throw new AppError(parsed.error.issues[0].message, 400);
+        }
+
+        return response.success(res, await producoesService.necessidade(parsed.data, req.usuario));
+    } catch (error) {
+        next(error);
+    }
+}
+
+module.exports = { criar, listar, buscarPorId, cancelar, necessidade };

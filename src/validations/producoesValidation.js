@@ -13,4 +13,13 @@ const listarProducoesSchema = z.object({
     data_ate: dataISO('Data final inválida').optional()
 });
 
-module.exports = { criarProducaoSchema, listarProducoesSchema };
+const necessidadeSchema = z.object({
+    produto_id: z.coerce.number({ error: 'Produto inválido' }).int('Produto inválido').positive('Produto inválido'),
+    quantidade: z.coerce.number({ error: 'Quantidade deve ser um inteiro maior que zero' })
+        .int('Quantidade deve ser um inteiro maior que zero')
+        .positive('Quantidade deve ser um inteiro maior que zero')
+        .max(1000000, 'Quantidade máxima de 1.000.000')
+        .default(1)
+});
+
+module.exports = { criarProducaoSchema, listarProducoesSchema, necessidadeSchema };
