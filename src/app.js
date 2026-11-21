@@ -133,6 +133,7 @@ const niveisCategoriaRoutes = require('./routes/niveisCategoria');
 const configuracoesSkuRoutes = require('./routes/configuracoesSku');
 const comprasRoutes = require('./routes/compras');
 const recebimentosRoutes = require('./routes/recebimentos');
+const pedidosCompraRoutes = require('./routes/pedidosCompra');
 const producoesRoutes = require('./routes/producoes');
 const despesasFixasRoutes = require('./routes/despesasFixas');
 const configuracoesFinanceirasRoutes = require('./routes/configuracoesFinanceiras');
@@ -226,6 +227,7 @@ app.use('/niveis-categoria', authMiddleware, requireEstoquista, niveisCategoriaR
 app.use('/configuracoes-sku', authMiddleware, requireAdmin, configuracoesSkuRoutes);
 app.use('/compras', authMiddleware, requireEstoquista, comprasRoutes);
 app.use('/recebimentos', authMiddleware, requireEstoquista, recebimentosRoutes);
+app.use('/pedidos-compra', authMiddleware, exigirFuncionalidade('compras_avancado'), requireEstoquista, pedidosCompraRoutes);
 app.use('/producoes', authMiddleware, requireEstoquista, producoesRoutes);
 app.use('/despesas-fixas', authMiddleware, requireAdmin, exigirFuncionalidade('analise_financeira'), despesasFixasRoutes);
 app.use('/configuracoes-financeiras', authMiddleware, requireAdmin, configuracoesFinanceirasRoutes);

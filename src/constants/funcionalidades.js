@@ -28,7 +28,9 @@ const FUNCIONALIDADES = [
     { codigo: 'importacao_lista', tipo: 'modulo', nome: 'Importação de lista: produtos, estoque inicial e clientes', vendavel: true },
     // Entrou na migration 126. Só o CADASTRO para emissão (NCM, origem, dados fiscais da empresa e prontidão); a emissão de nota
     // continua sendo o módulo `fiscal`, "em breve". Código separado para o site público não anunciar emissão que não existe.
-    { codigo: 'fiscal_cadastro', tipo: 'modulo', nome: 'Fiscal: cadastro para emissão de nota (NCM, origem e dados da empresa)', vendavel: true }
+    { codigo: 'fiscal_cadastro', tipo: 'modulo', nome: 'Fiscal: cadastro para emissão de nota (NCM, origem e dados da empresa)', vendavel: true },
+    // Entrou na migration 127. Pedido de compra → recebimento com conferência → estoque e conta a pagar. Nenhum plano a inclui: a GiroNex liga avulso.
+    { codigo: 'compras_avancado', tipo: 'modulo', nome: 'Compras avançado: pedido de compra e recebimento com conferência', vendavel: true }
 ];
 
 const CODIGOS_FUNCIONALIDADES = FUNCIONALIDADES.map((f) => f.codigo);
