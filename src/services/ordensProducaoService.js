@@ -1,6 +1,7 @@
 const AppError = require('../errors/AppError');
 const repo = require('../repositories/ordensProducaoRepository');
 const { podeVerCustos } = require('./permissoesService');
+const { consumoDaReceita, porUnidade } = require('../utils/receita');
 
 // Ordem de produção (PCP). Custo (do insumo e da ordem) só sai para quem pode ver custos; para os demais
 // os campos são omitidos, nunca zerados.
@@ -22,18 +23,20 @@ function apresentar(ordem, usuario) {
 
     if (insumos) {
         final.insumos = insumos.map((i) => {
-            const porUnidade = Number(i.por_unidade);
+            const quantidadeReceita = Number(i.quantidade_receita);
             const base = {
                 insumo_produto_id: i.insumo_produto_id,
                 sku: i.sku,
                 nome: i.nome,
+                unidade: i.unidade,
                 ativo: i.ativo,
-                por_unidade: porUnidade,
-                necessario_planejado: porUnidade * resto.quantidade_planejada,
+                quantidade_receita: quantidadeReceita,
+                por_unidade: porUnidade(quantidadeReceita, resto.rendimento),
+                necessario_planejado: consumoDaReceita(quantidadeReceita, resto.rendimento, resto.quantidade_planejada),
                 disponivel: Number(i.estoque_atual)
             };
 
-            return verCustos ? { ...base, custo_unitario: Number(i.custo) } : base;
+            return verCustos ? { ...base, custo_unitario: Number(Number(i.custo).toFixed(6)) } : base;
         });
     }
 
@@ -48,6 +51,7 @@ function apresentar(ordem, usuario) {
                     insumo_produto_id: c.insumo_produto_id,
                     sku: c.sku,
                     nome: c.nome,
+                    unidade: c.unidade,
                     quantidade_prevista: c.quantidade_prevista,
                     quantidade_baixada: c.quantidade_baixada,
                     quantidade_pendente: c.quantidade_prevista - c.quantidade_baixada
