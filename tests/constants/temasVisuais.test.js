@@ -1,8 +1,8 @@
 const { TEMAS_VISUAIS, TEMA_VISUAL_PADRAO, resolverTemaVisual } = require('../../src/constants/temasVisuais');
 
 describe('temas visuais', () => {
-    test('conjunto fechado: vertumno, cherry e valvazori, com vertumno como padrão', () => {
-        expect(TEMAS_VISUAIS).toEqual(['vertumno', 'cherry', 'valvazori']);
+    test('conjunto fechado: vertumno, cherry, valvazori e emilly (demonstração), com vertumno como padrão', () => {
+        expect(TEMAS_VISUAIS).toEqual(['vertumno', 'cherry', 'valvazori', 'emilly']);
         expect(TEMA_VISUAL_PADRAO).toBe('vertumno');
         expect(Object.isFrozen(TEMAS_VISUAIS)).toBe(true);
     });
@@ -11,6 +11,7 @@ describe('temas visuais', () => {
         expect(resolverTemaVisual('cherry')).toBe('cherry');
         expect(resolverTemaVisual('vertumno')).toBe('vertumno');
         expect(resolverTemaVisual('valvazori')).toBe('valvazori');
+        expect(resolverTemaVisual('emilly')).toBe('emilly');
         for (const v of [undefined, null, '', ' cherry', 'Cherry', 'x', '__proto__', 'constructor', 1, {}, ['cherry']]) {
             expect(resolverTemaVisual(v)).toBe('vertumno');
         }

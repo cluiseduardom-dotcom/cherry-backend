@@ -1,6 +1,6 @@
 # Demonstração: confeitaria com PCP
 
-Cria uma empresa nova, **"Doces da Ana (demo)"**, só para ver o sistema funcionando com PCP ligado. Não toca em nenhuma outra empresa.
+Cria uma empresa nova, **"Emilly Candy Designer"**, só para ver o sistema funcionando com PCP ligado. Não toca em nenhuma outra empresa.
 **Só para banco local/descartável** (o script recusa API ou banco remotos).
 
 ## Como rodar (no seu computador)
@@ -9,9 +9,10 @@ Cria uma empresa nova, **"Doces da Ana (demo)"**, só para ver o sistema funcion
 3. Em outro terminal: `npm run demo:confeitaria` (usa `API_URL`, padrão `http://localhost:3000`, e a mesma `DATABASE_URL`).
 4. Frontend (no `cherry-frontend`): `VITE_API_URL=http://localhost:3000 npm run dev` e abra o endereço que ele mostrar.
 
-Login: `ana@docesdaana.demo` / `Confeitaria#2026` (mude com `DEMO_SENHA`). Para refazer a demo, use um banco novo (o script avisa se ela já existe).
+Login (tela com a marca em `/c/emilly`): `emilly@candydesigner.demo` / `Confeitaria#2026` (mude com `DEMO_SENHA`). Para refazer a demo, use um banco novo (o script avisa se ela já existe).
 
 ## O que ele monta
+- **Tema visual próprio** (verde-menta e rosa pastel, menu claro; migration 130 + tema `emilly` no frontend), só para a demonstração.
 - Modelo de **confeitaria** aplicado (categorias Bolos, Tortas, Doces... × tamanhos; SKU como `DOC-UNI-001`).
 - **PCP** e **Compras avançado** ligados (como a GiroNex faria).
 - 10 **insumos** em g/ml/un com estoque (a manteiga é pouca de propósito: 400 g) e 2 fornecedores.

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
-// Demonstração: uma confeitaria de verdade dentro do sistema, para ver o PCP (receitas, produção, insumos pendentes, avisos)
-// funcionando. Cria uma EMPRESA NOVA ("Doces da Ana (demo)"), sem tocar em nenhuma outra, usando a própria API: tudo passa pelas
+// Demonstração: uma confeitaria ("Emilly Candy Designer") de verdade dentro do sistema, para ver o PCP (receitas, produção, insumos pendentes, avisos)
+// funcionando. Cria uma EMPRESA NOVA ("Emilly Candy Designer"), sem tocar em nenhuma outra, usando a própria API: tudo passa pelas
 // mesmas regras do sistema. Só para banco LOCAL/descartável.
 //
 //   1) banco local migrado:        npm run db:migrate
@@ -18,7 +18,7 @@ require('dotenv').config();
 const db = require('../../src/config/db');
 
 const API = (process.env.API_URL || 'http://localhost:3000').replace(/\/$/, '');
-const EMAIL = 'ana@docesdaana.demo';
+const EMAIL = 'emilly@candydesigner.demo';
 const SENHA = process.env.DEMO_SENHA || 'Confeitaria#2026';
 const LOCAIS = ['localhost', '127.0.0.1', '[::1]', '::1'];
 
@@ -55,8 +55,8 @@ const ok = (texto) => console.log(`  ✓ ${texto}`);
 async function main() {
     exigirLocal();
 
-    passo('Empresa nova: "Doces da Ana (demo)" com o modelo de confeitaria');
-    const criar = await chamar('POST', '/onboarding', { empresa_nome: 'Doces da Ana (demo)', nome_admin: 'Ana Confeiteira', email_admin: EMAIL, senha_admin: SENHA, modelo_nicho: 'confeitaria' }, { semToken: true, aceitar: [409, 400, 503] });
+    passo('Empresa nova: "Emilly Candy Designer" com o modelo de confeitaria');
+    const criar = await chamar('POST', '/onboarding', { empresa_nome: 'Emilly Candy Designer', nome_admin: 'Emilly', email_admin: EMAIL, senha_admin: SENHA, modelo_nicho: 'confeitaria' }, { semToken: true, aceitar: [409, 400, 503] });
     if (criar.status === 503) throw new Error('O /onboarding está fechado: suba o servidor com NODE_ENV=development.');
     if (criar.status !== 201 && criar.status !== 200) {
         const login = await chamar('POST', '/auth/login', { email: EMAIL, senha: SENHA }, { semToken: true, aceitar: [400, 401, 403, 404] });
@@ -67,7 +67,7 @@ async function main() {
     ok('empresa criada; categorias de confeitaria e padrão de SKU prontos (BOL, TOR, DOC... × tamanhos)');
 
     passo('Ligando as funcionalidades (como a GiroNex faria): PCP e Compras avançado');
-    const { rows: [{ id }] } = await db.query('SELECT id FROM empresas WHERE nome = $1 ORDER BY id DESC LIMIT 1', ['Doces da Ana (demo)']);
+    const { rows: [{ id }] } = await db.query('SELECT id FROM empresas WHERE nome = $1 ORDER BY id DESC LIMIT 1', ['Emilly Candy Designer']);
     for (const f of ['pcp', 'compras_avancado']) {
         await db.query(
             `INSERT INTO empresa_funcionalidades (empresa_id, funcionalidade, ligada, justificativa, responsavel) VALUES ($1, $2, true, 'demonstração', 'demo')
@@ -77,9 +77,20 @@ async function main() {
     }
     ok('pcp, compras_avancado');
 
+    // Identidade visual de demonstração (verde-menta e rosa pastel). Se o banco ainda não tem a migration 130, segue com o tema padrão.
+    try {
+        await db.query(`UPDATE empresas SET tema_visual = 'emilly' WHERE id = $1`, [empresaId ?? id]);
+        ok('tema visual "emilly" (verde-menta e rosa pastel)');
+        // Endereço próprio de login, já com a marca: /c/emilly (o tema só vem depois do login ou por este endereço).
+        await db.query(`UPDATE empresas SET slug = 'emilly' WHERE id = $1 AND slug IS NULL AND NOT EXISTS (SELECT 1 FROM empresas o WHERE o.slug = 'emilly')`, [empresaId ?? id]);
+        ok('endereço de login com a marca: /c/emilly');
+    } catch (erro) {
+        console.log(`  ! tema visual não aplicado (rode as migrations até a 130): ${erro.message}`);
+    }
+
     const login = await chamar('POST', '/auth/login', { email: EMAIL, senha: SENHA }, { semToken: true });
     token = login.dados.token || login.corpo.token;
-    ok(`login como Ana (${EMAIL})`);
+    ok(`login como Emilly (${EMAIL})`);
 
     passo('Fornecedores');
     const forn = {};

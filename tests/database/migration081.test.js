@@ -27,10 +27,10 @@ describe('migration 081 — arquivo', () => {
         expect(updates[0]).toMatch(/NOT EXISTS/);
     });
 
-    test('o CHECK do tema acompanha o conjunto fechado do código', () => {
+    test('o CHECK do tema da 081 é o conjunto do código na época (temas acrescentados depois têm migration própria, como a 130)', () => {
         const lista = EXECUTAVEL.match(/CHECK \(tema_visual IN \(([^)]*)\)\)/)[1];
 
-        expect(lista.split(',').map((v) => v.trim().replace(/'/g, ''))).toEqual(TEMAS_VISUAIS);
+        expect(lista.split(',').map((v) => v.trim().replace(/'/g, ''))).toEqual(TEMAS_VISUAIS.filter((t) => t !== 'emilly'));
     });
 
     test('o CHECK do slug no banco é o mesmo regex do código', () => {

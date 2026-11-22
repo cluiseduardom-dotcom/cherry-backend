@@ -79,7 +79,7 @@ describe('acesso do operador', () => {
         const res = await request(app).get('/painel/empresas/identidade').set(operador.cabecalho);
         expect(res.status).toBe(200);
         expect(res.headers['cache-control']).toContain('no-store');
-        expect(res.body.data.temas).toEqual(['vertumno', 'cherry', 'valvazori']);
+        expect(res.body.data.temas).toEqual(['vertumno', 'cherry', 'valvazori', 'emilly']);
         const linha = res.body.data.empresas.find((e) => e.empresa_id === alvo.a.id);
         expect(linha).toMatchObject({ empresa_nome: alvo.a.nome, status: 'ativa', tema_visual: 'vertumno', slug: null });
     });
