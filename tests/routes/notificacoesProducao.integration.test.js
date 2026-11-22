@@ -136,3 +136,59 @@ describe('sino: insumo pendente na produção', () => {
         expect(await sino(A, 'admin')).toEqual([]);
     });
 });
+
+describe('sino: ordem de produção atrasada', () => {
+    const atrasadas = async (alvo, papel) => (await get(alvo, papel, '/notificacoes')).body.data.itens.filter((i) => i.tipo === 'ordem_producao_atrasada');
+    const ordemComPrazo = async (alvo, { prazoSql, status = 'planejada' }) => (await db.query(
+        `INSERT INTO ordens_producao (empresa_id, produto_id, ficha_tecnica_id, quantidade_planejada, status, prazo, criado_por)
+         SELECT $1, $2, f.id, 5, $3, ${prazoSql}, $4 FROM fichas_tecnicas f WHERE f.empresa_id = $1 AND f.produto_id = $2 LIMIT 1 RETURNING id`,
+        [alvo.empresaId, alvo.p.bolo, status, alvo.u.admin]
+    )).rows[0].id;
+
+    test('planejada com prazo de 3 dias atrás avisa; prazo de hoje, futuro ou sem prazo não; concluída e cancelada nunca', async () => {
+        const vencida = await ordemComPrazo(A, { prazoSql: `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 3` });
+
+        await ordemComPrazo(A, { prazoSql: `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date` });
+        await ordemComPrazo(A, { prazoSql: `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date + 2` });
+        await ordemComPrazo(A, { prazoSql: 'NULL' });
+        await db.query(
+            `INSERT INTO ordens_producao (empresa_id, produto_id, ficha_tecnica_id, quantidade_planejada, status, prazo, quantidade_produzida, concluida_em, criado_por)
+             SELECT $1, $2, f.id, 5, 'concluida', (NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 9, 5, NOW(), $3 FROM fichas_tecnicas f WHERE f.empresa_id = $1 AND f.produto_id = $2 LIMIT 1`,
+            [A.empresaId, A.p.bolo, A.u.admin]
+        );
+        await db.query(
+            `INSERT INTO ordens_producao (empresa_id, produto_id, ficha_tecnica_id, quantidade_planejada, status, prazo, cancelada_em, criado_por)
+             SELECT $1, $2, f.id, 5, 'cancelada', (NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 9, NOW(), $3 FROM fichas_tecnicas f WHERE f.empresa_id = $1 AND f.produto_id = $2 LIMIT 1`,
+            [A.empresaId, A.p.bolo, A.u.admin]
+        );
+
+        const lista = await atrasadas(A, 'admin');
+
+        expect(lista.map((i) => i.id)).toEqual([`ordem_producao_atrasada:${vencida}`]);
+        expect(lista[0]).toMatchObject({ prioridade: 'media', dados: { ordem_id: vencida, dias_atraso: 3, status: 'planejada' } });
+        A.vencida = vencida;
+    });
+
+    test('mais de 7 dias sobe para alta; em produção também conta; estoquista recebe', async () => {
+        const antiga = await ordemComPrazo(A, { prazoSql: `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 10`, status: 'em_producao' });
+        const lista = await atrasadas(A, 'estoquista');
+
+        expect(lista.find((i) => i.dados.ordem_id === antiga)).toMatchObject({ prioridade: 'alta', dados: { dias_atraso: 10, status: 'em_producao' } });
+        expect(lista).toHaveLength(2);
+    });
+
+    test('vendedor, empresa sem pcp e outra empresa não recebem', async () => {
+        await ordemComPrazo(C, { prazoSql: `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 5` });
+
+        expect(await atrasadas(A, 'vendedor')).toEqual([]);
+        expect(await atrasadas(C, 'admin')).toEqual([]);
+        expect(await atrasadas(B, 'admin')).toEqual([]);
+    });
+
+    test('concluir a ordem faz o aviso sumir', async () => {
+        expect((await patch(A, 'admin', `${ORD}/${A.vencida}/iniciar`, {})).status).toBe(200);
+        expect((await patch(A, 'admin', `${ORD}/${A.vencida}/concluir`, { quantidade_produzida: 5 })).status).toBe(200);
+
+        expect((await atrasadas(A, 'admin')).some((i) => i.dados.ordem_id === A.vencida)).toBe(false);
+    });
+});

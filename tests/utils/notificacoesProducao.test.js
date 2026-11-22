@@ -46,3 +46,31 @@ describe('montarNotificacoesProducao', () => {
         expect(itens.map((i) => i.tipo)).toEqual(['insumo_pendente_producao']);
     });
 });
+
+const { montarNotificacoesOrdensAtrasadas } = require('../../src/utils/notificacoesProducao');
+
+const ordem = (extra) => ({ id: 12, produto_id: 3, sku: 'BOL-001', nome: 'Bolo', quantidade_planejada: 10, status: 'planejada', prazo: '2026-11-18', dias_atraso: 3, ...extra });
+
+describe('montarNotificacoesOrdensAtrasadas', () => {
+    test('um aviso por ordem, com número, produto, quantidade, atraso e prazo (dd/mm)', () => {
+        const [aviso] = montarNotificacoesOrdensAtrasadas([ordem()], admin);
+
+        expect(aviso).toMatchObject({
+            id: 'ordem_producao_atrasada:12', tipo: 'ordem_producao_atrasada', prioridade: 'media', produto_id: 3, titulo: 'Ordem de produção atrasada',
+            dados: { ordem_id: 12, dias_atraso: 3, prazo: '2026-11-18', status: 'planejada' }
+        });
+        expect(aviso.mensagem).toBe('A ordem #12 (Bolo, 10 un.) ainda não foi iniciada e está 3 dia(s) atrasada: o prazo era 18/11.');
+    });
+
+    test('em produção muda o texto; mais de 7 dias de atraso sobe para prioridade alta', () => {
+        expect(montarNotificacoesOrdensAtrasadas([ordem({ status: 'em_producao' })], admin)[0].mensagem).toContain('está em produção e está 3 dia(s)');
+        expect(montarNotificacoesOrdensAtrasadas([ordem({ dias_atraso: 7 })], admin)[0].prioridade).toBe('media');
+        expect(montarNotificacoesOrdensAtrasadas([ordem({ dias_atraso: 8 })], admin)[0].prioridade).toBe('alta');
+    });
+
+    test('admin e estoquista recebem; vendedor não; sem ordem atrasada não há aviso', () => {
+        expect(montarNotificacoesOrdensAtrasadas([ordem()], estoquista)).toHaveLength(1);
+        expect(montarNotificacoesOrdensAtrasadas([ordem()], vendedor)).toEqual([]);
+        expect(montarNotificacoesOrdensAtrasadas([], admin)).toEqual([]);
+    });
+});

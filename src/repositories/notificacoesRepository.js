@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { SQL_HOJE_SP } = require('../utils/dataSaoPaulo');
 const vendaConsumosRepository = require('./vendaConsumosRepository');
 
 // Uma linha por produto ativo da empresa, com os números que as regras do sino usam.
@@ -54,6 +55,23 @@ async function listarPendenciasDeProducao(empresa_id) {
          WHERE c.empresa_id = $1 AND c.quantidade_baixada < c.quantidade_prevista
          GROUP BY p.id, p.sku, p.nome, p.unidade
          ORDER BY p.id`,
+        [empresa_id]
+    );
+
+    return rows;
+}
+
+// Ordens de produção planejadas ou em produção com o prazo vencido (dia de São Paulo). As mais atrasadas primeiro, no máximo 20.
+async function listarOrdensAtrasadas(empresa_id) {
+    const { rows } = await db.query(
+        `SELECT o.id, o.produto_id, p.sku, p.nome, o.quantidade_planejada, o.status,
+                to_char(o.prazo, 'YYYY-MM-DD') AS prazo,
+                (${SQL_HOJE_SP} - o.prazo)::int AS dias_atraso
+         FROM ordens_producao o
+         JOIN produtos p ON p.id = o.produto_id AND p.empresa_id = o.empresa_id
+         WHERE o.empresa_id = $1 AND o.status IN ('planejada', 'em_producao') AND o.prazo IS NOT NULL AND o.prazo < ${SQL_HOJE_SP}
+         ORDER BY o.prazo, o.id
+         LIMIT 20`,
         [empresa_id]
     );
 
@@ -133,4 +151,4 @@ async function listarTransferenciasPendentes(empresa_id) {
     return rows;
 }
 
-module.exports = { listarBaseDeProdutos, listarPendenciasDeInsumo, listarPendenciasDeProducao, listarBaseDeMaletas, listarTransferenciasPendentes };
+module.exports = { listarBaseDeProdutos, listarPendenciasDeInsumo, listarPendenciasDeProducao, listarOrdensAtrasadas, listarBaseDeMaletas, listarTransferenciasPendentes };
