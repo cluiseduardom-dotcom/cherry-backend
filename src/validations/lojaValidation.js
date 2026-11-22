@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const crypto = require('node:crypto');
+const { cnpjValido, normalizarCnpj } = require('../utils/documentos');
 const { LIMITE_PADRAO, LIMITE_MAXIMO, MAX_ITENS_POR_PEDIDO, MAX_QUANTIDADE_POR_ITEM } = require('../constants/loja');
 
 const ORDENS = ['destaque', 'novidades', 'mais_vendidos', 'preco_asc', 'preco_desc', 'nome'];
@@ -159,21 +160,6 @@ function urlDaRede(rede) {
 
 const textoLivre = (max, rotulo) => z.string().max(max, `${rotulo} deve ter no máximo ${max} caracteres`).transform((v) => v.trim() || null).nullable().optional();
 
-// CNPJ: 14 dígitos com os dois dígitos verificadores corretos.
-function cnpjValido(d) {
-    if (!/^\d{14}$/.test(d) || /^(\d)\1+$/.test(d)) return false;
-
-    const dv = (base) => {
-        let soma = 0;
-        let peso = base.length - 7;
-        for (const n of base) { soma += Number(n) * peso; peso = peso === 2 ? 9 : peso - 1; }
-        const r = soma % 11;
-        return r < 2 ? 0 : 11 - r;
-    };
-
-    return dv(d.slice(0, 12)) === Number(d[12]) && dv(d.slice(0, 13)) === Number(d[13]);
-}
-
 const institucionalSchema = z.object({
     historia: textoLivre(6000, 'A história'),
     fundadora_nome: textoLivre(120, 'O nome'),
@@ -198,10 +184,11 @@ const institucionalSchema = z.object({
     tiktok_url: urlDaRede('tiktok_url'),
     razao_social: textoLivre(160, 'A razão social'),
     cnpj: z.string().max(30).nullable().transform((v, ctx) => {
-        const digitos = String(v ?? '').replace(/\D/g, '');
-        if (!digitos) return null;
-        if (!cnpjValido(digitos)) { ctx.addIssue({ code: 'custom', message: 'CNPJ inválido' }); return z.NEVER; }
-        return digitos;
+        // CNPJ numérico ou alfanumérico (desde jul/2026), com os dois dígitos verificadores: guarda sem pontuação, em maiúsculas.
+        const cnpj = normalizarCnpj(v);
+        if (!cnpj) return null;
+        if (!cnpjValido(cnpj)) { ctx.addIssue({ code: 'custom', message: 'CNPJ inválido' }); return z.NEVER; }
+        return cnpj;
     }).optional(),
     endereco: textoLivre(300, 'O endereço'),
     avisos: textoLivre(600, 'Os avisos')

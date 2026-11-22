@@ -36,8 +36,10 @@ travam): CNAE, inscrição municipal e unidade fiscal. "Pronto" significa **cada
 Desde julho de 2026 a Receita emite CNPJ com letras (IN RFB 2.229/2024): as 12 primeiras posições aceitam 0-9 e A-Z; as 2 últimas
 são sempre números. O dígito verificador segue o módulo 11, com cada caractere valendo o código ASCII menos 48 (os CNPJ numéricos
 antigos mantêm o mesmo dígito). `cnpjValido`/`normalizarCnpj` (`src/utils/documentos.js`) já tratam isso e o cadastro da empresa
-(`PATCH /empresa/dados`) aceita CNPJ alfanumérico. **Ainda só numéricos:** cadastro de clientes e de fornecedores, a loja institucional
-e as máscaras do frontend (CNPJ digitado com letra seria descartado).
+(`PATCH /empresa/dados`) aceita CNPJ alfanumérico. Desde a migration 129 também aceitam: o cadastro de **clientes** (`cpf_cnpj`) e de
+**fornecedores** (`cnpj_cpf`), que seguem conferindo só o formato (11 dígitos ou CNPJ de 12 posições 0-9/A-Z + 2 dígitos; pontuação `. - /`
+aceita; letras minúsculas são guardadas em maiúsculas), e a **loja institucional** (`cnpj`, com dígito verificador, guardado sem pontuação
+e em maiúsculas; a constraint do banco passou a `^[0-9A-Z]{12}[0-9]{2}$`). As máscaras do frontend acompanham na PR do cherry-frontend.
 
 ## Fontes consultadas (21/11/2026)
 Conteúdo de fornecedores e imprensa especializada; a fonte primária não foi lida diretamente. Confirmar no Portal Nacional da NF-e e na SEFAZ da UF.

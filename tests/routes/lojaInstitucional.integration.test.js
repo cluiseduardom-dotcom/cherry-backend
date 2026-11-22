@@ -173,8 +173,23 @@ describe('validação', () => {
         expect(res.body.data.whatsapp).toBe('5511988887777');
     });
 
+    test('aceita CNPJ alfanumérico (pontuado e em minúsculas), guarda sem pontuação e em maiúsculas; dígito errado é recusado', async () => {
+        const ok = await gravar(A, { cnpj: '12.abc.345/01de-35' });
+
+        expect(ok.status).toBe(200);
+        expect(ok.body.data.cnpj).toBe('12ABC34501DE35');
+        expect((await db.query('SELECT cnpj FROM loja_institucional WHERE empresa_id = $1', [A.id])).rows[0].cnpj).toBe('12ABC34501DE35');
+
+        const ruim = await gravar(A, { cnpj: '12ABC34501DE36' });
+
+        expect(ruim.status).toBe(400);
+        expect(ruim.body.message).toMatch(/CNPJ/);
+    });
+
     test('o banco também barra WhatsApp e CNPJ fora do formato (defesa em profundidade)', async () => {
         await expect(db.query(`UPDATE loja_institucional SET whatsapp = '123' WHERE empresa_id = $1`, [A.id])).rejects.toThrow();
         await expect(db.query(`UPDATE loja_institucional SET cnpj = '1' WHERE empresa_id = $1`, [A.id])).rejects.toThrow();
+        await expect(db.query(`UPDATE loja_institucional SET cnpj = '12abc34501de35' WHERE empresa_id = $1`, [A.id])).rejects.toThrow(); // minúscula
+        await expect(db.query(`UPDATE loja_institucional SET cnpj = '12ABC34501DEAB' WHERE empresa_id = $1`, [A.id])).rejects.toThrow(); // dígito verificador com letra
     });
 });

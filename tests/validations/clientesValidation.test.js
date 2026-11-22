@@ -125,3 +125,21 @@ describe('atualizarClienteSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('cpf_cnpj aceita CNPJ alfanumérico (só o formato)', () => {
+  const base = { nome: 'X' };
+  const { criarClienteSchema } = require('../../src/validations/clientesValidation');
+
+  test.each(['12.345.678/0001-90', '12345678000190', '12ABC34501DE35', '12.ABC.345/01DE-35', '123.456.789-01'])('aceita %s', (valor) => {
+    expect(criarClienteSchema.safeParse({ ...base, cpf_cnpj: valor }).success).toBe(true);
+  });
+
+  test('letras minúsculas do CNPJ alfanumérico são guardadas em maiúsculas, mantendo a pontuação', () => {
+    expect(criarClienteSchema.parse({ ...base, cpf_cnpj: '12.abc.345/01de-35' }).cpf_cnpj).toBe('12.ABC.345/01DE-35');
+    expect(criarClienteSchema.parse({ ...base, cpf_cnpj: '12345678000190' }).cpf_cnpj).toBe('12345678000190');
+  });
+
+  test.each(['123', '12ABC34501DE3A', '12ABC34501DE3', '12ABC34501DE355', 'ABCDEFGHIJK', '12@ABC34501DE35', ''])('recusa %s', (valor) => {
+    expect(criarClienteSchema.safeParse({ ...base, cpf_cnpj: valor }).success).toBe(false);
+  });
+});
