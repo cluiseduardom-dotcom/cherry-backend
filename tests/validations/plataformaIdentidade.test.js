@@ -3,7 +3,7 @@ const { TEMAS_VISUAIS, resolverTemaVisual, SLUG_REGEX } = require('../../src/con
 
 describe('temas visuais', () => {
   test('o conjunto fechado inclui vertumno (padrão), cherry e valvazori', () => {
-    expect(TEMAS_VISUAIS).toEqual(['vertumno', 'cherry', 'valvazori']);
+    expect(TEMAS_VISUAIS).toEqual(['vertumno', 'cherry', 'valvazori', 'emilly']);
   });
 
   test('tema desconhecido, vazio ou ausente cai no padrão vertumno', () => {

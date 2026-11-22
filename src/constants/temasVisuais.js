@@ -1,6 +1,7 @@
-// Conjunto fechado de identidades visuais. Deve acompanhar o CHECK da migration 081
+// Conjunto fechado de identidades visuais. Deve acompanhar o CHECK das migrations 081 e 130
 // e os temas do cherry-frontend (src/theme/themes.js).
-const TEMAS_VISUAIS = Object.freeze(['vertumno', 'cherry', 'valvazori']);
+// `emilly` é tema de DEMONSTRAÇÃO (confeitaria de teste, migration 130): fácil de remover se não seguir.
+const TEMAS_VISUAIS = Object.freeze(['vertumno', 'cherry', 'valvazori', 'emilly']);
 const TEMA_VISUAL_PADRAO = 'vertumno';
 
 // Ausente, desconhecido ou inválido cai no padrão: o login nunca quebra por causa do tema.
