@@ -30,18 +30,26 @@ async function inserirItens(client, empresa_id, pedido_id, itens) {
     return base.recalcularTotal(pedido_id, empresa_id, client);
 }
 
+// Cria o pedido e os itens DENTRO da transação de quem chama (número sequencial sob trava da empresa). Usado também pela cotação,
+// que gera vários pedidos de uma vez.
+async function criarNoClient(client, cabecalho, itens, { empresa_id, usuario_id, ano, hoje }) {
+    await travarNumeracao(client, empresa_id);
+
+    const numero = cabecalho.numero || await proximoNumero(client, empresa_id, ano);
+    const pedido = await base.criar({
+        ...cabecalho, numero, empresa_id, comprador_id: usuario_id, solicitante_id: usuario_id, data_emissao: hoje
+    }, client);
+    const comTotal = await inserirItens(client, empresa_id, pedido.id, itens);
+
+    return comTotal || pedido;
+}
+
 async function criarComItens(cabecalho, itens, { empresa_id, usuario_id, ano, hoje }) {
     const client = await db.connect();
 
     try {
         await client.query('BEGIN');
-        await travarNumeracao(client, empresa_id);
-
-        const numero = cabecalho.numero || await proximoNumero(client, empresa_id, ano);
-        const pedido = await base.criar({
-            ...cabecalho, numero, empresa_id, comprador_id: usuario_id, solicitante_id: usuario_id, data_emissao: hoje
-        }, client);
-        await inserirItens(client, empresa_id, pedido.id, itens);
+        const pedido = await criarNoClient(client, cabecalho, itens, { empresa_id, usuario_id, ano, hoje });
 
         await client.query('COMMIT');
 
@@ -162,4 +170,4 @@ async function buscarProdutos(ids, empresa_id) {
     return rows;
 }
 
-module.exports = { criarComItens, substituirRascunho, mudarStatus, listarPaginado, detalhar, buscarFornecedor, buscarProdutos };
+module.exports = { criarNoClient, criarComItens, substituirRascunho, mudarStatus, listarPaginado, detalhar, buscarFornecedor, buscarProdutos };
