@@ -42,6 +42,24 @@ async function listarPendenciasDeInsumo(empresa_id) {
     return vendaConsumosRepository.listarPendenciasPorInsumo(empresa_id, db);
 }
 
+// Insumos com baixa pendente em ordens de produção concluídas (faltou saldo no Central ao concluir). Filtrado por empresa_id.
+async function listarPendenciasDeProducao(empresa_id) {
+    const { rows } = await db.query(
+        `SELECT p.id AS produto_id, p.sku, p.nome, p.unidade,
+                SUM(c.quantidade_prevista - c.quantidade_baixada)::int AS quantidade_pendente,
+                COUNT(DISTINCT c.ordem_id)::int AS ordens
+         FROM ordem_producao_consumos c
+         JOIN ordens_producao o ON o.id = c.ordem_id AND o.empresa_id = c.empresa_id AND o.status = 'concluida'
+         JOIN produtos p ON p.id = c.insumo_produto_id AND p.empresa_id = c.empresa_id
+         WHERE c.empresa_id = $1 AND c.quantidade_baixada < c.quantidade_prevista
+         GROUP BY p.id, p.sku, p.nome, p.unidade
+         ORDER BY p.id`,
+        [empresa_id]
+    );
+
+    return rows;
+}
+
 // Uma linha por Maleta ativa da empresa, com idades em dias já calculadas no banco.
 // - dias_sem_venda: desde a última venda finalizada da maleta OU o último recebimento aceito (o mais recente).
 // - dias_sem_conferencia: desde a última conferência; sem nenhuma, desde o primeiro recebimento aceito.
@@ -115,4 +133,4 @@ async function listarTransferenciasPendentes(empresa_id) {
     return rows;
 }
 
-module.exports = { listarBaseDeProdutos, listarPendenciasDeInsumo, listarBaseDeMaletas, listarTransferenciasPendentes };
+module.exports = { listarBaseDeProdutos, listarPendenciasDeInsumo, listarPendenciasDeProducao, listarBaseDeMaletas, listarTransferenciasPendentes };
