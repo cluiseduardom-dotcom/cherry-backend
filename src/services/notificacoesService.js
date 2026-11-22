@@ -3,6 +3,7 @@ const { montarNotificacoes } = require('../utils/notificacoes');
 const { montarNotificacoesMaleta } = require('../utils/notificacoesMaleta');
 const empresaRepository = require('../repositories/empresaRepository');
 const { vocabularioEstoque } = require('../constants/vocabularioEstoque');
+const { montarNotificacoesProducao } = require('../utils/notificacoesProducao');
 const { montarNotificacoesLoja } = require('../utils/notificacoesLoja');
 const lojaGestaoRepository = require('../repositories/lojaGestaoRepository');
 const { temCapacidade } = require('./permissoesService');
@@ -34,6 +35,11 @@ async function listar(usuario) {
             empresaRepository.obterRotuloEstoqueVendedor(usuario.empresa_id)
         ]);
         extras = montarNotificacoesMaleta({ maletas, pendentes }, perfil, usuario.id, vocabularioEstoque(rotulo));
+    }
+    // Avisos de insumo pendente na produção: só com a funcionalidade `pcp` e só para quem repõe estoque (admin e estoquista).
+    const comPcp = Array.isArray(usuario.funcionalidades) && usuario.funcionalidades.includes('pcp');
+    if (comPcp && (perfil.administrador || perfil.estoquista)) {
+        extras = [...extras, ...montarNotificacoesProducao(await notificacoesRepository.listarPendenciasDeProducao(usuario.empresa_id), perfil)];
     }
     // Avisos da loja online só para empresas com a funcionalidade `loja_online` ligada, e só para quem fala com a cliente
     // (administrador e vendedor): trazem nome e telefone dela.
