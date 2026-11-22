@@ -134,6 +134,7 @@ const configuracoesSkuRoutes = require('./routes/configuracoesSku');
 const comprasRoutes = require('./routes/compras');
 const recebimentosRoutes = require('./routes/recebimentos');
 const pedidosCompraRoutes = require('./routes/pedidosCompra');
+const cotacoesRoutes = require('./routes/cotacoes');
 const producoesRoutes = require('./routes/producoes');
 const despesasFixasRoutes = require('./routes/despesasFixas');
 const configuracoesFinanceirasRoutes = require('./routes/configuracoesFinanceiras');
@@ -228,6 +229,7 @@ app.use('/configuracoes-sku', authMiddleware, requireAdmin, configuracoesSkuRout
 app.use('/compras', authMiddleware, requireEstoquista, comprasRoutes);
 app.use('/recebimentos', authMiddleware, requireEstoquista, recebimentosRoutes);
 app.use('/pedidos-compra', authMiddleware, exigirFuncionalidade('compras_avancado'), requireEstoquista, pedidosCompraRoutes);
+app.use('/cotacoes', authMiddleware, exigirFuncionalidade('compras_avancado'), requireEstoquista, cotacoesRoutes);
 app.use('/producoes', authMiddleware, requireEstoquista, producoesRoutes);
 app.use('/despesas-fixas', authMiddleware, requireAdmin, exigirFuncionalidade('analise_financeira'), despesasFixasRoutes);
 app.use('/configuracoes-financeiras', authMiddleware, requireAdmin, configuracoesFinanceirasRoutes);

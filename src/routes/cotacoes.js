@@ -1,0 +1,13 @@
+const express = require('express');
+const router = express.Router();
+const controller = require('../controllers/cotacoesController');
+
+router.get('/', controller.listar);
+router.post('/', controller.criar);
+router.get('/:id', controller.buscarPorId);
+router.put('/:id/fornecedores/:fornecedorId/oferta', controller.registrarOferta);
+router.post('/:id/fornecedores/:fornecedorId/recusar', controller.recusar);
+router.post('/:id/gerar-pedidos', controller.gerarPedidos);
+router.post('/:id/cancelar', controller.cancelar);
+
+module.exports = router;
