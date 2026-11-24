@@ -63,7 +63,8 @@ describe('registrarMovimentacao', () => {
       local_id: undefined,
       origem: 'avaria',
       bloquearAjusteParaMais: false,
-      exigirSemHistorico: false
+      exigirSemHistorico: false,
+      rastreio: { identificadores: undefined, destinoSaida: 'baixada' }
     });
     expect(result.estoque_resultante).toBe(8);
   });

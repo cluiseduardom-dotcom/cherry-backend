@@ -22,7 +22,10 @@ const criarCompraSchema = z.object({
         z.object({
             produto_id: z.coerce.number({ error: 'Produto inválido' }).int().positive('Produto inválido'),
             quantidade: z.coerce.number({ error: 'Quantidade deve ser maior que zero' }).int().positive('Quantidade deve ser maior que zero').max(MAX_QUANTIDADE_ITEM, `Quantidade deve ser no máximo ${MAX_QUANTIDADE_ITEM}`),
-            custo_unitario: z.coerce.number({ error: 'Custo unitário deve ser maior que zero' }).positive('Custo unitário deve ser maior que zero').max(MAX_VALOR_MONETARIO, 'Custo unitário acima do permitido')
+            custo_unitario: z.coerce.number({ error: 'Custo unitário deve ser maior que zero' }).positive('Custo unitário deve ser maior que zero').max(MAX_VALOR_MONETARIO, 'Custo unitário acima do permitido'),
+            // Produto rastreado (ADR-008): um IMEI/série por unidade; a conferência com a quantidade e o formato é do repository.
+            identificadores: z.array(z.string({ error: 'IMEI/série inválido' }).trim().min(1, 'IMEI/série vazio').max(60, 'IMEI/série muito longo'))
+                .max(500, 'No máximo 500 IMEI/séries por item').optional()
         }).strict()
     ).min(1, 'A compra deve ter ao menos um item').max(MAX_ITENS_POR_DOCUMENTO, `A compra deve ter no máximo ${MAX_ITENS_POR_DOCUMENTO} itens`)
 }).strict().refine((data) => data.forma_pagamento !== 'prazo' || data.dias_prazo !== undefined, {

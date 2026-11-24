@@ -20,6 +20,12 @@ function validarBaseNaEdicao(dados, ctx) {
     }
 }
 
+function validarRastreioUnidade(dados, ctx) {
+    if (dados.rastreia_unidade === true && dados.unidade !== undefined && dados.unidade !== 'UN') {
+        ctx.addIssue({ code: 'custom', message: 'Rastreio por IMEI/série só vale para produto vendido por unidade (UN)', path: ['rastreia_unidade'] });
+    }
+}
+
 const criarProdutoSchema = z.object({
     nome: z.string({ error: 'Nome é obrigatório' }).min(1, 'Nome é obrigatório'),
     descricao: z.string().optional(),
@@ -35,8 +41,10 @@ const criarProdutoSchema = z.object({
     ativo: z.boolean().optional(),
     tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional(),
     unidade: z.enum(['UN', 'PAR', 'CX', 'PCT', 'G', 'ML'], { error: 'Unidade inválida' }).optional(),
-    preco_base_quantidade: PRECO_BASE
-}).superRefine(validarBaseNaCriacao);
+    preco_base_quantidade: PRECO_BASE,
+    // ADR-008: um IMEI/série por aparelho. Só faz sentido em produto contado por unidade inteira (UN).
+    rastreia_unidade: z.boolean({ error: 'rastreia_unidade deve ser verdadeiro ou falso' }).optional()
+}).superRefine(validarBaseNaCriacao).superRefine(validarRastreioUnidade);
 
 // estoque_atual is intentionally not editable here: once movimentacoes_estoque
 // exists, all stock changes must go through it so there's an audit trail.
@@ -50,8 +58,9 @@ const atualizarProdutoSchema = z.object({
     ativo: z.boolean().optional(),
     tipo: z.enum(['acabado', 'insumo'], { error: 'Tipo inválido' }).optional(),
     unidade: z.enum(['UN', 'PAR', 'CX', 'PCT', 'G', 'ML'], { error: 'Unidade inválida' }).optional(),
-    preco_base_quantidade: PRECO_BASE
-}).superRefine(validarBaseNaEdicao).refine((data) => Object.keys(data).length > 0, { message: 'Informe ao menos um campo para atualizar' });
+    preco_base_quantidade: PRECO_BASE,
+    rastreia_unidade: z.boolean({ error: 'rastreia_unidade deve ser verdadeiro ou falso' }).optional()
+}).superRefine(validarBaseNaEdicao).superRefine(validarRastreioUnidade).refine((data) => Object.keys(data).length > 0, { message: 'Informe ao menos um campo para atualizar' });
 
 const ajustarPrecoSchema = z.object({
     id: z.coerce.number({ error: 'ID inválido' }).int().positive('ID inválido'),

@@ -35,7 +35,10 @@ const criarVendaSchema = z.object({
             quantidade: z.coerce.number({ error: 'Quantidade deve ser maior que zero' }).int().positive('Quantidade deve ser maior que zero').max(MAX_QUANTIDADE_ITEM, `Quantidade deve ser no máximo ${MAX_QUANTIDADE_ITEM}`),
             kit_id: z.coerce.number({ error: 'kit_id inválido' }).int().positive('kit_id inválido').nullish(),
             // Opcional: de qual local de estoque sai o item. Sem ele: Maleta do vendedor (se tiver) ou Central.
-            local_id: z.coerce.number({ error: 'Local inválido' }).int().positive('Local inválido').optional()
+            local_id: z.coerce.number({ error: 'Local inválido' }).int().positive('Local inválido').optional(),
+            // Produto rastreado (ADR-008): o IMEI/série de cada unidade vendida (um por unidade). Conferido no repository.
+            identificadores: z.array(z.string({ error: 'IMEI/série inválido' }).trim().min(1, 'IMEI/série vazio').max(60, 'IMEI/série muito longo'))
+                .max(500, 'No máximo 500 IMEI/séries por item').optional()
         }).strict()
     ).min(1, 'A venda deve ter ao menos um item').max(MAX_ITENS_POR_DOCUMENTO, `A venda deve ter no máximo ${MAX_ITENS_POR_DOCUMENTO} itens`)
 }).strict().superRefine((data, ctx) => {

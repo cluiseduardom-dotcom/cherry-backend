@@ -131,7 +131,20 @@ async function atualizar(id, dados, empresaId) {
         if (rows.length) throw new AppError('Tire o produto da loja online antes de vendê-lo por kg ou litro', 409);
     }
 
-    const atualizado = await produtosRepository.atualizar(id, dados, empresaId);
+    const { rastreia_unidade: rastreio, ...demais } = dados;
+
+    // Trocar a unidade de um produto rastreado quebraria a regra (rastreio só em UN).
+    if (unidadeFinal !== 'UN' && (rastreio === true || (rastreio === undefined && produto.rastreia_unidade))) {
+        throw new AppError('Produto rastreado por IMEI/série precisa ser vendido por unidade (UN)', 400);
+    }
+
+    if (rastreio !== undefined) {
+        await produtosRepository.definirRastreioUnidade(id, rastreio, empresaId);
+    }
+
+    const atualizado = Object.keys(demais).length
+        ? await produtosRepository.atualizar(id, demais, empresaId)
+        : await produtosRepository.buscarPorId(id, empresaId);
 
     return comMargem(atualizado);
 }

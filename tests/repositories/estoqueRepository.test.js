@@ -13,7 +13,7 @@ function makeFakeClient({ estoqueAtual = 10, custo = '15.50', saldoLocal = estoq
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
       return Promise.resolve({});
     }
-    if (sql.includes('SELECT id, estoque_atual, custo FROM produtos')) {
+    if (sql.includes('SELECT id, estoque_atual, custo, rastreia_unidade FROM produtos')) {
       return Promise.resolve({ rows: [{ id: 1, estoque_atual: estoqueAtual, custo }] });
     }
     if (sql.includes('INSERT INTO locais_estoque')) {

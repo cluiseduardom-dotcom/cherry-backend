@@ -173,6 +173,7 @@ const cancelamentosRoutes = require('./routes/cancelamentos');
 const usuariosRoutes = require('./routes/usuarios');
 const comissoesRoutes = require('./routes/comissoes');
 const estoqueRoutes = require('./routes/estoque');
+const unidadesRoutes = require('./routes/unidades');
 const errorHandler = require('./middlewares/errorHandler');
 
 app.use('/auth', authRoutes);
@@ -205,6 +206,8 @@ app.use('/cancelamentos', authMiddleware, requireCapacidade(CAPACIDADES.VER_CANC
 // Só o uso do módulo é bloqueado; a venda continua acumulando comissão em silêncio (vendasRepository).
 app.use('/comissoes', authMiddleware, exigirFuncionalidade('comissoes'), comissoesRoutes);
 app.use('/estoque', authMiddleware, estoqueRoutes);
+// Unidades rastreadas por IMEI/série (ADR-008): consulta para qualquer usuário autenticado, sem custo.
+app.use('/unidades', authMiddleware, unidadesRoutes);
 app.use('/canais-venda', authMiddleware, canaisVendaRoutes);
 app.use('/dashboard', authMiddleware, requireCapacidade(CAPACIDADES.VER_DASHBOARD, CAPACIDADES.VER_CUSTOS), dashboardRoutes);
 app.use('/notificacoes', authMiddleware, notificacoesRoutes);

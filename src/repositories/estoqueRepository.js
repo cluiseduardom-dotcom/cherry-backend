@@ -1,4 +1,6 @@
 const db = require('../config/db');
+const AppError = require('../errors/AppError');
+const unidadesRepository = require('./unidadesRastreadasRepository');
 const { sqlDiaSP } = require('../utils/dataSaoPaulo');
 
 // Local Central da empresa. Criado sob demanda para empresas novas (a migration 058 já cobre
@@ -42,6 +44,77 @@ async function garantirLocalTransito(client, empresa_id) {
     return rows[0].id;
 }
 
+// Rastreio por unidade (ADR-008). `rastreio` (opcional) vem de quem chama:
+//   identificadores: lista digitada/lida (um por unidade);
+//   compra_id: liga a unidade à compra de origem;
+//   destinoSaida: 'vendida' (venda) ou 'baixada' (baixa avulsa, padrão);
+//   reativar: true no cancelamento de venda (as unidades vendidas voltam a em_estoque);
+//   baixarDaCompraId: estorno de compra (todas as unidades dela saem como baixada);
+//   referencia: texto do histórico (ex.: 'venda:12'; padrão 'mov:<id>').
+// Produto rastreado só se move por entrada, saída ou devolução COM unidades. Ajuste de quantidade e transferência entre
+// locais ficam fora desta entrega: seriam saldo sem unidade, o que descasa o saldo da contagem de unidades.
+function prepararRastreio({ rastreado, tipo, quantidade, transferencia_id, rastreio }) {
+    const informados = rastreio?.identificadores;
+
+    if (!rastreado) {
+        if (Array.isArray(informados) && informados.length) {
+            throw new AppError('Este produto não é rastreado por IMEI/série', 400);
+        }
+        return null;
+    }
+
+    if (transferencia_id) {
+        throw new AppError('Produto rastreado por IMEI/série não pode ser transferido entre locais nesta versão', 409);
+    }
+
+    if (tipo === 'ajuste') {
+        throw new AppError('Produto rastreado por IMEI/série não aceita ajuste de quantidade. Dê baixa informando o IMEI/série ou registre uma entrada com os identificadores', 409);
+    }
+
+    if (tipo === 'saida' && rastreio?.baixarDaCompraId) {
+        return null;
+    }
+
+    return unidadesRepository.prepararIdentificadores(informados, quantidade);
+}
+
+async function aplicarRastreio(client, { tipo, produto_id, empresa_id, usuario_id, rastreio, identificadores, movimentacao }) {
+    const referencia = rastreio?.referencia ?? `mov:${movimentacao.id}`;
+
+    if (tipo === 'entrada') {
+        if (rastreio?.reativar) {
+            await unidadesRepository.reativarDaVenda(client, {
+                empresa_id, produto_id, identificadores: identificadores.map((i) => i.identificador), referencia, usuario_id
+            });
+            return;
+        }
+
+        await unidadesRepository.registrarEntrada(client, {
+            empresa_id, produto_id, identificadores, compra_id: rastreio?.compra_id, usuario_id, referencia
+        });
+        return;
+    }
+
+    // saída
+    if (rastreio?.baixarDaCompraId) {
+        await unidadesRepository.baixarDaCompra(client, { empresa_id, produto_id, compra_id: rastreio.baixarDaCompraId, usuario_id });
+        return;
+    }
+
+    const vendida = rastreio?.destinoSaida === 'vendida';
+
+    await unidadesRepository.baixarPorIdentificadores(client, {
+        empresa_id,
+        produto_id,
+        identificadores,
+        statusNovo: vendida ? 'vendida' : 'baixada',
+        evento: vendida ? 'venda' : 'baixa',
+        referencia,
+        motivo: vendida ? null : movimentacao.motivo,
+        usuario_id
+    });
+}
+
 // clienteExterno permite participar de uma transação já aberta por outro módulo
 // (ex: criação de venda, que precisa que a baixa de estoque de todos os itens e o
 // registro da venda sejam a mesma transação). Quando informado, esta função não
@@ -63,7 +136,7 @@ async function garantirLocalTransito(client, empresa_id) {
 // `permitirReserva`: o local tipo `reserva` (migration 096) só aceita movimentação de quem passa este sinal, que é
 // só o fluxo de pedidos da loja. Movimentação avulsa, transferência e PDV recebem LOCAL_NAO_ENCONTRADO: ninguém
 // mexe na Reserva "no braço", o que descasaria o saldo reservado dos pedidos.
-async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario_id, empresa_id, local_id, transferencia_id, origem, bloquearAjusteParaMais, exigirSemHistorico, permitirReserva }, clienteExterno) {
+async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario_id, empresa_id, local_id, transferencia_id, origem, bloquearAjusteParaMais, exigirSemHistorico, permitirReserva, rastreio }, clienteExterno) {
     const client = clienteExterno || await db.connect();
     const gerenciaTransacao = !clienteExterno;
 
@@ -71,7 +144,7 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
         if (gerenciaTransacao) await client.query('BEGIN');
 
         const { rows: produtoRows } = await client.query(
-            'SELECT id, estoque_atual, custo FROM produtos WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
+            'SELECT id, estoque_atual, custo, rastreia_unidade FROM produtos WHERE id = $1 AND empresa_id = $2 FOR UPDATE',
             [produto_id, empresa_id]
         );
 
@@ -79,6 +152,11 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
             if (gerenciaTransacao) await client.query('ROLLBACK');
             return { erro: 'PRODUTO_NAO_ENCONTRADO' };
         }
+
+        // Rastreio por IMEI/série (ADR-008): decide ANTES de mexer no saldo. Violação lança AppError (a transação de quem chama
+        // reverte); nunca devolve `erro`, porque vários chamadores ignoram códigos de erro que não conhecem.
+        const rastreado = produtoRows[0].rastreia_unidade === true;
+        const identificadoresPreparados = prepararRastreio({ rastreado, tipo, quantidade, transferencia_id, rastreio });
 
         if (exigirSemHistorico) {
             const { rows: historicoRows } = await client.query(
@@ -152,6 +230,13 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
              RETURNING *`,
             [produto_id, tipo, quantidade, novoEstoque, motivo ?? null, usuario_id, empresa_id, localId, novoSaldoLocal, transferencia_id ?? null, origem ?? null]
         );
+
+        if (rastreado) {
+            await aplicarRastreio(client, {
+                tipo, quantidade, produto_id, empresa_id, usuario_id, rastreio,
+                identificadores: identificadoresPreparados, movimentacao: rows[0]
+            });
+        }
 
         if (gerenciaTransacao) await client.query('COMMIT');
 

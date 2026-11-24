@@ -84,7 +84,8 @@ async function criar({ fornecedor_id, data_compra, nota_fiscal, forma_pagamento,
                     motivo: `Compra #${compra.id}`,
                     origem: 'compra',
                     usuario_id,
-                    empresa_id
+                    empresa_id,
+                    rastreio: { identificadores: item.identificadores, compra_id: compra.id, referencia: `compra:${compra.id}` }
                 },
                 client
             );
@@ -294,7 +295,8 @@ async function cancelar(id, usuario_id, empresa_id) {
                     motivo: 'cancelamento_compra',
                     origem: 'cancelamento_compra',
                     usuario_id,
-                    empresa_id
+                    empresa_id,
+                    rastreio: { baixarDaCompraId: id }
                 },
                 client
             );

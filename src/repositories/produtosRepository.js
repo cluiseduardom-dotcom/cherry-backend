@@ -1,5 +1,7 @@
 const db = require('../config/db');
 const estoqueRepository = require('./estoqueRepository');
+const AppError = require('../errors/AppError');
+const { executarComLock } = require('./shared/transacoes');
 
 // Só venda FINALIZADA conta como venda (a mesma regra do dashboard e do ponto de equilíbrio):
 // uma venda cancelada foi estornada e devolveu o estoque, então nunca "aconteceu" para análise.
@@ -34,10 +36,10 @@ async function listarPaginado({ limit, offset, empresa_id }) {
 // Estoque inicial: o total (produtos.estoque_atual) e o saldo por local têm que fechar sempre, e o
 // histórico precisa existir. Por isso, com estoque inicial > 0, o produto nasce com 0 e o saldo
 // entra como uma entrada auditada ("Estoque inicial") no local Central, na MESMA transação.
-async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, preco_base_quantidade, empresa_id, usuario_id }) {
+async function criar({ sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, preco_base_quantidade, rastreia_unidade, empresa_id, usuario_id }) {
     const estoqueInicial = estoque_atual ?? 0;
-    const sql = `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, preco_base_quantidade, empresa_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    const sql = `INSERT INTO produtos (sku, nome, descricao, categoria, preco_venda, custo, estoque_atual, estoque_minimo, ativo, tipo, unidade, preco_base_quantidade, rastreia_unidade, empresa_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING *`;
     const params = (estoque) => [
         sku ?? null,
@@ -52,6 +54,7 @@ async function criar({ sku, nome, descricao, categoria, preco_venda, custo, esto
         tipo ?? 'acabado',
         unidade ?? 'UN',
         preco_base_quantidade ?? 1,
+        rastreia_unidade ?? false,
         empresa_id
     ];
 
@@ -113,6 +116,49 @@ async function atualizar(id, dados, empresa_id) {
     );
 
     return rows.length ? rows[0] : null;
+}
+
+// Liga/desliga o rastreio por IMEI/série (ADR-008). Trava a linha do produto (a mesma que criarMovimentacao trava),
+// então não corre com uma entrada/venda em andamento.
+//  - LIGAR: só em produto sem nenhuma movimentação, senão o saldo existente ficaria sem IMEI e não fecharia com as unidades.
+//  - DESLIGAR: só sem unidade em estoque (as unidades vendidas ficam no histórico).
+async function definirRastreioUnidade(id, ligar, empresa_id) {
+    return executarComLock('produtos', { coluna: 'id', valor: id }, empresa_id, undefined, async (produto, client) => {
+        if (!produto) throw new AppError('Produto não encontrado', 404);
+
+        if (produto.rastreia_unidade === ligar) return produto;
+
+        if (ligar) {
+            if (produto.unidade !== 'UN') {
+                throw new AppError('Rastreio por IMEI/série só vale para produto vendido por unidade (UN)', 400);
+            }
+
+            const { rows } = await client.query(
+                'SELECT 1 FROM movimentacoes_estoque WHERE produto_id = $1 AND empresa_id = $2 LIMIT 1',
+                [id, empresa_id]
+            );
+
+            if (rows.length || Number(produto.estoque_atual) !== 0) {
+                throw new AppError('Este produto já tem movimentação de estoque; o rastreio por IMEI/série só pode ser ligado em produto sem histórico. Cadastre um novo produto rastreado.', 409);
+            }
+        } else {
+            const { rows } = await client.query(
+                "SELECT 1 FROM unidades_rastreadas WHERE produto_id = $1 AND empresa_id = $2 AND status = 'em_estoque' LIMIT 1",
+                [id, empresa_id]
+            );
+
+            if (rows.length) {
+                throw new AppError('Há IMEI/série em estoque deste produto; dê baixa neles antes de desligar o rastreio', 409);
+            }
+        }
+
+        const { rows } = await client.query(
+            'UPDATE produtos SET rastreia_unidade = $1 WHERE id = $2 AND empresa_id = $3 RETURNING *',
+            [ligar, id, empresa_id]
+        );
+
+        return rows[0];
+    });
 }
 
 async function desativar(id, empresa_id) {
@@ -427,6 +473,7 @@ module.exports = {
     listarPaginado,
     criar,
     atualizar,
+    definirRastreioUnidade,
     desativar,
     buscarPorId,
     ajustarPreco,
