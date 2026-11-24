@@ -3,11 +3,11 @@ const { MODELOS_NICHO, IDS_MODELOS_NICHO, buscarModelo, resumoDoModelo } = requi
 describe('catálogo de modelos de nicho', () => {
     test('ids únicos, em minúsculas, e os nichos combinados existem', () => {
         expect(new Set(IDS_MODELOS_NICHO).size).toBe(IDS_MODELOS_NICHO.length);
-        for (const id of ['confeitaria', 'lanchonete', 'adega', 'semijoias', 'moda']) expect(IDS_MODELOS_NICHO).toContain(id);
-        for (const id of IDS_MODELOS_NICHO) expect(id).toMatch(/^[a-z]+$/);
+        for (const id of ['confeitaria', 'lanchonete', 'adega', 'semijoias', 'moda', 'celulares_eletronicos', 'do_zero']) expect(IDS_MODELOS_NICHO).toContain(id);
+        for (const id of IDS_MODELOS_NICHO) expect(id).toMatch(/^[a-z_]+$/);
     });
 
-    test.each(MODELOS_NICHO.map((m) => [m.id, m]))('%s: níveis, categorias e padrão de SKU coerentes', (_id, modelo) => {
+    test.each(MODELOS_NICHO.filter((m) => m.id !== 'do_zero').map((m) => [m.id, m]))('%s: níveis, categorias e padrão de SKU coerentes', (_id, modelo) => {
         expect(modelo.nome).toBeTruthy();
         expect(modelo.descricao).toBeTruthy();
 
@@ -34,6 +34,27 @@ describe('catálogo de modelos de nicho', () => {
         expect(modelo.padrao_sku.segmentos.map((s) => s.nivel)).toEqual(niveis);
         expect(modelo.padrao_sku.segmentos[0]).toMatchObject({ obrigatorio: true, participa_sku: true });
         expect(['numerico', 'alfanumerico', 'alfabetico']).toContain(modelo.padrao_sku.tipo_sku);
+    });
+
+    test('do_zero: um nível "Categoria", nenhuma categoria e o resumo não quebra', () => {
+        const modelo = buscarModelo('do_zero');
+
+        expect(modelo.niveis).toEqual([{ nivel: 1, nome: 'Categoria' }]);
+        expect(modelo.categorias).toEqual([]);
+        expect(modelo.padrao_sku.segmentos.map((s) => s.nivel)).toEqual([1]);
+
+        const resumo = resumoDoModelo(modelo);
+
+        expect(resumo.niveis[0].categorias).toEqual([]);
+        expect(resumo.exemplo_sku).toBe('XXX-0001');
+    });
+
+    test('celulares_eletronicos: departamentos da Valvazori e sequência de 4 dígitos', () => {
+        const modelo = buscarModelo('celulares_eletronicos');
+        const dept = modelo.categorias.filter((c) => c.nivel === 1).map((c) => c.codigo);
+
+        expect(dept).toEqual(['CEL', 'REL', 'ELE', 'GAM', 'PER', 'ACE']);
+        expect(resumoDoModelo(modelo).exemplo_sku).toBe('CEL-APL-0001');
     });
 
     test('buscarModelo e resumoDoModelo', () => {

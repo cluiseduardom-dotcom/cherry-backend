@@ -11,6 +11,10 @@ Sem migration. Catálogo em `src/constants/modelosNicho.js`.
 opcional). Exemplo de SKU da confeitaria: `BOL-P-001` (Bolos, Pequeno, 1º da combinação); outra combinação tem sequência própria
 (`TOR-G-001`).
 
+Dois modelos fogem desse formato:
+- `celulares_eletronicos` ("Celulares, eletrônicos e games"): níveis Departamento (CEL, REL, ELE, GAM, PER, ACE) e Marca ou plataforma (APL, SAM, XIA, MOT, JBL, SON, MIC, NIN, OUT), sequência de 4 dígitos (`CEL-APL-0001`). O SKU identifica o item vendável; modelo, capacidade, cor e condição ficam no nome. Perfume e acessório usam a marca `OUT` até a empresa criar as dela.
+- `do_zero` ("Montar do zero"): um nível "Categoria", nenhuma categoria, padrão `0001`; a empresa monta tudo. Mesmas regras de aplicação (só antes de existir categoria).
+
 ## Rotas (só admin)
 | Rota | O que faz |
 |---|---|
