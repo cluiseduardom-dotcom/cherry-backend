@@ -21,6 +21,8 @@ const SENHA_FORTE = `Aa1-${crypto.randomBytes(8).toString('hex')}`;
 const A = { u: {} };
 const B = { u: {} };
 const C = { u: {} };
+const D = { u: {} };
+const E = { u: {} };
 
 // Empresa nova, do jeito que o onboarding cria (padrão de SKU de produto sem segmentos, nenhuma categoria de produto).
 async function novaEmpresa(alvo, rotulo, extras = {}) {
@@ -65,6 +67,8 @@ beforeAll(async () => {
     await novaEmpresa(A, 'A');
     await novaEmpresa(B, 'B');
     await novaEmpresa(C, 'C');
+    await novaEmpresa(D, 'D');
+    await novaEmpresa(E, 'E');
 });
 
 afterAll(async () => {
@@ -80,7 +84,7 @@ describe('GET /modelos-nicho', () => {
         const res = await get(A, 'admin', '/modelos-nicho');
 
         expect(res.status).toBe(200);
-        expect(res.body.data.map((m) => m.id).sort()).toEqual(['adega', 'confeitaria', 'lanchonete', 'moda', 'semijoias']);
+        expect(res.body.data.map((m) => m.id).sort()).toEqual(['adega', 'celulares_eletronicos', 'confeitaria', 'do_zero', 'lanchonete', 'moda', 'semijoias']);
         const confeitaria = res.body.data.find((m) => m.id === 'confeitaria');
 
         expect(confeitaria).toMatchObject({ nome: 'Confeitaria e doces', exemplo_sku: 'BOL-P-001' });
@@ -96,6 +100,19 @@ describe('GET /modelos-nicho', () => {
 });
 
 describe('POST /modelos-nicho/:id/aplicar', () => {
+    test('celulares_eletronicos e do_zero aplicam em empresas sem categoria', async () => {
+        const cel = await post(D, 'admin', '/modelos-nicho/celulares_eletronicos/aplicar');
+
+        expect(cel.status).toBe(200);
+        expect(cel.body.data).toMatchObject({ modelo: 'celulares_eletronicos', niveis: 2, categorias: 15 });
+
+        const zero = await post(E, 'admin', '/modelos-nicho/do_zero/aplicar');
+
+        expect(zero.status).toBe(200);
+        expect(zero.body.data).toMatchObject({ modelo: 'do_zero', niveis: 1, categorias: 0 });
+        expect(await contar('categorias_produto', E, `AND escopo = 'produto' AND deletado_em IS NULL`)).toBe(0);
+    });
+
     test('cria níveis, categorias e os segmentos do padrão; o SKU nasce pelo padrão e a sequência é por combinação', async () => {
         const insumosAntes = await contar('categorias_produto', A, `AND escopo = 'insumo'`);
         const res = await post(A, 'admin', '/modelos-nicho/confeitaria/aplicar');

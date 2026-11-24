@@ -124,6 +124,46 @@ const MODELOS_NICHO = Object.freeze([
             { nivel: 2, codigo: 'UNI', nome: 'Tamanho único' }
         ],
         padrao_sku: PADRAO(SEGMENTOS('Tipo', 'Tamanho'))
+    },
+    {
+        id: 'celulares_eletronicos',
+        nome: 'Celulares, eletrônicos e games',
+        descricao: 'Celulares, smartwatches, eletrônicos, video games, perfumes e acessórios, por marca ou plataforma.',
+        niveis: [{ nivel: 1, nome: 'Departamento' }, { nivel: 2, nome: 'Marca ou plataforma' }],
+        categorias: [
+            { nivel: 1, codigo: 'CEL', nome: 'Celulares' },
+            { nivel: 1, codigo: 'REL', nome: 'Smartwatches e relógios' },
+            { nivel: 1, codigo: 'ELE', nome: 'Eletrônicos e áudio' },
+            { nivel: 1, codigo: 'GAM', nome: 'Video games' },
+            { nivel: 1, codigo: 'PER', nome: 'Perfumes' },
+            { nivel: 1, codigo: 'ACE', nome: 'Acessórios' },
+            { nivel: 2, codigo: 'APL', nome: 'Apple' },
+            { nivel: 2, codigo: 'SAM', nome: 'Samsung' },
+            { nivel: 2, codigo: 'XIA', nome: 'Xiaomi' },
+            { nivel: 2, codigo: 'MOT', nome: 'Motorola' },
+            { nivel: 2, codigo: 'JBL', nome: 'JBL' },
+            { nivel: 2, codigo: 'SON', nome: 'Sony' },
+            { nivel: 2, codigo: 'MIC', nome: 'Microsoft' },
+            { nivel: 2, codigo: 'NIN', nome: 'Nintendo' },
+            { nivel: 2, codigo: 'OUT', nome: 'Outras marcas' }
+        ],
+        padrao_sku: { ...PADRAO(SEGMENTOS('Departamento', 'Marca ou plataforma')), tamanho_sequencia: 4 }
+    },
+    {
+        // Ponto de partida vazio: um nível "Categoria" e nenhuma categoria; a empresa monta tudo. Único modelo sem categorias.
+        id: 'do_zero',
+        nome: 'Montar do zero',
+        descricao: 'Você define os níveis e as categorias. Começa com um nível "Categoria" e nenhuma categoria.',
+        niveis: [{ nivel: 1, nome: 'Categoria' }],
+        categorias: [],
+        padrao_sku: {
+            nome: 'Padrão',
+            tipo_sku: 'numerico',
+            separador: '-',
+            tamanho_sequencia: 4,
+            inicio_sequencia: 1,
+            segmentos: [{ nivel: 1, nome: 'Categoria', obrigatorio: false, participa_sku: true }]
+        }
     }
 ]);
 
@@ -141,7 +181,7 @@ function resumoDoModelo(modelo) {
         categorias: modelo.categorias.filter((c) => c.nivel === n.nivel).map((c) => ({ codigo: c.codigo, nome: c.nome }))
     }));
     const { separador, tamanho_sequencia: tamanho, inicio_sequencia: inicio } = modelo.padrao_sku;
-    const partes = [...niveis.map((n) => n.categorias[0].codigo), String(inicio).padStart(tamanho, '0')];
+    const partes = [...niveis.map((n) => n.categorias[0]?.codigo ?? 'XXX'), String(inicio).padStart(tamanho, '0')];
 
     return { id: modelo.id, nome: modelo.nome, descricao: modelo.descricao, niveis, exemplo_sku: partes.join(separador) };
 }
