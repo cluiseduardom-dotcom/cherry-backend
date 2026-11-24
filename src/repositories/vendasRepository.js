@@ -1,5 +1,7 @@
 const db = require('../config/db');
 const estoqueRepository = require('./estoqueRepository');
+const unidadesRastreadasRepository = require('./unidadesRastreadasRepository');
+const { normalizarIdentificador } = require('../utils/identificadorUnidade');
 const vendaConsumosRepository = require('./vendaConsumosRepository');
 const precosRepository = require('./precosRepository');
 const contasReceberRepository = require('./contasReceberRepository');
@@ -313,7 +315,8 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 motivo: `Venda #${venda.id}`,
                 usuario_id,
                 empresa_id,
-                local_id: local.id
+                local_id: local.id,
+                rastreio: { identificadores: item.identificadores, destinoSaida: 'vendida', referencia: `venda:${venda.id}` }
             }, client);
 
             if (resultado.erro === 'ESTOQUE_INSUFICIENTE') {
@@ -332,7 +335,8 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 preco_unitario,
                 custo_unitario: Number(resultado.custo),
                 kit_id: item.kit_id ?? null,
-                local_id: local.id
+                local_id: local.id,
+                identificadores: item.identificadores
             });
             subtotal += base === 1 ? item.quantidade * preco_unitario : Math.round((item.quantidade * precoCentavos) / base) / 100;
         }
@@ -403,6 +407,21 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
              VALUES ${placeholders} RETURNING *`,
             valores.flat()
         );
+
+        // Produto rastreado: liga cada IMEI/série vendido ao item da venda (é por aqui que o cancelamento sabe quais voltam).
+        // RETURNING * devolve as linhas na ordem do INSERT, a mesma de itensProcessados.
+        for (let i = 0; i < itensProcessados.length; i += 1) {
+            const lista = itensProcessados[i].identificadores;
+
+            if (Array.isArray(lista) && lista.length) {
+                await unidadesRastreadasRepository.vincularItemVenda(client, {
+                    empresa_id,
+                    produto_id: itensProcessados[i].produto_id,
+                    identificadores: lista.map(normalizarIdentificador),
+                    item_venda_id: itensRows[i].id
+                });
+            }
+        }
 
         // Baixa automática dos insumos da ficha de venda (só do Central). Falta de saldo não bloqueia a venda:
         // baixa o que existe e deixa a pendência registrada (aparece no sino). Mesma transação da venda.
@@ -795,13 +814,16 @@ async function cancelar(id, usuario_id, empresa_id, opcoes) {
         }
 
         const { rows: itensRows } = await client.query(
-            'SELECT produto_id, quantidade, local_id FROM itens_venda WHERE venda_id = $1 AND empresa_id = $2 ORDER BY produto_id, id',
+            'SELECT id, produto_id, quantidade, local_id FROM itens_venda WHERE venda_id = $1 AND empresa_id = $2 ORDER BY produto_id, id',
             [id, empresa_id]
         );
 
         let quantidadeDevolvida = 0;
 
         for (const item of itensRows) {
+            // Produto rastreado: as unidades vendidas neste item voltam a em_estoque (a lista vem das unidades ligadas ao item).
+            const identificadoresDoItem = await unidadesRastreadasRepository.identificadoresDoItemVenda(client, { empresa_id, item_venda_id: item.id });
+
             await estoqueRepository.criarMovimentacao(
                 {
                     produto_id: item.produto_id,
@@ -811,7 +833,10 @@ async function cancelar(id, usuario_id, empresa_id, opcoes) {
                     usuario_id,
                     empresa_id,
                     // Volta ao local de onde saiu (Maleta ou Central), não a um local qualquer.
-                    local_id: item.local_id
+                    local_id: item.local_id,
+                    rastreio: identificadoresDoItem.length
+                        ? { identificadores: identificadoresDoItem, reativar: true, referencia: `venda:${id}` }
+                        : undefined
                 },
                 client
             );

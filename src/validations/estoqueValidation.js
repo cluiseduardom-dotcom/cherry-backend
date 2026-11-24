@@ -12,7 +12,10 @@ const registrarMovimentacaoSchema = z.object({
         .nonnegative('Quantidade não pode ser negativa'),
     motivo_codigo: z.string({ error: 'Motivo é obrigatório' }),
     observacao: z.string().trim().max(200, 'Observação deve ter no máximo 200 caracteres').optional(),
-    local_id: z.coerce.number({ error: 'Local inválido' }).int('Local inválido').positive('Local inválido').optional()
+    local_id: z.coerce.number({ error: 'Local inválido' }).int('Local inválido').positive('Local inválido').optional(),
+    // Produto rastreado (ADR-008): um IMEI/série por unidade lançada; formato e quantidade são conferidos no repository.
+    identificadores: z.array(z.string({ error: 'IMEI/série inválido' }).trim().min(1, 'IMEI/série vazio').max(60, 'IMEI/série muito longo'))
+        .max(500, 'No máximo 500 IMEI/séries por lançamento').optional()
 }).refine(
     (data) => data.tipo === 'ajuste' || data.quantidade > 0,
     { message: 'Quantidade deve ser maior que zero', path: ['quantidade'] }

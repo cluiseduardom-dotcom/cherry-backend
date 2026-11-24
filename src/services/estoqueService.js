@@ -11,7 +11,7 @@ const { temCapacidade } = require('./permissoesService');
 // MENOS seguem liberados ao Estoquista, sempre com motivo da lista. As permissões são checadas aqui
 // no backend; a tela só esconde o que o usuário não pode.
 // `usuario` é o req.usuario; sem ele, nada que exija permissão passa.
-async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo_codigo, observacao, local_id }, usuario_id, empresaId, usuario) {
+async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo_codigo, observacao, local_id, identificadores }, usuario_id, empresaId, usuario) {
     if (tipo === 'entrada') {
         if (motivo_codigo === 'estoque_inicial' && usuario?.role !== 'admin') {
             throw new AppError('Somente o administrador pode lançar estoque inicial', 403);
@@ -45,7 +45,8 @@ async function registrarMovimentacao(produto_id, { tipo, quantidade, motivo_codi
         local_id,
         origem: motivo_codigo,
         bloquearAjusteParaMais: tipo === 'ajuste' && !temCapacidade(usuario, CAPACIDADES.AJUSTAR_ESTOQUE),
-        exigirSemHistorico: motivo_codigo === 'estoque_inicial'
+        exigirSemHistorico: motivo_codigo === 'estoque_inicial',
+        rastreio: { identificadores, destinoSaida: 'baixada' }
     });
 
     if (resultado.erro === 'PRODUTO_NAO_ENCONTRADO') {

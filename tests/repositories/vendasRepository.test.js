@@ -1,5 +1,6 @@
 jest.mock('../../src/config/db');
 jest.mock('../../src/repositories/estoqueRepository');
+jest.mock('../../src/repositories/unidadesRastreadasRepository');
 jest.mock('../../src/repositories/precosRepository');
 jest.mock('../../src/repositories/contasReceberRepository');
 jest.mock('../../src/repositories/taxasPlataformaRepository');
@@ -11,6 +12,7 @@ jest.mock('../../src/repositories/shared/transacoes');
 
 const db = require('../../src/config/db');
 const estoqueRepository = require('../../src/repositories/estoqueRepository');
+const unidadesRastreadasRepository = require('../../src/repositories/unidadesRastreadasRepository');
 const precosRepository = require('../../src/repositories/precosRepository');
 const contasReceberRepository = require('../../src/repositories/contasReceberRepository');
 const cancelamentosRepository = require('../../src/repositories/cancelamentosRepository');
@@ -70,6 +72,7 @@ function makeFakeClient({ produtos = {}, clienteExiste = true } = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  unidadesRastreadasRepository.identificadoresDoItemVenda.mockResolvedValue([]);
 });
 
 describe('criar', () => {
@@ -425,7 +428,7 @@ describe('cancelar', () => {
   function fakeClientDeCancelamento({ itens = [] } = {}) {
     const client = { query: jest.fn() };
     client.query.mockImplementation((sql, params = []) => {
-      if (sql.includes('SELECT produto_id, quantidade, local_id FROM itens_venda')) {
+      if (sql.includes('SELECT id, produto_id, quantidade, local_id FROM itens_venda')) {
         return Promise.resolve({ rows: itens });
       }
       if (sql.includes("UPDATE vendas SET status = 'cancelada'")) {
