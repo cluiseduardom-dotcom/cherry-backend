@@ -98,8 +98,8 @@ async function criar({ fornecedor_id, data_compra, nota_fiscal, forma_pagamento,
             // 042) pra cancelar() conseguir localizar depois a movimentação
             // de origem e distingui-la de qualquer movimentação posterior.
             await client.query(
-                'UPDATE movimentacoes_estoque SET compra_id = $1 WHERE id = $2',
-                [compra.id, resultado.movimentacao.id]
+                'UPDATE movimentacoes_estoque SET compra_id = $1 WHERE id = $2 AND empresa_id = $3',
+                [compra.id, resultado.movimentacao.id, empresa_id]
             );
 
             itensProcessados.push({
@@ -112,7 +112,7 @@ async function criar({ fornecedor_id, data_compra, nota_fiscal, forma_pagamento,
 
         valorTotal = Number(valorTotal.toFixed(2));
 
-        await client.query('UPDATE compras SET valor_total = $1 WHERE id = $2', [valorTotal, compra.id]);
+        await client.query('UPDATE compras SET valor_total = $1 WHERE id = $2 AND empresa_id = $3', [valorTotal, compra.id, empresa_id]);
 
         const valores = itensProcessados.map((item) => [compra.id, item.produto_id, item.quantidade, item.custo_unitario, empresa_id]);
         const placeholders = valores
@@ -212,8 +212,8 @@ async function buscarPorId(id, empresa_id) {
     const compra = rows[0];
 
     const { rows: itensRows } = await db.query(
-        'SELECT id, produto_id, quantidade, custo_unitario FROM itens_compra WHERE compra_id = $1 ORDER BY id',
-        [id]
+        'SELECT id, produto_id, quantidade, custo_unitario FROM itens_compra WHERE compra_id = $1 AND empresa_id = $2 ORDER BY id',
+        [id, empresa_id]
     );
 
     return { ...compra, itens: itensRows };
@@ -282,8 +282,8 @@ async function cancelar(id, usuario_id, empresa_id) {
         }
 
         const { rows: itensRows } = await client.query(
-            'SELECT produto_id, quantidade FROM itens_compra WHERE compra_id = $1',
-            [id]
+            'SELECT produto_id, quantidade FROM itens_compra WHERE compra_id = $1 AND empresa_id = $2',
+            [id, empresa_id]
         );
 
         for (const item of itensRows) {
@@ -307,8 +307,8 @@ async function cancelar(id, usuario_id, empresa_id) {
         }
 
         const { rows: atualizadaRows } = await client.query(
-            `UPDATE compras SET status = 'cancelado', atualizado_em = NOW() WHERE id = $1 RETURNING *`,
-            [id]
+            `UPDATE compras SET status = 'cancelado', atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2 RETURNING *`,
+            [id, empresa_id]
         );
 
         await client.query('COMMIT');

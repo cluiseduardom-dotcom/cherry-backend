@@ -202,7 +202,8 @@ describe('anonimizar', () => {
         expect(sql).toContain('ativo = false');
         expect(sql).toContain('anonimizado = true');
         expect(sql).toContain('anonimizado_em = NOW()');
-        expect(valores).toEqual([1]);
+        expect(sql).toContain('AND empresa_id = $2');
+        expect(valores).toEqual([1, 9]);
     });
 
     test('throws 404 when the cliente does not exist, without touching the client', async () => {

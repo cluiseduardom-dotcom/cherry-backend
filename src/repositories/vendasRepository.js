@@ -367,8 +367,8 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
         }
 
         await client.query(
-            'UPDATE vendas SET subtotal = $1, desconto = $2, juros = $3, total = $4 WHERE id = $5',
-            [subtotal, descontoFinal, jurosFinal, total, venda.id]
+            'UPDATE vendas SET subtotal = $1, desconto = $2, juros = $3, total = $4 WHERE id = $5 AND empresa_id = $6',
+            [subtotal, descontoFinal, jurosFinal, total, venda.id, empresa_id]
         );
 
         // Taxa interna da plataforma: UMA por venda (aqui, fora do laço de
@@ -677,8 +677,8 @@ async function buscarPorId(id, empresa_id) {
     const venda = rows[0];
 
     const { rows: itensRows } = await db.query(
-        'SELECT id, produto_id, quantidade, preco_unitario, custo_unitario, kit_id, local_id FROM itens_venda WHERE venda_id = $1 ORDER BY id',
-        [id]
+        'SELECT id, produto_id, quantidade, preco_unitario, custo_unitario, kit_id, local_id FROM itens_venda WHERE venda_id = $1 AND empresa_id = $2 ORDER BY id',
+        [id, empresa_id]
     );
 
     // Como foi pago: só o que a tela precisa (nunca provedor, NSU, autorização nem dados de gateway).
