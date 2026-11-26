@@ -207,9 +207,9 @@ async function anonimizar(id, empresa_id) {
                 ativo = false,
                 anonimizado = true,
                 anonimizado_em = NOW()
-             WHERE id = $1
+             WHERE id = $1 AND empresa_id = $2
              RETURNING *`,
-            [id]
+            [id, empresa_id]
         );
 
         return rows[0];
