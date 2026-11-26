@@ -78,7 +78,8 @@ describe('cancelarPorVendaId', () => {
 
         const [sql, valores] = client.query.mock.calls[0];
         expect(sql).toContain(`SET status = 'cancelado'`);
-        expect(valores).toEqual([5]);
+        expect(sql).toContain('AND empresa_id = $2');
+        expect(valores).toEqual([5, 9]);
     });
 
     test('is a no-op when the venda has no linked conta (à vista sale)', async () => {

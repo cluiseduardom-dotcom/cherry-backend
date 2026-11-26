@@ -301,8 +301,8 @@ async function cancelar(id, usuario_id, empresa_id) {
             `SELECT itf.insumo_produto_id, itf.quantidade_necessaria, f.rendimento
                FROM itens_ficha_tecnica itf
                JOIN fichas_tecnicas f ON f.id = itf.ficha_tecnica_id
-              WHERE itf.ficha_tecnica_id = $1`,
-            [producao.ficha_tecnica_id]
+              WHERE itf.ficha_tecnica_id = $1 AND itf.empresa_id = $2 AND f.empresa_id = $2`,
+            [producao.ficha_tecnica_id, empresa_id]
         );
 
         for (const item of itensRows) {
@@ -320,8 +320,8 @@ async function cancelar(id, usuario_id, empresa_id) {
         }
 
         const { rows: atualizadaRows } = await client.query(
-            `UPDATE producoes SET status = 'cancelada', atualizado_em = NOW() WHERE id = $1 RETURNING *`,
-            [id]
+            `UPDATE producoes SET status = 'cancelada', atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2 RETURNING *`,
+            [id, empresa_id]
         );
 
         return atualizadaRows[0];

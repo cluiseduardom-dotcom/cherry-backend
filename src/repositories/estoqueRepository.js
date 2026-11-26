@@ -219,10 +219,10 @@ async function criarMovimentacao({ produto_id, tipo, quantidade, motivo, usuario
         const novoEstoque = estoqueAtual + (novoSaldoLocal - saldoLocal);
 
         await client.query(
-            'UPDATE estoque_locais SET saldo = $1, atualizado_em = NOW() WHERE produto_id = $2 AND local_id = $3',
-            [novoSaldoLocal, produto_id, localId]
+            'UPDATE estoque_locais SET saldo = $1, atualizado_em = NOW() WHERE produto_id = $2 AND local_id = $3 AND empresa_id = $4',
+            [novoSaldoLocal, produto_id, localId, empresa_id]
         );
-        await client.query('UPDATE produtos SET estoque_atual = $1 WHERE id = $2', [novoEstoque, produto_id]);
+        await client.query('UPDATE produtos SET estoque_atual = $1 WHERE id = $2 AND empresa_id = $3', [novoEstoque, produto_id, empresa_id]);
 
         const { rows } = await client.query(
             `INSERT INTO movimentacoes_estoque (produto_id, tipo, quantidade, estoque_resultante, motivo, usuario_id, empresa_id, local_id, saldo_local_resultante, transferencia_id, origem)

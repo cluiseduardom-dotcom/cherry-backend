@@ -114,7 +114,8 @@ describe('atualizar', () => {
         const [sql, valores] = client.query.mock.calls[0];
         expect(sql).toContain('UPDATE contas_pagar SET');
         expect(sql).toContain('valor = $1');
-        expect(valores).toEqual([200, 1]);
+        expect(sql).toContain('AND empresa_id = $3');
+        expect(valores).toEqual([200, 1, 9]);
     });
 
     test('throws 404 when the conta does not exist, without touching the client', async () => {

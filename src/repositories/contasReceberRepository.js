@@ -138,8 +138,8 @@ async function cancelarPorVendaId(venda_id, empresa_id, clienteExterno) {
                 const { rows } = await client.query(
                     `UPDATE contas_receber
                      SET status = 'cancelado', atualizado_em = NOW()
-                     WHERE id = $1 RETURNING *`,
-                    [linha.id]
+                     WHERE id = $1 AND empresa_id = $2 RETURNING *`,
+                    [linha.id, empresa_id]
                 );
                 return rows[0];
             }

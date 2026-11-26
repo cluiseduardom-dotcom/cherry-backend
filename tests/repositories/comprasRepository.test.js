@@ -196,12 +196,12 @@ describe('criar', () => {
     });
 
     expect(fakeClient.query).toHaveBeenCalledWith(
-      'UPDATE movimentacoes_estoque SET compra_id = $1 WHERE id = $2',
-      [1, 41]
+      'UPDATE movimentacoes_estoque SET compra_id = $1 WHERE id = $2 AND empresa_id = $3',
+      [1, 41, 9]
     );
     expect(fakeClient.query).toHaveBeenCalledWith(
-      'UPDATE movimentacoes_estoque SET compra_id = $1 WHERE id = $2',
-      [1, 42]
+      'UPDATE movimentacoes_estoque SET compra_id = $1 WHERE id = $2 AND empresa_id = $3',
+      [1, 42, 9]
     );
   });
 

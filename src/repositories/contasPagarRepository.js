@@ -115,10 +115,10 @@ async function atualizar(id, dados, empresa_id) {
             }
         }
 
-        valores.push(id);
+        valores.push(id, empresa_id);
 
         const { rows } = await client.query(
-            `UPDATE contas_pagar SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+            `UPDATE contas_pagar SET ${sets.join(', ')} WHERE id = $${i} AND empresa_id = $${i + 1} RETURNING *`,
             valores
         );
 
@@ -176,8 +176,8 @@ async function cancelarPorCompraId(compra_id, empresa_id, clienteExterno) {
 
         if (rows[0].status === 'pendente') {
             const { rows: atualizadaRows } = await client.query(
-                `UPDATE contas_pagar SET status = 'cancelado', atualizado_em = NOW() WHERE id = $1 RETURNING *`,
-                [rows[0].id]
+                `UPDATE contas_pagar SET status = 'cancelado', atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2 RETURNING *`,
+                [rows[0].id, empresa_id]
             );
             resultado = atualizadaRows[0];
         }
