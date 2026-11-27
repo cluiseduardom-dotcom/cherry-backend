@@ -170,6 +170,7 @@ const { CAPACIDADES } = require('./constants/cargos');
 const cargosRoutes = require('./routes/cargos');
 const privilegiosRoutes = require('./routes/privilegios');
 const cancelamentosRoutes = require('./routes/cancelamentos');
+const caixaRoutes = require('./routes/caixa');
 const usuariosRoutes = require('./routes/usuarios');
 const comissoesRoutes = require('./routes/comissoes');
 const estoqueRoutes = require('./routes/estoque');
@@ -203,6 +204,7 @@ app.use('/cargos', authMiddleware, requireCapacidade(CAPACIDADES.GERIR_CARGOS), 
 app.use('/privilegios', authMiddleware, requireCapacidade(CAPACIDADES.CONCEDER_ADMIN), privilegiosRoutes);
 app.use('/usuarios', authMiddleware, requireCapacidade(CAPACIDADES.GERIR_USUARIOS), usuariosRoutes);
 app.use('/cancelamentos', authMiddleware, requireCapacidade(CAPACIDADES.VER_CANCELAMENTOS), cancelamentosRoutes);
+app.use('/caixa', authMiddleware, exigirFuncionalidade('caixa'), requireCapacidade(CAPACIDADES.OPERAR_CAIXA, CAPACIDADES.GERIR_CAIXAS), caixaRoutes);
 // Só o uso do módulo é bloqueado; a venda continua acumulando comissão em silêncio (vendasRepository).
 app.use('/comissoes', authMiddleware, exigirFuncionalidade('comissoes'), comissoesRoutes);
 app.use('/estoque', authMiddleware, estoqueRoutes);

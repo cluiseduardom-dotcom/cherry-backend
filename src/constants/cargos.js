@@ -29,7 +29,11 @@ const CAPACIDADES = Object.freeze({
     RECEBER_SEM_COMPRA: 'receber_sem_compra',
     // Dashboard (curva ABC, giro, cobertura). Quem tem só esta capacidade vê o Dashboard SEM margem;
     // a margem do resumo e /dashboard/margem exigem `ver_custos`.
-    VER_DASHBOARD: 'ver_dashboard'
+    VER_DASHBOARD: 'ver_dashboard',
+    // Caixa por PDV (funcionalidade `caixa`): operar = abrir, movimentar (sangria/suprimento) e fechar o PRÓPRIO caixa;
+    // gerir = cadastrar/desativar caixas e ver/movimentar/fechar a sessão de qualquer operador.
+    OPERAR_CAIXA: 'operar_caixa',
+    GERIR_CAIXAS: 'gerir_caixas'
 });
 
 const TODAS_CAPACIDADES = Object.freeze(Object.values(CAPACIDADES));
@@ -51,7 +55,7 @@ const PERFIL_FATURISTA = 'faturista';
 
 const {
     VER_CUSTOS, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, GERIR_FINANCEIRO,
-    VER_TODOS_CLIENTES, VER_DASHBOARD
+    VER_TODOS_CLIENTES, VER_DASHBOARD, OPERAR_CAIXA, GERIR_CAIXAS
 } = CAPACIDADES;
 
 // `escada`: participa da hierarquia de autorização (tem nível). Estoquista e Faturista são
@@ -64,37 +68,37 @@ const CATALOGO = Object.freeze({
     diretor: {
         cargo: 'diretor', rotulo: 'Diretor', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 80,
         sempre_ativo: false, imutavel: false, ativo_padrao: true,
-        capacidades: [VER_CUSTOS, VER_DASHBOARD, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, GERIR_FINANCEIRO, VER_TODOS_CLIENTES]
+        capacidades: [VER_CUSTOS, VER_DASHBOARD, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, GERIR_FINANCEIRO, VER_TODOS_CLIENTES, OPERAR_CAIXA, GERIR_CAIXAS]
     },
     gerente: {
         cargo: 'gerente', rotulo: 'Gerente', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 70,
         sempre_ativo: false, imutavel: false, ativo_padrao: true,
-        capacidades: [VER_CUSTOS, VER_DASHBOARD, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, GERIR_FINANCEIRO, VER_TODOS_CLIENTES]
+        capacidades: [VER_CUSTOS, VER_DASHBOARD, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, GERIR_FINANCEIRO, VER_TODOS_CLIENTES, OPERAR_CAIXA, GERIR_CAIXAS]
     },
     coordenador: {
         cargo: 'coordenador', rotulo: 'Coordenador', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 60,
         sempre_ativo: false, imutavel: false, ativo_padrao: true,
-        capacidades: [VER_CUSTOS, VER_DASHBOARD, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, VER_TODOS_CLIENTES]
+        capacidades: [VER_CUSTOS, VER_DASHBOARD, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, VER_TODOS_CLIENTES, OPERAR_CAIXA, GERIR_CAIXAS]
     },
     supervisor: {
         cargo: 'supervisor', rotulo: 'Supervisor', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 50,
         sempre_ativo: false, imutavel: false, ativo_padrao: true,
-        capacidades: [VER_DASHBOARD, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, VER_TODOS_CLIENTES]
+        capacidades: [VER_DASHBOARD, VER_VENDAS_DE_TODOS, CANCELAR_VENDA, VER_CANCELAMENTOS, GERIR_USUARIOS, VER_TODOS_CLIENTES, OPERAR_CAIXA, GERIR_CAIXAS]
     },
     analista: {
         cargo: 'analista', rotulo: 'Analista', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 40,
         sempre_ativo: false, imutavel: false, ativo_padrao: true,
-        capacidades: [CANCELAR_VENDA, VER_TODOS_CLIENTES, VER_DASHBOARD]
+        capacidades: [CANCELAR_VENDA, VER_TODOS_CLIENTES, VER_DASHBOARD, OPERAR_CAIXA]
     },
     vendedor: {
         cargo: 'vendedor', rotulo: 'Vendedor', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 30,
         sempre_ativo: true, imutavel: false, ativo_padrao: true,
-        capacidades: [CANCELAR_VENDA]
+        capacidades: [CANCELAR_VENDA, OPERAR_CAIXA]
     },
     operador: {
         cargo: 'operador', rotulo: 'Operador', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 20,
         sempre_ativo: false, imutavel: false, ativo_padrao: true,
-        capacidades: [CANCELAR_VENDA]
+        capacidades: [CANCELAR_VENDA, OPERAR_CAIXA]
     },
     auxiliar: {
         cargo: 'auxiliar', rotulo: 'Auxiliar', perfil_base: PERFIL_VENDEDOR, escada: true, nivel: 10,

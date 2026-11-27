@@ -202,7 +202,7 @@ describe('concederACargo', () => {
     test('cargo básico sem linha (vendedor) parte do padrão do catálogo', async () => {
         await service.concederACargo(ator, 'vendedor', confirmacao);
 
-        expect(cargosRepository.salvar).toHaveBeenCalledWith(expect.objectContaining({ cargo: 'vendedor', nivel: 30, capacidades: ['cancelar_venda', 'administrador'] }), client);
+        expect(cargosRepository.salvar).toHaveBeenCalledWith(expect.objectContaining({ cargo: 'vendedor', nivel: 30, capacidades: ['cancelar_venda', 'operar_caixa', 'administrador'] }), client);
     });
 
     test('Admin (cargo imutável) e cargo inexistente são recusados antes de pedir senha', async () => {
