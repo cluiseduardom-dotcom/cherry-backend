@@ -84,7 +84,15 @@ describe('migration 133 — o banco impõe as regras do caixa', () => {
     });
 
     test('sessão de um caixa de outra empresa é recusada (FK composta)', async () => {
-        await expect(abrirSessao(E1, E2.caixa)).rejects.toMatchObject({ code: '23503' });
+        // Operador novo, sem sessão aberta: isola a FK do caixa (a migration 134 recusa um segundo caixa aberto por operador).
+        const operador = (await db.query(
+            `INSERT INTO usuarios (empresa_id, nome, email, senha, papel) VALUES ($1, 'u2', $2, 'x', 'admin') RETURNING id`,
+            [E1.empresaId, `caixa-fk-${sufixo}@teste.invalid`]
+        )).rows[0].id;
+
+        await expect(db.query(
+            `INSERT INTO caixa_sessoes (empresa_id, caixa_id, operador_id, saldo_inicial) VALUES ($1, $2, $3, 0)`, [E1.empresaId, E2.caixa, operador]
+        )).rejects.toMatchObject({ code: '23503' });
     });
 
     test('saldo inicial negativo e fechamento incoerente são recusados', async () => {
