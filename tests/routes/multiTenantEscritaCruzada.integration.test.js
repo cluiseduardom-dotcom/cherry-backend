@@ -237,6 +237,8 @@ describe('ids da empresa 2 no CORPO da requisição (admin da empresa 1)', () =>
 
     test('venda com cliente da empresa 2', async () => {
         await exigirRecusaSemEfeito(() => comoE1('post', '/vendas').send({ cliente_id: E2.cliente, itens: [{ produto_id: E1.produto, quantidade: 1 }] }));
+        // local de estoque de outra empresa no item da venda: recusado e nenhum saldo muda em nenhuma das duas
+        await exigirRecusaSemEfeito(() => comoE1('post', '/vendas').send({ itens: [{ produto_id: E1.produto, quantidade: 1, local_id: E2.localCentral }] }));
     });
 
     test('compra com fornecedor da empresa 2', async () => {
