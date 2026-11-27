@@ -1,7 +1,7 @@
-# Caixa por PDV — API (Tarefa 03, PR B)
+# Caixa por PDV — API (Tarefa 03, PR B e C)
 
 Opcional por empresa: exige a funcionalidade `caixa` (nenhum plano a inclui; a GiroNex liga avulso). Sem ela, tudo abaixo responde 403 e o ERP segue como antes.
-Esta PR **não** liga as vendas ao caixa (isso é a PR C): hoje o "esperado" do fechamento é só o dinheiro físico = troco inicial + suprimentos − sangrias.
+Com a funcionalidade ligada, a venda do PDV (`POST /vendas`) só nasce com o caixa do vendedor **aberto** (409 "Abra o caixa para vender") e exige `pagamentos[]` (400 no formato legado, que não diz a forma). Sem a funcionalidade, nada muda. A venda da loja online não passa por caixa.
 
 ## Capacidades (por cargo, editáveis na tela de cargos)
 | Capacidade | O que permite | Padrão |
@@ -23,7 +23,7 @@ Sessão de outro operador, para quem não tem `gerir_caixas`, responde **404** (
 | `GET /caixa/sessoes?status&caixa_id&page&pageSize` | operar (só as suas) / gerir (todas) | lista paginada |
 | `GET /caixa/sessoes/:id` | dono ou gerir | sessão, movimentos, resumo, `esperado` e conferência (se fechada) |
 | `POST /caixa/sessoes/:id/movimentos` `{tipo: suprimento\|sangria, valor, motivo}` | dono ou gerir | **exige `Idempotency-Key`**. Mesma chave + mesmo conteúdo = o movimento original (200); outro conteúdo = 409. Sangria maior que o dinheiro em caixa = 422 |
-| `POST /caixa/sessoes/:id/fechamento` `{conferencia:[{forma:'dinheiro', informado}], justificativa?}` | dono ou gerir | o servidor calcula o esperado; o cliente só informa o contado. Com diferença, a justificativa é obrigatória (400 sem ela); fecha mesmo assim e devolve `divergente: true` + `aviso`. Sem aprovação de gerente (decisão do PO) |
+| `POST /caixa/sessoes/:id/fechamento` `{conferencia:[{forma, informado}], justificativa?}` | dono ou gerir | o servidor calcula o esperado de cada forma; o cliente só informa o contado, e precisa conferir o dinheiro e toda forma com venda/estorno na sessão (400 se faltar). Com diferença, a justificativa é obrigatória (400 sem ela); fecha mesmo assim e devolve `divergente: true` + `aviso`. Sem aprovação de gerente (decisão do PO) |
 
 ## Garantias
 - `empresa_id` e usuário vêm só do JWT; corpo com campos extras é recusado (400).
@@ -31,5 +31,16 @@ Sessão de outro operador, para quem não tem `gerir_caixas`, responde **404** (
 - O banco impõe: uma sessão aberta por caixa e por operador; movimento só em sessão aberta; movimentos e conferências insere-só; sessão fechada imutável; chave de idempotência única por empresa (migrations 133 e 134).
 - Trilha: quem abriu (`operador_id`), quem movimentou (`usuario_id`), quem fechou (`fechada_por`) e quando, tudo imutável.
 
-## Pendente (PR C e frontend)
-Ligar a venda/pagamento à sessão (esperado por forma: dinheiro, pix, débito, crédito, crediário; estorno gera movimento reverso) e a tela do PDV.
+## Como o esperado é calculado (PR C)
+Por forma (`dinheiro`, `pix`, `debito`, `credito`, `crediario`): **pagamentos de venda da sessão − estornos atribuídos à sessão**. No dinheiro, soma ainda troco inicial + suprimentos − sangrias. O troco devolvido ao cliente não conta (vale o `valor` do pagamento, não o `valor_recebido`).
+`GET /caixa/sessoes/:id` devolve `esperado` e `por_forma` (`vendas`, `estornos`, `esperado`).
+
+De qual sessão sai um estorno (cancelamento da venda ou `POST /pagamentos/:id/estornar`): a do pagamento original, se ainda aberta; senão a sessão aberta de quem estorna; senão nenhuma (fica sem sessão, visível no banco). Sessão fechada nunca muda.
+
+## Limites conhecidos
+- Recebimento de parcela de crediário/conta a receber e pagamento de fiado **em dinheiro no balcão** não entram no esperado; devem ser lançados como suprimento (com motivo) para o dinheiro fechar.
+- Com a funcionalidade ligada, quem vende precisa de `operar_caixa` para abrir o caixa (sem ela, não consegue vender pelo PDV).
+- Estorno de pagamento sem sessão aberta (nem a original, nem a de quem estorna) não entra em nenhum fechamento.
+
+## Pendente
+Tela do PDV no frontend (abrir/fechar caixa, sangria/suprimento, conferência) e a tela de cargos listar `operar_caixa` e `gerir_caixas`.

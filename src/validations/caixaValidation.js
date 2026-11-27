@@ -9,9 +9,8 @@ const dinheiro = (mensagem) => z.number({ error: mensagem })
 
 const CHAVE_IDEMPOTENCIA = /^[A-Za-z0-9_-]{8,80}$/;
 
-// Hoje só o dinheiro tem "esperado" calculável (as vendas ainda não se ligam ao caixa; ver PR C). As demais formas
-// entram na conferência quando as vendas forem ligadas, sem mudar este contrato.
-const FORMAS_CONFERIVEIS = ['dinheiro'];
+// Mesmas formas de pagamento da venda. O servidor calcula o esperado de cada uma (vendas da sessão - estornos).
+const FORMAS_CONFERIVEIS = ['dinheiro', 'pix', 'debito', 'credito', 'crediario'];
 
 const caixaCriarSchema = z.object({
     nome: z.string({ error: 'Informe o nome do caixa' }).trim().min(1, 'Informe o nome do caixa').max(60, 'O nome deve ter no máximo 60 caracteres')

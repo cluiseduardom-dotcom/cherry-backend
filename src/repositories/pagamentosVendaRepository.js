@@ -1,7 +1,7 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 
-async function criar({ venda_id, empresa_id, forma_pagamento, valor, valor_recebido = 0, troco = 0, numero_parcelas = 1, status = 'pendente', origem = 'manual', provedor = null, transacao_externa_id = null, autorizacao = null, nsu = null, usuario_id, observacao = null }, clienteExterno) {
+async function criar({ venda_id, empresa_id, forma_pagamento, valor, valor_recebido = 0, troco = 0, numero_parcelas = 1, status = 'pendente', origem = 'manual', provedor = null, transacao_externa_id = null, autorizacao = null, nsu = null, usuario_id, observacao = null, caixa_sessao_id = null }, clienteExterno) {
     const client = clienteExterno || await db.connect();
     const gerenciaTransacao = !clienteExterno;
 
@@ -9,10 +9,10 @@ async function criar({ venda_id, empresa_id, forma_pagamento, valor, valor_receb
         if (gerenciaTransacao) await client.query('BEGIN');
         const { rows } = await client.query(
             `INSERT INTO pagamentos_venda
-             (venda_id, empresa_id, forma_pagamento, valor, valor_recebido, troco, numero_parcelas, status, origem, provedor, transacao_externa_id, autorizacao, nsu, usuario_id, observacao)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             (venda_id, empresa_id, forma_pagamento, valor, valor_recebido, troco, numero_parcelas, status, origem, provedor, transacao_externa_id, autorizacao, nsu, usuario_id, observacao, caixa_sessao_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
              RETURNING *`,
-            [venda_id, empresa_id, forma_pagamento, valor, valor_recebido, troco, numero_parcelas, status, origem, provedor, transacao_externa_id, autorizacao, nsu, usuario_id, observacao]
+            [venda_id, empresa_id, forma_pagamento, valor, valor_recebido, troco, numero_parcelas, status, origem, provedor, transacao_externa_id, autorizacao, nsu, usuario_id, observacao, caixa_sessao_id]
         );
         if (gerenciaTransacao) await client.query('COMMIT');
         return rows[0];

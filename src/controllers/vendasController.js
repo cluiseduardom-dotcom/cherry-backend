@@ -101,7 +101,11 @@ async function criar(req, res, next) {
             idempotencyKey,
             escopoDeClientes(req.usuario),
             // Pix/link de cartão cobrado por outro usuário: só admin e quem gere o financeiro usam na venda de outra pessoa.
-            { podeUsarCobrancaDeOutros: temCapacidade(req.usuario, CAPACIDADES.GERIR_FINANCEIRO) }
+            {
+                podeUsarCobrancaDeOutros: temCapacidade(req.usuario, CAPACIDADES.GERIR_FINANCEIRO),
+                // Funcionalidade `caixa` ligada: a venda exige o caixa do vendedor aberto (vem do plano resolvido, nunca do cliente).
+                caixaLigado: Array.isArray(req.usuario.funcionalidades) && req.usuario.funcionalidades.includes('caixa')
+            }
         );
 
         return response.success(res, filtrarParaRole(venda, req.usuario), 201);

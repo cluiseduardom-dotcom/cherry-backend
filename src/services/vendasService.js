@@ -1,6 +1,8 @@
 const vendasRepository = require('../repositories/vendasRepository');
 const precosRepository = require('../repositories/precosRepository');
 const AppError = require('../errors/AppError');
+const db = require('../config/db');
+const caixaRepository = require('../repositories/caixaRepository');
 const { podeVerVendasDeTodos } = require('./permissoesService');
 const storage = require('./storage/imagensStorage');
 
@@ -38,6 +40,18 @@ async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_pra
         throw new AppError('Canal inválido', 400);
     }
 
+    // Caixa ligado (funcionalidade `caixa`): a venda do PDV só nasce com o caixa do vendedor aberto, e os pagamentos entram nele.
+    // Sem a funcionalidade nada muda. O contrato legado (sem pagamentos[]) não diz a forma, então não cabe no caixa.
+    let caixaSessaoId = null;
+
+    if (opcoes.caixaLigado === true) {
+        if (pagamentos === undefined) throw new AppError('Com o caixa ligado, informe os pagamentos da venda', 400);
+
+        caixaSessaoId = await caixaRepository.sessaoAbertaDoOperador(db, empresaId, usuario_id);
+
+        if (caixaSessaoId === null) throw new AppError('Abra o caixa para vender', 409);
+    }
+
     // O contrato legado permanece intacto até o frontend migrar para
     // pagamentos[]. O novo núcleo financeiro só é acionado quando o payload
     // explicitamente envia pagamentos.
@@ -55,7 +69,8 @@ async function criar({ cliente_id, canal, pagamentos, forma_pagamento, meses_pra
         ...(idempotencyKey ? { idempotencyKey } : {}),
         // Quem só vê os próprios clientes só vende para eles (o backend, não a tela, decide).
         ...(somenteClientesDoUsuario !== undefined ? { somente_clientes_do_usuario: somenteClientesDoUsuario } : {}),
-        pode_usar_cobranca_de_outros: opcoes.podeUsarCobrancaDeOutros === true
+        pode_usar_cobranca_de_outros: opcoes.podeUsarCobrancaDeOutros === true,
+        ...(caixaSessaoId !== null ? { caixa_sessao_id: caixaSessaoId } : {})
     });
 }
 async function listar({ page, pageSize, status, canal, data_de, data_ate }, usuario) {
