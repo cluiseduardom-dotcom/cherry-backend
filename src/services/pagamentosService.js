@@ -73,7 +73,9 @@ async function receberParcela(id, { valor, forma_pagamento = 'dinheiro', observa
             usuario_id: usuario.id,
             data_recebimento: hoje(),
             observacao,
-            chave_idempotencia: chave
+            chave_idempotencia: chave,
+            // Entra no caixa aberto de quem recebe (PR D); sem caixa aberto, fica fora de caixa e não bloqueia o recebimento.
+            caixa_sessao_id: await caixaRepository.sessaoAbertaDoOperador(client, usuario.empresa_id, usuario.id, { travar: true })
         }, client);
 
         const novoTotalPago = Number((recebidoAnterior + valorReceber).toFixed(2));

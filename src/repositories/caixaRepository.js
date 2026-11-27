@@ -58,9 +58,9 @@ async function carregarSessao(executor, empresa_id, id) {
     return rows[0] ?? null;
 }
 
-// ÚNICO lugar que sabe quanto era esperado em cada forma: pagamentos de venda da sessão - estornos atribuídos a ela; no dinheiro
+// ÚNICO lugar que sabe quanto era esperado em cada forma: pagamentos de venda + recebimentos (parcelas e fiado) da sessão - estornos; no dinheiro
 // soma ainda troco inicial + suprimentos - sangrias. Aparecem no `esperado` o dinheiro (sempre) e as formas com movimento.
-// Fora do cálculo (limite conhecido): recebimento de parcela/fiado em dinheiro no balcão, que deve entrar como suprimento.
+// Limite conhecido: estorno de venda a crediário/prazo já recebida em dinheiro reverte a forma do pagamento (crediário), não o dinheiro.
 async function esperadoPorForma(executor, empresa_id, sessao) {
     const { rows: [t] } = await executor.query(
         `SELECT COALESCE(SUM(valor) FILTER (WHERE tipo = 'suprimento'), 0) AS suprimentos,
@@ -80,19 +80,42 @@ async function esperadoPorForma(executor, empresa_id, sessao) {
         [empresa_id, sessao.id]
     );
 
+    // PR D: dinheiro/forma recebidos no balcão por parcela de conta a receber e por pagamento de fiado (e o estorno do pagamento de fiado).
+    const FORMAS = `('dinheiro', 'pix', 'debito', 'credito')`;
+    const { rows: recebimentos } = await executor.query(
+        `SELECT forma, SUM(total) AS total FROM (
+             SELECT forma_pagamento AS forma, SUM(valor) AS total FROM recebimentos_conta
+              WHERE empresa_id = $1 AND caixa_sessao_id = $2 GROUP BY forma_pagamento
+             UNION ALL
+             SELECT forma, SUM(valor) FROM fiado_lancamentos
+              WHERE empresa_id = $1 AND caixa_sessao_id = $2 AND tipo = 'pagamento' AND forma IN ${FORMAS} GROUP BY forma
+         ) r GROUP BY forma`,
+        [empresa_id, sessao.id]
+    );
+    const { rows: estornosFiado } = await executor.query(
+        `SELECT o.forma, SUM(l.valor) AS total FROM fiado_lancamentos l
+           JOIN fiado_lancamentos o ON o.id = l.estorna_id AND o.empresa_id = l.empresa_id
+          WHERE l.empresa_id = $1 AND l.caixa_sessao_id = $2 AND l.tipo = 'estorno' AND o.tipo = 'pagamento' AND o.forma IN ${FORMAS}
+          GROUP BY o.forma`,
+        [empresa_id, sessao.id]
+    );
+
     const suprimentos = centavos(t.suprimentos);
     const sangrias = centavos(t.sangrias);
-    const porForma = { dinheiro: { vendas: 0, estornos: 0 } };
+    const porForma = { dinheiro: { vendas: 0, recebimentos: 0, estornos: 0 } };
+    const linha = (forma) => (porForma[forma] ??= { vendas: 0, recebimentos: 0, estornos: 0 });
 
-    for (const v of vendas) (porForma[v.forma] ??= { vendas: 0, estornos: 0 }).vendas = centavos(v.total);
-    for (const e of estornos) (porForma[e.forma] ??= { vendas: 0, estornos: 0 }).estornos = centavos(e.total);
+    for (const v of vendas) linha(v.forma).vendas = centavos(v.total);
+    for (const r of recebimentos) linha(r.forma).recebimentos = centavos(r.total);
+    for (const e of estornos) linha(e.forma).estornos += centavos(e.total);
+    for (const e of estornosFiado) linha(e.forma).estornos += centavos(e.total);
 
     const esperadoCentavos = {};
     const detalhe = {};
 
     for (const [forma, x] of Object.entries(porForma)) {
-        esperadoCentavos[forma] = x.vendas - x.estornos + (forma === 'dinheiro' ? centavos(sessao.saldo_inicial) + suprimentos - sangrias : 0);
-        detalhe[forma] = { vendas: reais(x.vendas), estornos: reais(x.estornos), esperado: reais(esperadoCentavos[forma]) };
+        esperadoCentavos[forma] = x.vendas + x.recebimentos - x.estornos + (forma === 'dinheiro' ? centavos(sessao.saldo_inicial) + suprimentos - sangrias : 0);
+        detalhe[forma] = { vendas: reais(x.vendas), recebimentos: reais(x.recebimentos), estornos: reais(x.estornos), esperado: reais(esperadoCentavos[forma]) };
     }
 
     return {

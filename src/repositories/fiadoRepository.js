@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 const { executarComLock } = require('./shared/transacoes');
+const caixaRepository = require('./caixaRepository');
 
 // Fiado: livro-razão append-only + saldo por cliente. Regras que este arquivo garante, TODAS dentro de uma transação com a
 // linha do saldo do cliente travada (executarComLock):
@@ -104,10 +105,14 @@ async function lancar({ empresa_id, usuario_id, cliente_id, tipo, valor, descric
             const novoSaldo = tipo === 'compra' ? saldoAtual + cents : saldoAtual - cents;
 
             const { rows: [criado] } = await client.query(
-                `INSERT INTO fiado_lancamentos (empresa_id, cliente_id, tipo, valor, descricao, data_lancamento, forma, chave_idempotencia, criado_por)
-                 VALUES ($1, $2, $3, $4, $5, COALESCE($6::date, ${HOJE_SP}), $7, $8, $9)
+                `INSERT INTO fiado_lancamentos (empresa_id, cliente_id, tipo, valor, descricao, data_lancamento, forma, chave_idempotencia, criado_por, caixa_sessao_id)
+                 VALUES ($1, $2, $3, $4, $5, COALESCE($6::date, ${HOJE_SP}), $7, $8, $9, $10)
                  RETURNING id, cliente_id, tipo, valor, descricao, to_char(data_lancamento, 'YYYY-MM-DD') AS data_lancamento_texto, forma, estorna_id, motivo, criado_em`,
-                [empresa_id, cliente_id, tipo, reais(cents), descricao, data, forma, chave, usuario_id]
+                [
+                    empresa_id, cliente_id, tipo, reais(cents), descricao, data, forma, chave, usuario_id,
+                    // Pagamento do cliente entra no caixa aberto de quem lança (PR D); compra de fiado não é dinheiro. Sem caixa aberto, fica fora de caixa.
+                    tipo === 'pagamento' ? await caixaRepository.sessaoAbertaDoOperador(client, empresa_id, usuario_id, { travar: true }) : null
+                ]
             );
 
             await client.query(
@@ -164,10 +169,16 @@ async function estornar({ empresa_id, usuario_id, lancamento_id, motivo, chave, 
             }
 
             const { rows: [criado] } = await client.query(
-                `INSERT INTO fiado_lancamentos (empresa_id, cliente_id, tipo, valor, data_lancamento, estorna_id, motivo, chave_idempotencia, criado_por)
-                 VALUES ($1, $2, 'estorno', $3, ${HOJE_SP}, $4, $5, $6, $7)
+                `INSERT INTO fiado_lancamentos (empresa_id, cliente_id, tipo, valor, data_lancamento, estorna_id, motivo, chave_idempotencia, criado_por, caixa_sessao_id)
+                 VALUES ($1, $2, 'estorno', $3, ${HOJE_SP}, $4, $5, $6, $7, $8)
                  RETURNING id, cliente_id, tipo, valor, descricao, to_char(data_lancamento, 'YYYY-MM-DD') AS data_lancamento_texto, forma, estorna_id, motivo, criado_em`,
-                [empresa_id, cliente_id, original.valor, lancamento_id, motivo, chave, usuario_id]
+                [
+                    empresa_id, cliente_id, original.valor, lancamento_id, motivo, chave, usuario_id,
+                    // Estornar um pagamento devolve o valor: sai da sessão do lançamento (se aberta) ou da de quem estorna (PR D).
+                    original.tipo === 'pagamento'
+                        ? await caixaRepository.sessaoParaEstorno(client, { empresa_id, usuario_id, sessao_original_id: original.caixa_sessao_id })
+                        : null
+                ]
             );
 
             await client.query(

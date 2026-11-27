@@ -1,4 +1,4 @@
-# Caixa por PDV — API (Tarefa 03, PR B e C)
+# Caixa por PDV — API (Tarefa 03, PR B, C e D)
 
 Opcional por empresa: exige a funcionalidade `caixa` (nenhum plano a inclui; a GiroNex liga avulso). Sem ela, tudo abaixo responde 403 e o ERP segue como antes.
 Com a funcionalidade ligada, a venda do PDV (`POST /vendas`) só nasce com o caixa do vendedor **aberto** (409 "Abra o caixa para vender") e exige `pagamentos[]` (400 no formato legado, que não diz a forma). Sem a funcionalidade, nada muda. A venda da loja online não passa por caixa.
@@ -32,13 +32,18 @@ Sessão de outro operador, para quem não tem `gerir_caixas`, responde **404** (
 - Trilha: quem abriu (`operador_id`), quem movimentou (`usuario_id`), quem fechou (`fechada_por`) e quando, tudo imutável.
 
 ## Como o esperado é calculado (PR C)
-Por forma (`dinheiro`, `pix`, `debito`, `credito`, `crediario`): **pagamentos de venda da sessão − estornos atribuídos à sessão**. No dinheiro, soma ainda troco inicial + suprimentos − sangrias. O troco devolvido ao cliente não conta (vale o `valor` do pagamento, não o `valor_recebido`).
-`GET /caixa/sessoes/:id` devolve `esperado` e `por_forma` (`vendas`, `estornos`, `esperado`).
+Por forma (`dinheiro`, `pix`, `debito`, `credito`, `crediario`): **pagamentos de venda da sessão + recebimentos (parcela de conta a receber e pagamento de fiado) − estornos atribuídos à sessão**. No dinheiro, soma ainda troco inicial + suprimentos − sangrias. O troco devolvido ao cliente não conta (vale o `valor` do pagamento, não o `valor_recebido`).
+`GET /caixa/sessoes/:id` devolve `esperado` e `por_forma` (`vendas`, `recebimentos`, `estornos`, `esperado`).
 
 De qual sessão sai um estorno (cancelamento da venda ou `POST /pagamentos/:id/estornar`): a do pagamento original, se ainda aberta; senão a sessão aberta de quem estorna; senão nenhuma (fica sem sessão, visível no banco). Sessão fechada nunca muda.
 
+## Recebimentos no balcão (PR D)
+- Parcela recebida (`POST /contas-receber/:id/recebimentos`, `PATCH /parcelas/:id/receber`) e pagamento de fiado entram, por forma, na sessão **aberta de quem recebe**. Sem caixa aberto, o recebimento segue normal e fica fora de caixa (não bloqueia).
+- Estorno de pagamento de fiado sai da sessão do lançamento (se aberta) ou da de quem estorna. Compra de fiado não é dinheiro e nunca entra. Pagamento de fiado sem forma ou com forma `outro` não conta em nenhuma forma conferível.
+- Retry com a mesma `Idempotency-Key` não conta duas vezes.
+
 ## Limites conhecidos
-- Recebimento de parcela de crediário/conta a receber e pagamento de fiado **em dinheiro no balcão** não entram no esperado; devem ser lançados como suprimento (com motivo) para o dinheiro fechar.
+- Estorno de venda a crediário/prazo já recebida em dinheiro reverte a forma do pagamento (crediário), não o dinheiro: se o dinheiro foi devolvido ao cliente no balcão, lance uma sangria com motivo.
 - Com a funcionalidade ligada, quem vende precisa de `operar_caixa` para abrir o caixa (sem ela, não consegue vender pelo PDV).
 - Estorno de pagamento sem sessão aberta (nem a original, nem a de quem estorna) não entra em nenhum fechamento.
 
