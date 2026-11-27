@@ -1,15 +1,15 @@
 const db = require('../config/db');
 
-async function criar({ parcela_id, empresa_id, valor, forma_pagamento, usuario_id, data_recebimento, observacao = null, chave_idempotencia = null }, clienteExterno) {
+async function criar({ parcela_id, empresa_id, valor, forma_pagamento, usuario_id, data_recebimento, observacao = null, chave_idempotencia = null, caixa_sessao_id = null }, clienteExterno) {
     const client = clienteExterno || await db.connect();
     const gerenciaTransacao = !clienteExterno;
     try {
         if (gerenciaTransacao) await client.query('BEGIN');
         const { rows } = await client.query(
             `INSERT INTO recebimentos_conta
-             (parcela_id, empresa_id, valor, forma_pagamento, usuario_id, data_recebimento, observacao, chave_idempotencia)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-            [parcela_id, empresa_id, valor, forma_pagamento, usuario_id, data_recebimento, observacao, chave_idempotencia]
+             (parcela_id, empresa_id, valor, forma_pagamento, usuario_id, data_recebimento, observacao, chave_idempotencia, caixa_sessao_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+            [parcela_id, empresa_id, valor, forma_pagamento, usuario_id, data_recebimento, observacao, chave_idempotencia, caixa_sessao_id]
         );
         if (gerenciaTransacao) await client.query('COMMIT');
         return rows[0];

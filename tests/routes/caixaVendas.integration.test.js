@@ -109,7 +109,7 @@ describe('com o caixa ligado, a venda exige o caixa aberto', () => {
         const d = await detalhe(A, 'vendedor', A.s1);
 
         expect(d.esperado).toEqual({ dinheiro: 220, pix: 80, debito: 100 });
-        expect(d.por_forma.dinheiro).toEqual({ vendas: 120, estornos: 0, esperado: 220 });
+        expect(d.por_forma.dinheiro).toEqual({ vendas: 120, recebimentos: 0, estornos: 0, esperado: 220 });
         A.vendaDinheiro = v1.body.data.id;
     });
 
@@ -125,13 +125,13 @@ describe('com o caixa ligado, a venda exige o caixa aberto', () => {
 
         expect(est.status).toBe(201);
         expect((await doBanco(`SELECT caixa_sessao_id FROM estornos_pagamento WHERE pagamento_id = $1`, [pagamento]))[0].caixa_sessao_id).toBe(A.s1);
-        expect((await detalhe(A, 'vendedor', A.s1)).por_forma.dinheiro).toEqual({ vendas: 120, estornos: 10, esperado: 180 });
+        expect((await detalhe(A, 'vendedor', A.s1)).por_forma.dinheiro).toEqual({ vendas: 120, recebimentos: 0, estornos: 10, esperado: 180 });
 
         const cancel = await api(A, 'vendedor').patch(`/vendas/${A.vendaDinheiro}/cancelar`, { motivo: 'Cliente desistiu da compra' });
 
         expect(cancel.status).toBe(200);
         // Cancelamento estorna o restante (90 de 100): 100 (troco inicial) + 20 (outra venda) - 30 (sangria) = 90.
-        expect((await detalhe(A, 'vendedor', A.s1)).por_forma.dinheiro).toEqual({ vendas: 120, estornos: 100, esperado: 90 });
+        expect((await detalhe(A, 'vendedor', A.s1)).por_forma.dinheiro).toEqual({ vendas: 120, recebimentos: 0, estornos: 100, esperado: 90 });
     });
 
     test('não vende com o caixa de OUTRO operador: cada um usa o seu', async () => {
@@ -180,7 +180,7 @@ describe('fechamento com as vendas', () => {
         const sAdmin = await abrir(A, 'admin', A.caixa, 0);
 
         expect((await api(A, 'admin').post(`/pagamentos/${pagamento}/estornar`, { valor: 5, motivo: 'Mais um ajuste' })).status).toBe(201);
-        expect((await detalhe(A, 'admin', sAdmin)).por_forma.pix).toEqual({ vendas: 0, estornos: 5, esperado: -5 });
+        expect((await detalhe(A, 'admin', sAdmin)).por_forma.pix).toEqual({ vendas: 0, recebimentos: 0, estornos: 5, esperado: -5 });
         A.sAdmin = sAdmin;
     });
 });
