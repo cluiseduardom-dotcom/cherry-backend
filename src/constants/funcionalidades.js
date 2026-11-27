@@ -30,7 +30,9 @@ const FUNCIONALIDADES = [
     // continua sendo o módulo `fiscal`, "em breve". Código separado para o site público não anunciar emissão que não existe.
     { codigo: 'fiscal_cadastro', tipo: 'modulo', nome: 'Fiscal: cadastro para emissão de nota (NCM, origem e dados da empresa)', vendavel: true },
     // Entrou na migration 127. Pedido de compra → recebimento com conferência → estoque e conta a pagar. Nenhum plano a inclui: a GiroNex liga avulso.
-    { codigo: 'compras_avancado', tipo: 'modulo', nome: 'Compras avançado: pedido de compra e recebimento com conferência', vendavel: true }
+    { codigo: 'compras_avancado', tipo: 'modulo', nome: 'Compras avançado: pedido de compra e recebimento com conferência', vendavel: true },
+    // Entrou na migration 133. Caixa por PDV (abertura, sangria, suprimento e fechamento com conferência). Opcional por empresa; nenhum plano a inclui.
+    { codigo: 'caixa', tipo: 'modulo', nome: 'Caixa por PDV: abertura, sangria, suprimento e fechamento com conferência', vendavel: true }
 ];
 
 const CODIGOS_FUNCIONALIDADES = FUNCIONALIDADES.map((f) => f.codigo);
