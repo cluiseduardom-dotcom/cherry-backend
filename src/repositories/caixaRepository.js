@@ -9,6 +9,9 @@ const { executarComLock } = require('./shared/transacoes');
 //  * movimento: trava a sessão; sangria maior que o dinheiro em caixa é recusada; mesma Idempotency-Key com o mesmo conteúdo
 //    devolve o movimento original, com outro conteúdo, 409;
 //  * fechar: trava a sessão, calcula o ESPERADO no servidor (nunca vem do cliente), grava a conferência e fecha, tudo ou nada.
+// PR C: o pagamento de venda e o estorno carregam `caixa_sessao_id`; o esperado de cada forma = troco/suprimentos/sangrias (dinheiro)
+// + pagamentos da sessão - estornos da sessão. Venda e estorno travam a sessão (FOR SHARE) antes de gravar: ou entram antes do
+// fechamento e contam na conferência, ou o fechamento vence e eles são recusados.
 // Toda consulta filtra por empresa_id. O dinheiro é somado em centavos inteiros.
 
 const centavos = (valor) => Math.round(Number(valor) * 100);
@@ -55,8 +58,9 @@ async function carregarSessao(executor, empresa_id, id) {
     return rows[0] ?? null;
 }
 
-// ÚNICO lugar que sabe quanto era esperado em cada forma. Hoje só o dinheiro: troco inicial + suprimentos - sangrias.
-// A ligação das vendas ao caixa (PR C) soma aqui as vendas/estornos em dinheiro e as demais formas, sem mexer nas rotas.
+// ÚNICO lugar que sabe quanto era esperado em cada forma: pagamentos de venda da sessão - estornos atribuídos a ela; no dinheiro
+// soma ainda troco inicial + suprimentos - sangrias. Aparecem no `esperado` o dinheiro (sempre) e as formas com movimento.
+// Fora do cálculo (limite conhecido): recebimento de parcela/fiado em dinheiro no balcão, que deve entrar como suprimento.
 async function esperadoPorForma(executor, empresa_id, sessao) {
     const { rows: [t] } = await executor.query(
         `SELECT COALESCE(SUM(valor) FILTER (WHERE tipo = 'suprimento'), 0) AS suprimentos,
@@ -64,13 +68,71 @@ async function esperadoPorForma(executor, empresa_id, sessao) {
            FROM caixa_movimentos WHERE empresa_id = $1 AND sessao_id = $2`,
         [empresa_id, sessao.id]
     );
-    const dinheiro = centavos(sessao.saldo_inicial) + centavos(t.suprimentos) - centavos(t.sangrias);
+    const { rows: vendas } = await executor.query(
+        `SELECT forma_pagamento AS forma, SUM(valor) AS total FROM pagamentos_venda
+          WHERE empresa_id = $1 AND caixa_sessao_id = $2 AND status <> 'cancelado' GROUP BY forma_pagamento`,
+        [empresa_id, sessao.id]
+    );
+    const { rows: estornos } = await executor.query(
+        `SELECT pv.forma_pagamento AS forma, SUM(e.valor) AS total
+           FROM estornos_pagamento e JOIN pagamentos_venda pv ON pv.id = e.pagamento_id AND pv.empresa_id = e.empresa_id
+          WHERE e.empresa_id = $1 AND e.caixa_sessao_id = $2 GROUP BY pv.forma_pagamento`,
+        [empresa_id, sessao.id]
+    );
+
+    const suprimentos = centavos(t.suprimentos);
+    const sangrias = centavos(t.sangrias);
+    const porForma = { dinheiro: { vendas: 0, estornos: 0 } };
+
+    for (const v of vendas) (porForma[v.forma] ??= { vendas: 0, estornos: 0 }).vendas = centavos(v.total);
+    for (const e of estornos) (porForma[e.forma] ??= { vendas: 0, estornos: 0 }).estornos = centavos(e.total);
+
+    const esperadoCentavos = {};
+    const detalhe = {};
+
+    for (const [forma, x] of Object.entries(porForma)) {
+        esperadoCentavos[forma] = x.vendas - x.estornos + (forma === 'dinheiro' ? centavos(sessao.saldo_inicial) + suprimentos - sangrias : 0);
+        detalhe[forma] = { vendas: reais(x.vendas), estornos: reais(x.estornos), esperado: reais(esperadoCentavos[forma]) };
+    }
 
     return {
         resumo: { saldo_inicial: Number(sessao.saldo_inicial), suprimentos: Number(t.suprimentos), sangrias: Number(t.sangrias) },
-        esperado: { dinheiro: reais(dinheiro) },
-        centavos: { dinheiro }
+        esperado: Object.fromEntries(Object.entries(esperadoCentavos).map(([forma, c]) => [forma, reais(c)])),
+        por_forma: detalhe,
+        centavos: esperadoCentavos
     };
+}
+
+// Sessão aberta do operador (ou null). Com `travar`, FOR SHARE: o fechamento (FOR UPDATE) espera quem está gravando um pagamento.
+async function sessaoAbertaDoOperador(executor, empresa_id, operador_id, { travar = false } = {}) {
+    const { rows } = await executor.query(
+        `SELECT id FROM caixa_sessoes WHERE empresa_id = $1 AND operador_id = $2 AND status = 'aberta'${travar ? ' FOR SHARE' : ''}`,
+        [empresa_id, operador_id]
+    );
+
+    return rows.length ? Number(rows[0].id) : null;
+}
+
+// Dentro da transação da venda: confirma que a sessão ainda está aberta e a trava contra um fechamento concorrente.
+async function travarSessaoAberta(client, empresa_id, sessao_id) {
+    const { rowCount } = await client.query(
+        `SELECT 1 FROM caixa_sessoes WHERE id = $1 AND empresa_id = $2 AND status = 'aberta' FOR SHARE`, [sessao_id, empresa_id]
+    );
+
+    if (!rowCount) throw new AppError('O caixa foi fechado. Abra o caixa para vender', 409);
+}
+
+// De qual sessão o valor SAI num estorno: a do pagamento original, se ainda aberta; senão a do operador que estorna; senão nenhuma.
+async function sessaoParaEstorno(client, { empresa_id, usuario_id, sessao_original_id = null }) {
+    if (sessao_original_id) {
+        const { rowCount } = await client.query(
+            `SELECT 1 FROM caixa_sessoes WHERE id = $1 AND empresa_id = $2 AND status = 'aberta' FOR SHARE`, [sessao_original_id, empresa_id]
+        );
+
+        if (rowCount) return Number(sessao_original_id);
+    }
+
+    return sessaoAbertaDoOperador(client, empresa_id, usuario_id, { travar: true });
 }
 
 // ---- caixas ----
@@ -190,7 +252,7 @@ async function detalharSessao({ empresa_id, sessao_id }) {
         `SELECT id, sessao_id, tipo, valor, motivo, usuario_id, criado_em FROM caixa_movimentos WHERE empresa_id = $1 AND sessao_id = $2 ORDER BY id`,
         [empresa_id, sessao_id]
     );
-    const { resumo, esperado } = await esperadoPorForma(db, empresa_id, sessao);
+    const { resumo, esperado, por_forma } = await esperadoPorForma(db, empresa_id, sessao);
     const { rows: conferencias } = await db.query(
         `SELECT forma, esperado, informado, diferenca FROM caixa_conferencias WHERE empresa_id = $1 AND sessao_id = $2 ORDER BY id`, [empresa_id, sessao_id]
     );
@@ -200,6 +262,7 @@ async function detalharSessao({ empresa_id, sessao_id }) {
         movimentos: movimentos.map(movimentoParaResposta),
         resumo,
         esperado,
+        por_forma,
         conferencias: conferencias.map((c) => ({ forma: c.forma, esperado: Number(c.esperado), informado: Number(c.informado), diferenca: Number(c.diferenca) }))
     };
 }
@@ -267,13 +330,13 @@ async function fecharSessao({ empresa_id, usuario_id, gere, sessao_id, conferenc
         const formasEsperadas = Object.keys(esperado);
         const informadas = conferencia.map((c) => c.forma);
 
-        // Toda forma que tem esperado precisa ser conferida: fechar sem contar o dinheiro esconderia a diferença.
+        // Toda forma que tem esperado (o dinheiro sempre, e as com vendas/estornos) precisa ser conferida: fechar sem contar esconderia a diferença.
         const faltando = formasEsperadas.filter((forma) => !informadas.includes(forma));
 
         if (faltando.length) throw new AppError(`Informe a conferência de: ${faltando.join(', ')}`, 400);
 
         const linhas = conferencia.map((c) => ({
-            forma: c.forma, esperado: esperado[c.forma], informado: c.informado, diferenca: reais(centavos(c.informado) - esperadoCentavos[c.forma])
+            forma: c.forma, esperado: esperado[c.forma] ?? 0, informado: c.informado, diferenca: reais(centavos(c.informado) - (esperadoCentavos[c.forma] ?? 0))
         }));
         const divergente = linhas.some((l) => l.diferenca !== 0);
 
@@ -299,5 +362,6 @@ async function fecharSessao({ empresa_id, usuario_id, gere, sessao_id, conferenc
 }
 
 module.exports = {
-    listarCaixas, criarCaixa, atualizarCaixa, abrirSessao, sessaoAberta, detalharSessao, listarSessoes, lancarMovimento, fecharSessao, esperadoPorForma
+    listarCaixas, criarCaixa, atualizarCaixa, abrirSessao, sessaoAberta, detalharSessao, listarSessoes, lancarMovimento, fecharSessao, esperadoPorForma,
+    sessaoAbertaDoOperador, travarSessaoAberta, sessaoParaEstorno
 };

@@ -5,6 +5,7 @@ const pagamentosRepository = require('../repositories/pagamentosVendaRepository'
 const parcelasRepository = require('../repositories/parcelasPagamentoRepository');
 const recebimentosRepository = require('../repositories/recebimentosContaRepository');
 const estornosRepository = require('../repositories/estornosPagamentoRepository');
+const caixaRepository = require('../repositories/caixaRepository');
 const contasReceberRepository = require('../repositories/contasReceberRepository');
 const comissoesRepository = require('../repositories/comissoesRepository');
 const { hojeSP } = require('../utils/dataSaoPaulo');
@@ -150,7 +151,11 @@ async function estornarPagamento(id, { valor, motivo }, usuario) {
             empresa_id: usuario.empresa_id,
             valor: valorEstorno,
             motivo: motivo.trim(),
-            usuario_id: usuario.id
+            usuario_id: usuario.id,
+            // O valor sai da sessão de caixa do pagamento (se aberta) ou da de quem estorna (PR C).
+            caixa_sessao_id: await caixaRepository.sessaoParaEstorno(client, {
+                empresa_id: usuario.empresa_id, usuario_id: usuario.id, sessao_original_id: pagamento.caixa_sessao_id
+            })
         }, client);
 
         const totalAposEstorno = Number((totalEstornado + valorEstorno).toFixed(2));

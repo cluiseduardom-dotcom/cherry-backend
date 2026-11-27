@@ -116,7 +116,7 @@ describe('POST /vendas (admin and vendedor only)', () => {
     expect(res.body.data.total).toBe('30.00');
     // 4º: Idempotency-Key (ausente = null); 5º: vendedor sem `ver_todos_clientes` só vende para clientes dele (id 2).
     // 6º: vendedor comum não usa Pix/link de cartão cobrado por outro usuário (só admin e quem gere o financeiro).
-    expect(vendasService.criar).toHaveBeenCalledWith({ itens: [{ produto_id: 1, quantidade: 3 }] }, 2, 1, null, 2, { podeUsarCobrancaDeOutros: false });
+    expect(vendasService.criar).toHaveBeenCalledWith({ itens: [{ produto_id: 1, quantidade: 3 }] }, 2, 1, null, 2, { podeUsarCobrancaDeOutros: false, caixaLigado: false });
   });
 
   test('returns 201 for an admin too', async () => {
@@ -207,7 +207,7 @@ describe('POST /vendas (admin and vendedor only)', () => {
       1,
       null,
       2,
-      { podeUsarCobrancaDeOutros: false }
+      { podeUsarCobrancaDeOutros: false, caixaLigado: false }
     );
   });
 

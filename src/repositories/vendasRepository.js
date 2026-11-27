@@ -6,6 +6,7 @@ const vendaConsumosRepository = require('./vendaConsumosRepository');
 const precosRepository = require('./precosRepository');
 const contasReceberRepository = require('./contasReceberRepository');
 const pagamentosVendaRepository = require('./pagamentosVendaRepository');
+const caixaRepository = require('./caixaRepository');
 const parcelasPagamentoRepository = require('./parcelasPagamentoRepository');
 const estornosPagamentoRepository = require('./estornosPagamentoRepository');
 const taxasPlataformaRepository = require('./taxasPlataformaRepository');
@@ -193,7 +194,7 @@ function criarResolvedorDeLocal(client, { empresa_id, usuario_id }) {
 //    Com ele, esta função não abre, confirma, desfaz nem libera a conexão: quem abriu é quem fecha.
 //  * `precosFixos`: { [produto_id]: preco_venda }. Vale o preço CONGELADO no pedido, não o vigente de hoje (a cliente
 //    pagou aquele valor). Produto sem preço no mapa é recusado como "sem preço definido".
-async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null, somente_clientes_do_usuario, clienteExterno = null, precosFixos = null, pode_usar_cobranca_de_outros = false }) {
+async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, pagamentos, desconto = 0, juros = 0, forma_pagamento, meses_prazo, idempotencyKey = null, somente_clientes_do_usuario, clienteExterno = null, precosFixos = null, pode_usar_cobranca_de_outros = false, caixa_sessao_id = null }) {
     validarLimitesDeParcelamento(pagamentos, meses_prazo);
 
     const client = clienteExterno || await db.connect();
@@ -228,6 +229,12 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 if (gerenciaTransacao) await client.query('COMMIT');
                 return existenteRows[0].resposta;
             }
+        }
+
+        // Caixa (PR C): trava a sessão aberta ANTES de gravar qualquer coisa. O fechamento espera esta venda terminar; se o caixa
+        // fechou no meio do caminho, a venda é recusada em vez de ficar fora da conferência.
+        if (caixa_sessao_id !== null) {
+            await caixaRepository.travarSessaoAberta(client, empresa_id, caixa_sessao_id);
         }
 
         // Bloqueio de Pix manual da empresa (decisão do operador da plataforma): recusa só o Pix lançado à mão. Pix com
@@ -509,7 +516,8 @@ async function criar({ cliente_id, canal_id, usuario_id, empresa_id, itens, paga
                 provedor: cobranca ? cobranca.provedor : null,
                 transacao_externa_id: cobranca ? cobranca.id_externo : null,
                 usuario_id,
-                observacao: pagamentoInput.observacao ?? null
+                observacao: pagamentoInput.observacao ?? null,
+                caixa_sessao_id
             }, client);
 
             const valoresParcelas = dividirEmCentavos(valor, parcelas);
@@ -786,7 +794,9 @@ async function cancelar(id, usuario_id, empresa_id, opcoes) {
                     empresa_id,
                     valor: saldoEstorno,
                     motivo: `Estorno automático pelo cancelamento da venda #${id}`,
-                    usuario_id
+                    usuario_id,
+                    // O valor sai da sessão de caixa do pagamento (se aberta) ou da de quem cancela (PR C).
+                    caixa_sessao_id: await caixaRepository.sessaoParaEstorno(client, { empresa_id, usuario_id, sessao_original_id: pagamento.caixa_sessao_id })
                 }, client);
 
                 valorDevolvido = Number((valorDevolvido + saldoEstorno).toFixed(2));
